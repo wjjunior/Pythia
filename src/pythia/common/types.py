@@ -113,3 +113,16 @@ class AuditEvent(_Frozen):
     payload: dict[str, Any]
     market_id: str | None = None
     ts: datetime | None = None
+
+
+class CostEvent(_Frozen):
+    agent: str
+    task: str
+    provider: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    cached_tokens: int = 0
+    latency_ms: int | None = None
+    correlation_id: str | None = None
