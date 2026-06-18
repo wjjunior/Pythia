@@ -43,12 +43,13 @@ namespace_packages = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "apscheduler.*"]
+module = ["pgvector.*", "apscheduler.*", "testcontainers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not integration'"
+markers = ["integration: needs a real database via testcontainers (excluded by default)"]
 
 [dependency-groups]
 dev = [
@@ -57,4 +58,5 @@ dev = [
     "pre-commit>=4.6.0",
     "pytest>=9.1.0",
     "ruff>=0.15.17",
+    "testcontainers>=4.14.2",
 ]
