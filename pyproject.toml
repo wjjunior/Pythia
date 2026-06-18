@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Calibration-first research and paper-trading engine for Polymarket prediction markets"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.14.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.11.21,<0.12"]
@@ -21,6 +23,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
 "__init__.py" = ["F401"]
 
 [tool.mypy]
+plugins = ["pydantic.mypy"]
 python_version = "3.12"
 strict = true
 warn_unreachable = true
