@@ -8,6 +8,7 @@ from pythia.common.ports import (
 )
 from pythia.common.types import (
     AuditEvent,
+    CostEvent,
     CriticVerdict,
     Estimate,
     EstimationContext,
@@ -23,6 +24,7 @@ from pythia.common.types import (
 __all__ = [
     "AuditEvent",
     "AuditPort",
+    "CostEvent",
     "CriticVerdict",
     "EmbeddingPort",
     "Estimate",
