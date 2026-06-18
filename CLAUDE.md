@@ -28,6 +28,8 @@ Versions are pinned in `pyproject.toml`; `uv sync` is the only install path. The
 
 ## Repository structure
 
+Target layout — some entries (`docker-compose.yml`, `.env.example`, the React app) arrive in later phases.
+
 ```
 Pythia/
 ├── src/pythia/

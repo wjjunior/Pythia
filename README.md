@@ -10,7 +10,7 @@ See `CLAUDE.md` for day-to-day conventions and the Notion **System Design — Py
 
 - Python ≥ 3.12 (the dev/CI baseline is pinned in `.python-version`)
 - [uv](https://docs.astral.sh/uv/) for dependency and project management
-- Docker (for the local Postgres + pgvector stack — added in PYT-8)
+- Docker — for the local Postgres + pgvector stack (the Compose stack lands in PYT-8; not needed yet)
 
 ## Getting started
 
@@ -19,11 +19,7 @@ uv sync            # create the virtualenv and install all dependencies (incl. d
 uv run pytest      # run the test suite
 ```
 
-The local infrastructure stack is brought up with Docker Compose (added in PYT-8):
-
-```bash
-docker compose up  # Postgres + pgvector (Redis behind the `redis` profile)
-```
+> The local infrastructure stack — Postgres + pgvector via Docker Compose — is **not in the repo yet**; it lands in PYT-8. Once added, it will start with `docker compose up` (Redis behind the `redis` profile).
 
 ## Quality gates
 
@@ -36,7 +32,7 @@ uv run mypy                  # strict type checking
 uv run pytest                # tests
 ```
 
-Install the pre-commit hooks to run these locally on commit:
+Install the pre-commit hooks to run the static gates (ruff lint + format, mypy) on each commit; the test suite runs in CI:
 
 ```bash
 uv run pre-commit install
@@ -60,6 +56,6 @@ src/pythia/
   ingestion/  rag/  agents/          # adapters: market data, evidence, LLM
   orchestration/  paper/  db/        # pipeline, paper ledger, persistence
   api/  worker/                      # the two process entrypoints
-dashboard/                           # React + Vite frontend (PYT-27)
-tests/                               # property (Hypothesis) + integration (testcontainers)
+  dashboard/                         # placeholder package; the React + Vite app lands in PYT-27
+tests/                               # smoke tests now; Hypothesis + testcontainers arrive with their phases
 ```
