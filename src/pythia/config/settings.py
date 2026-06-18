@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     embedding_provider: str | None = None
     embedding_model: str | None = None
+    embedding_api_key: str | None = None
+    embedding_base_url: str | None = None
     openrouter_api_key: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     model_routing: str | None = None
