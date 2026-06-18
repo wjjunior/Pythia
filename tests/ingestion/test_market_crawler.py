@@ -12,6 +12,7 @@ from pythia.ingestion import (
     FixtureTransport,
     LiveVenueAccessError,
     MarketCrawler,
+    MarketNotFoundError,
     TransientTransportError,
 )
 
@@ -104,3 +105,19 @@ def test_poll_surfaces_live_venue_error_without_retry() -> None:
     with pytest.raises(LiveVenueAccessError):
         crawler.poll()
     assert transport.calls == 1
+
+
+def test_snapshot_market_id_matches_the_listed_market() -> None:
+    crawler = _crawler()
+    market = crawler.list_markets()[2]
+    snapshot = crawler.snapshot(market.external_id)
+    assert snapshot.market_id == market.id
+
+
+def test_market_id_is_stable_across_polls() -> None:
+    assert _crawler().poll()[0][0].id == _crawler().poll()[0][0].id
+
+
+def test_snapshot_raises_clear_error_for_unknown_market() -> None:
+    with pytest.raises(MarketNotFoundError):
+        _crawler().snapshot("0xdoesnotexist")

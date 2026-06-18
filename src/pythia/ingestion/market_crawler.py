@@ -29,6 +29,10 @@ class TransientTransportError(RuntimeError):
     """A retryable provider error (timeout or 5xx)."""
 
 
+class MarketNotFoundError(LookupError):
+    """No market matched the requested external id."""
+
+
 class MarketTransport(Protocol):
     def fetch_markets(self) -> list[dict[str, Any]]: ...
 
@@ -114,6 +118,14 @@ def to_snapshot(
     )
 
 
+def _market_id(external_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, external_id))
+
+
+def _snapshot_id(external_id: str, ts: datetime) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{external_id}@{ts.isoformat()}"))
+
+
 class MarketCrawler:
     """MarketDataPort adapter over a Gamma transport, with backoff and the §8.6 VPN gate."""
 
@@ -123,14 +135,12 @@ class MarketCrawler:
         *,
         clock: Callable[[], datetime] | None = None,
         sleep: Callable[[float], None] = time.sleep,
-        id_factory: Callable[[], str] | None = None,
         retries: int = 3,
         backoff_base: float = 0.5,
     ) -> None:
         self._transport = transport
         self._clock = clock or (lambda: datetime.now(UTC))
         self._sleep = sleep
-        self._id = id_factory or (lambda: str(uuid.uuid4()))
         self._retries = retries
         self._backoff_base = backoff_base
 
@@ -150,16 +160,20 @@ class MarketCrawler:
         raise last
 
     def list_markets(self, **filters: object) -> list[Market]:
-        return [to_market(raw, self._id()) for raw in self._fetch()]
+        return [to_market(raw, _market_id(raw["conditionId"])) for raw in self._fetch()]
 
     def snapshot(self, external_id: str) -> MarketSnapshot:
-        raw = next(m for m in self._fetch() if m["conditionId"] == external_id)
-        return to_snapshot(raw, self._id(), self._id(), self._clock())
+        raw = next((m for m in self._fetch() if m["conditionId"] == external_id), None)
+        if raw is None:
+            raise MarketNotFoundError(external_id)
+        ts = self._clock()
+        return to_snapshot(raw, _snapshot_id(external_id, ts), _market_id(external_id), ts)
 
     def poll(self) -> list[tuple[Market, MarketSnapshot]]:
         ts = self._clock()
         pairs: list[tuple[Market, MarketSnapshot]] = []
         for raw in self._fetch():
-            market = to_market(raw, self._id())
-            pairs.append((market, to_snapshot(raw, self._id(), market.id, ts)))
+            external_id = raw["conditionId"]
+            market = to_market(raw, _market_id(external_id))
+            pairs.append((market, to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)))
         return pairs
