@@ -72,3 +72,23 @@ def test_ev_predicted_vs_realized_aggregates() -> None:
     assert ev.n == 2
     assert ev.mean_predicted == pytest.approx(0.2)
     assert ev.mean_realized == pytest.approx(0.2)
+
+
+def test_reliability_bins_rejects_non_positive_n_bins() -> None:
+    with pytest.raises(ValueError):
+        reliability_bins([0.5], [1], n_bins=0)
+
+
+def test_reliability_bins_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError):
+        reliability_bins([0.5, 0.5], [1], n_bins=10)
+
+
+def test_brier_score_rejects_empty_input() -> None:
+    with pytest.raises(ValueError):
+        brier_score([], [])
+
+
+def test_ev_predicted_vs_realized_rejects_empty_input() -> None:
+    with pytest.raises(ValueError):
+        ev_predicted_vs_realized([], [])
