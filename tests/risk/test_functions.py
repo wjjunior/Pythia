@@ -112,3 +112,10 @@ def test_gate_reasons_lists_every_violation() -> None:
         RiskReason.MIN_SOURCE_RELIABILITY,
         RiskReason.MAX_P_RESOL_SEVERITY,
     }
+
+
+def test_zero_size_proposal_is_not_vetoed() -> None:
+    decision = evaluate(replace(PROPOSAL, proposed_size=0.0), LIMITS, EMPTY)
+    assert decision.approved_size == 0.0
+    assert not decision.vetoed
+    assert decision.reasons == ()

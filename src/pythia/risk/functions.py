@@ -57,7 +57,7 @@ def evaluate(proposal: TradeProposal, limits: RiskLimits, exposure: ExposureStat
 
     return RiskDecision(
         approved_size=approved_size,
-        vetoed=approved_size == 0.0,
-        reasons=reasons,
+        vetoed=approved_size == 0.0 and bool(reasons),
         paper_only=paper_only,
+        reasons=reasons,
     )
