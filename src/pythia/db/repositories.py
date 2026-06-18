@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from sqlmodel import Session, col, select
 
-from pythia.common import Market, MarketSnapshot, Source
+from pythia.common import Estimate, Market, MarketSnapshot, Source
 from pythia.db import models
 
 
@@ -148,6 +148,54 @@ class SourceRepository:
         self._session.commit()
         self._session.refresh(row)
         return _from_db_source(row)
+
+
+def _to_db_estimate(estimate: Estimate) -> models.Estimate:
+    return models.Estimate(
+        id=uuid.UUID(estimate.id),
+        market_id=uuid.UUID(estimate.market_id),
+        snapshot_id=uuid.UUID(estimate.snapshot_id),
+        p_model=estimate.p_model,
+        confidence=estimate.confidence,
+        lower=estimate.lower,
+        upper=estimate.upper,
+        rationale=estimate.rationale,
+        critic_notes=estimate.critic_notes,
+        evidence_ids=[uuid.UUID(evidence_id) for evidence_id in estimate.evidence_ids],
+        model_name=estimate.model_name,
+    )
+
+
+def _from_db_estimate(row: models.Estimate) -> Estimate:
+    return Estimate(
+        id=str(row.id),
+        market_id=str(row.market_id),
+        snapshot_id=str(row.snapshot_id),
+        p_model=row.p_model,
+        confidence=row.confidence,
+        lower=row.lower,
+        upper=row.upper,
+        rationale=row.rationale,
+        evidence_ids=[str(evidence_id) for evidence_id in row.evidence_ids],
+        model_name=row.model_name,
+        critic_notes=row.critic_notes,
+    )
+
+
+class EstimateRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, estimate: Estimate) -> Estimate:
+        row = _to_db_estimate(estimate)
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return _from_db_estimate(row)
+
+    def get(self, estimate_id: str) -> Estimate | None:
+        row = self._session.get(models.Estimate, uuid.UUID(estimate_id))
+        return _from_db_estimate(row) if row is not None else None
 
 
 def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot]]) -> None:

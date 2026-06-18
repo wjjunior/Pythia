@@ -1,3 +1,4 @@
+from pythia.agents.estimation import DEFAULT_EVIDENCE_K, EstimationAgent
 from pythia.agents.llm_port import (
     ChatTransport,
     CostSink,
@@ -9,9 +10,11 @@ from pythia.agents.llm_port import (
 from pythia.agents.router import DEFAULT_SLATES, ModelRouter, UnknownAgentError
 
 __all__ = [
+    "DEFAULT_EVIDENCE_K",
     "DEFAULT_SLATES",
     "ChatTransport",
     "CostSink",
+    "EstimationAgent",
     "HttpxChatTransport",
     "ModelRouter",
     "OpenRouterLLMPort",
