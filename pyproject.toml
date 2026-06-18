@@ -5,7 +5,11 @@ description = "Calibration-first research and paper-trading engine for Polymarke
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.18.4",
+    "pgvector>=0.4.2",
+    "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.14.1",
+    "sqlmodel>=0.0.38",
 ]
 
 [build-system]
@@ -22,6 +26,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
@@ -32,6 +39,10 @@ mypy_path = "src"
 explicit_package_bases = true
 namespace_packages = true
 files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["pgvector.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
