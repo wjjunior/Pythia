@@ -29,9 +29,11 @@ class HttpxChatTransport:
     """Live OpenRouter transport — the OpenAI-compatible /chat/completions endpoint."""
 
     def __init__(self, api_key: str, base_url: str, *, timeout: float = 30.0) -> None:
-        self._api_key = api_key
-        self._base_url = base_url.rstrip("/")
-        self._timeout = timeout
+        self._client = httpx.Client(
+            base_url=base_url.rstrip("/"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        )
 
     def complete(
         self, *, model: str, messages: list[dict[str, str]], max_price: float | None
@@ -39,12 +41,7 @@ class HttpxChatTransport:
         body: dict[str, Any] = {"model": model, "messages": messages, "usage": {"include": True}}
         if max_price is not None:
             body["provider"] = {"max_price": {"completion": max_price}}
-        response = httpx.post(
-            f"{self._base_url}/chat/completions",
-            json=body,
-            headers={"Authorization": f"Bearer {self._api_key}"},
-            timeout=self._timeout,
-        )
+        response = self._client.post("/chat/completions", json=body)
         response.raise_for_status()
         data: dict[str, Any] = response.json()
         return data
@@ -52,6 +49,12 @@ class HttpxChatTransport:
 
 def _deterministic_id(*parts: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)))
+
+
+def _as_bool(value: object) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return bool(value)
 
 
 class StubLLMPort:
@@ -147,19 +150,21 @@ class OpenRouterLLMPort:
     def _complete(
         self, agent: str, messages: list[dict[str, str]]
     ) -> tuple[dict[str, Any], str, int]:
-        last: Exception | None = None
-        for model in self._router.candidates(agent):
+        candidates = self._router.candidates(agent)
+        if not candidates:
+            raise ValueError(f"no model candidates configured for agent {agent!r}")
+        errors: list[Exception] = []
+        for model in candidates:
             start = self._clock()
             try:
                 response = self._transport.complete(
                     model=model, messages=messages, max_price=self._router.max_price
                 )
             except Exception as exc:  # failover to the next candidate model
-                last = exc
+                errors.append(exc)
                 continue
             return response, model, int((self._clock() - start) * 1000)
-        assert last is not None
-        raise last
+        raise errors[-1]
 
     def _emit_cost(
         self, agent: str, task: str, model: str, response: dict[str, Any], latency_ms: int
@@ -203,11 +208,12 @@ class OpenRouterLLMPort:
         response, model, latency_ms = self._complete("critic", _critique_messages(est, evidence))
         self._emit_cost("critic", "critique", model, response, latency_ms)
         payload = _parse_content(response)
+        notes = payload.get("notes")
         return CriticVerdict(
             adjusted_confidence=float(payload.get("adjusted_confidence", est.confidence)),
             objections=[str(objection) for objection in payload.get("objections", [])],
-            lookahead_leak=bool(payload.get("lookahead_leak", False)),
-            notes=payload.get("notes"),
+            lookahead_leak=_as_bool(payload.get("lookahead_leak", False)),
+            notes=str(notes) if notes is not None else None,
         )
 
 

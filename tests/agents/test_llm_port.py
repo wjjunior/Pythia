@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from pythia.agents import ModelRouter, OpenRouterLLMPort, StubLLMPort, make_llm_port
 from pythia.common import (
     CostEvent,
@@ -135,3 +137,34 @@ def test_openrouter_estimate_handles_markdown_fenced_json() -> None:
     }
     estimate = OpenRouterLLMPort(_FakeTransport([response]), ModelRouter()).estimate(_ctx())
     assert estimate.p_model == 0.4
+
+
+def _critique_response(lookahead: object = False, notes: object = "ok") -> dict[str, Any]:
+    content = json.dumps(
+        {
+            "adjusted_confidence": 0.3,
+            "objections": ["weak source"],
+            "lookahead_leak": lookahead,
+            "notes": notes,
+        }
+    )
+    return {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
+    }
+
+
+def test_critique_normalises_string_boolean_and_null_notes() -> None:
+    transport = _FakeTransport([_critique_response(lookahead="false", notes=None)])
+    estimate = StubLLMPort().estimate(_ctx())
+    verdict = OpenRouterLLMPort(transport, ModelRouter()).critique(estimate, [])
+    assert verdict.lookahead_leak is False
+    assert verdict.notes is None
+
+
+def test_estimate_with_empty_slate_raises_a_clear_error() -> None:
+    port = OpenRouterLLMPort(_FakeTransport([]), ModelRouter(slates={"estimation": []}))
+    with pytest.raises(ValueError):
+        port.estimate(_ctx())

@@ -28,3 +28,14 @@ def test_custom_slate_overrides_the_default() -> None:
 
 def test_max_price_is_exposed() -> None:
     assert ModelRouter(max_price=0.5).max_price == 0.5
+
+
+def test_task_specific_slate_takes_precedence() -> None:
+    router = ModelRouter(slates={"estimation": ["base/model"], "estimation:fast": ["fast/model"]})
+    assert router.route("estimation", "fast") == "fast/model"
+    assert router.route("estimation") == "base/model"
+
+
+def test_unimplemented_strategy_is_rejected() -> None:
+    with pytest.raises(NotImplementedError):
+        ModelRouter(strategy="ensemble")
