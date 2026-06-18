@@ -10,7 +10,7 @@ The single question the system exists to answer, before risking any capital: **i
 
 **Core:** Python 3.12+, typed throughout, project managed by **`uv`**. FastAPI (REST + SSE). Pydantic AI for agents (model-agnostic). Pydantic v2 + pydantic-settings for types and config.
 
-**Data:** PostgreSQL 16 + **pgvector** as the single stateful store — relational system of record, vector evidence index, and append-only audit ledger in one. SQLModel models, Alembic migrations. Redis is an optional, profile-gated add-on for the scheduler/worker only when an in-process loop no longer suffices.
+**Data:** PostgreSQL 18 + **pgvector** as the single stateful store — relational system of record, vector evidence index, and append-only audit ledger in one. SQLModel models, Alembic migrations. Redis is an optional, profile-gated add-on for the scheduler/worker only when an in-process loop no longer suffices.
 
 **AI access:** OpenRouter (one OpenAI-compatible endpoint, 400+ models) behind `LLMPort`. A deterministic stub is the zero-config default so the whole pipeline runs with **no secrets**.
 
