@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.4",
+    "apscheduler>=3.11.2",
+    "httpx>=0.28.1",
     "pgvector>=0.4.2",
     "psycopg[binary]>=3.3.4",
     "pydantic-settings>=2.14.1",
@@ -41,7 +43,7 @@ namespace_packages = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*"]
+module = ["pgvector.*", "apscheduler.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
