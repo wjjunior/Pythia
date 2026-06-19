@@ -113,6 +113,10 @@ def test_per_category_brier_with_n_excluding_ambiguous(session: Session) -> None
     assert by_cat["sports"].n == 1
     assert by_cat["sports"].brier_system == pytest.approx(0.01)
     assert report.ev is None
+    # invalid-rate is surfaced per category, separate from Brier (n excludes the ambiguous market).
+    assert by_cat["politics"].invalid_count == 1
+    assert by_cat["politics"].invalid_rate == pytest.approx(1 / 3)
+    assert by_cat["sports"].invalid_count == 0
 
 
 def test_latest_estimate_per_market_wins(session: Session) -> None:

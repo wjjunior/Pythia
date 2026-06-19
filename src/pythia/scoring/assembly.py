@@ -29,8 +29,13 @@ def resolution_penalty(source_type: ResolutionSourceType) -> float:
 
 
 def classify_resolution_source(resolution_source: str | None) -> ResolutionSourceType:
-    if resolution_source and "chainlink" in resolution_source.lower():
+    if not resolution_source:
+        return ResolutionSourceType.SUBJECTIVE_UMA
+    text = resolution_source.lower()
+    if "chainlink" in text:
         return ResolutionSourceType.CHAINLINK
+    if "binary" in text:
+        return ResolutionSourceType.CLEAN_BINARY
     return ResolutionSourceType.SUBJECTIVE_UMA
 
 

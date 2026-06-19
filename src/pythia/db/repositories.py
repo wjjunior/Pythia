@@ -310,6 +310,36 @@ class RecalibrationRepository:
         ).all()
 
 
+class ResolutionRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def invalid_counts_by_category(self) -> dict[str, int]:
+        rows = self._session.exec(
+            select(models.Market.category, func.count())
+            .join(models.Resolution, col(models.Resolution.market_id) == col(models.Market.id))
+            .where(col(models.Resolution.ambiguous).is_(True))
+            .group_by(col(models.Market.category))
+        ).all()
+        return dict(rows)
+
+    def dispute_counts(self, category: str, *, since: datetime, asof: datetime) -> tuple[int, int]:
+        total, invalid = self._session.exec(
+            select(
+                func.count(),
+                func.count().filter(col(models.Resolution.ambiguous).is_(True)),
+            )
+            .select_from(models.Resolution)
+            .join(models.Market, col(models.Resolution.market_id) == col(models.Market.id))
+            .where(
+                models.Market.category == category,
+                col(models.Resolution.resolved_at) >= since,
+                col(models.Resolution.resolved_at) < asof,
+            )
+        ).one()
+        return invalid, total
+
+
 def _to_db_score(score: Score) -> models.Score:
     return models.Score(
         estimate_id=uuid.UUID(score.estimate_id),

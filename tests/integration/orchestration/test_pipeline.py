@@ -114,6 +114,32 @@ def _pipeline(session: Session, llm: object) -> Pipeline:
     )
 
 
+def _seed_disputes(
+    session: Session, category: str, *, ambiguous: int, valid: int, resolved_at: datetime
+) -> None:
+    for index in range(ambiguous + valid):
+        name = f"dispute-{category}-{index}"
+        market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+        MarketRepository(session).upsert(
+            Market(
+                id=market_id,
+                external_id=name,
+                question="q",
+                category=category,
+                resolution_rule="r",
+            )
+        )
+        session.add(
+            models.Resolution(
+                market_id=uuid.UUID(market_id),
+                outcome=0,
+                resolved_at=resolved_at,
+                ambiguous=index < ambiguous,
+            )
+        )
+        session.commit()
+
+
 class _ConfidentLLM:
     def estimate(self, ctx: EstimationContext) -> Estimate:
         return Estimate(
@@ -243,6 +269,17 @@ def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> N
     assert result.score is not None
     # n_fit=1 is below the default min_n: the raw p_model (0.7) is scored, not p_calibrated.
     assert result.score.edge == pytest.approx(0.7 - 0.5)
+
+
+def test_pipeline_sizes_down_a_high_invalid_rate_category(session: Session) -> None:
+    market, snapshot = _seed(session)  # politics, UMA source → base P_resol 0.6
+    _seed_disputes(session, "politics", ambiguous=2, valid=2, resolved_at=ASOF - timedelta(days=5))
+    result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.score is not None
+    # invalid_rate 0.5 grades 0.6 → 0.3; severity 0.7 > max_p_resol_severity 0.5 → vetoed.
+    assert result.score.p_resol == pytest.approx(0.3)
+    assert result.decision.vetoed
+    assert RiskReason.MAX_P_RESOL_SEVERITY in result.decision.reasons
 
 
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:

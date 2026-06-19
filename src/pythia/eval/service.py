@@ -15,7 +15,7 @@ from sqlmodel import Session, col, select
 from pythia.common import Side, TradeStatus
 from pythia.config.settings import RecalibrationMethod
 from pythia.db import models
-from pythia.db.repositories import RecalibrationRepository
+from pythia.db.repositories import RecalibrationRepository, ResolutionRepository
 from pythia.eval.functions import (
     calibration_by_category,
     ev_predicted_vs_realized,
@@ -72,8 +72,9 @@ class CalibrationService:
         forecasts = [p_model for samples in records.values() for (p_model, _q, _o) in samples]
         observed = [outcome for samples in records.values() for (_p, _q, outcome) in samples]
 
+        invalid_counts = ResolutionRepository(self._session).invalid_counts_by_category()
         return CalibrationReport(
-            categories=calibration_by_category(records),
+            categories=calibration_by_category(records, invalid_counts),
             reliability=reliability_bins(forecasts, observed, n_bins) if forecasts else [],
             ev=self._ev(outcomes),
         )

@@ -6,6 +6,7 @@ from pythia.risk.models import (
     RiskReason,
     TradeProposal,
 )
+from pythia.risk.resolution_risk import grade_p_resol, invalid_rate, is_resolution_gated
 
 __all__ = [
     "ExposureState",
@@ -16,4 +17,7 @@ __all__ = [
     "cap_headrooms",
     "evaluate",
     "gate_reasons",
+    "grade_p_resol",
+    "invalid_rate",
+    "is_resolution_gated",
 ]

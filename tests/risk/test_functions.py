@@ -44,6 +44,12 @@ def test_clean_proposal_is_approved_at_proposed_size() -> None:
     assert decision.paper_only is False
 
 
+def test_poor_resolution_category_is_paper_gated_even_when_calibrated() -> None:
+    decision = evaluate(replace(PROPOSAL, resolution_gated=True), LIMITS, EMPTY)
+    assert decision.paper_only is True
+    assert not decision.vetoed  # gated to paper, still sized normally
+
+
 def test_low_confidence_vetoes() -> None:
     decision = evaluate(replace(PROPOSAL, confidence=0.4), LIMITS, EMPTY)
     assert decision.vetoed

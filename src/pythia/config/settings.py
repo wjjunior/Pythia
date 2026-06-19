@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     min_source_reliability: float = 0.5
     min_confidence: float = 0.5
     max_p_resol_severity: float = 0.5
+    max_category_invalid_rate: float = 0.15
 
     # Cost guards
     cost_cap_per_run: float = 1.0

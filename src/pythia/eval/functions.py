@@ -56,7 +56,9 @@ def reliability_bins(
 
 def calibration_by_category(
     records: Mapping[str, Sequence[tuple[float, float, int]]],
+    invalid_counts: Mapping[str, int] | None = None,
 ) -> list[CategoryCalibration]:
+    counts = invalid_counts or {}
     result: list[CategoryCalibration] = []
     for category, rows in records.items():
         system = [row[0] for row in rows]
@@ -64,6 +66,8 @@ def calibration_by_category(
         outcomes = [row[2] for row in rows]
         brier_system = brier_score(system, outcomes)
         brier_market = brier_score(market, outcomes)
+        invalid = counts.get(category, 0)
+        total = len(rows) + invalid
         result.append(
             CategoryCalibration(
                 category=category,
@@ -71,6 +75,8 @@ def calibration_by_category(
                 brier_market=brier_market,
                 delta=brier_market - brier_system,
                 n=len(rows),
+                invalid_count=invalid,
+                invalid_rate=invalid / total if total > 0 else 0.0,
             )
         )
     return result

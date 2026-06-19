@@ -39,7 +39,7 @@ def cap_headrooms(
 
 
 def evaluate(proposal: TradeProposal, limits: RiskLimits, exposure: ExposureState) -> RiskDecision:
-    paper_only = not proposal.category_calibrated
+    paper_only = not proposal.category_calibrated or proposal.resolution_gated
 
     gates = gate_reasons(proposal, limits)
     if gates:

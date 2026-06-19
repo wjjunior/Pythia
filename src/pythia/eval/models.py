@@ -19,6 +19,8 @@ class CategoryCalibration:
     brier_market: float
     delta: float
     n: int
+    invalid_count: int = 0
+    invalid_rate: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
