@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from pythia.api.events import EventBroadcaster
 from pythia.api.routers import (
     calibration,
+    cost,
     estimates,
     events,
     health,
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
         portfolio,
         calibration,
         simulation,
+        cost,
         review,
         events,
         health,

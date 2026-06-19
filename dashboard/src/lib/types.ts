@@ -1,0 +1,30 @@
+// Domain types crossing the API boundary. Generated from the FastAPI OpenAPI schema — never
+// hand-write a type here; run `npm run gen` after a Pydantic change.
+import type { components } from "./api.gen"
+
+type Schemas = components["schemas"]
+
+export type RadarItem = Schemas["RadarItem"]
+export type Market = Schemas["Market"]
+export type MarketDetail = Schemas["MarketDetail"]
+export type MarketSnapshot = Schemas["MarketSnapshot"]
+export type Estimate = Schemas["Estimate"]
+export type EstimateDetail = Schemas["EstimateDetail"]
+export type Evidence = Schemas["Evidence"]
+export type Score = Schemas["Score"]
+export type PortfolioResponse = Schemas["PortfolioResponse"]
+export type PaperPortfolio = Schemas["PaperPortfolio"]
+export type PaperTrade = Schemas["PaperTrade"]
+export type CapitalState = Schemas["CapitalState"]
+export type ExposureView = Schemas["ExposureView"]
+export type CalibrationResponse = Schemas["CalibrationResponse"]
+export type CategoryCalibration = Schemas["CategoryCalibration"]
+export type ReliabilityBin = Schemas["ReliabilityBin"]
+export type EvCalibration = Schemas["EvCalibration"]
+export type CostResponse = Schemas["CostResponse"]
+export type SimulationResponse = Schemas["SimulationResponse"]
+export type GrowthCurvePoint = Schemas["GrowthCurvePointView"]
+export type ReviewRequest = Schemas["ReviewRequest"]
+export type ReviewResult = Schemas["ReviewResult"]
+export type Side = Schemas["Side"]
+export type TradeStatus = Schemas["TradeStatus"]

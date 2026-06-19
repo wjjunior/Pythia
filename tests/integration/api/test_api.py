@@ -12,10 +12,11 @@ from sqlmodel import Session
 from pythia.api.app import create_app
 from pythia.api.deps import get_session, settings_dependency
 from pythia.api.events import SseChannel
-from pythia.common import Estimate, Market, MarketSnapshot, Score, Source
+from pythia.common import CostEvent, Estimate, Market, MarketSnapshot, Score, Source
 from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
+    CostRepository,
     EstimateRepository,
     MarketRepository,
     ScoreRepository,
@@ -220,6 +221,39 @@ def test_simulation_without_measurements_is_404(client: TestClient, session: Ses
     _seed_scored_market(session)
     _resolve_market(session)
     assert client.get("/api/simulation?category=sports").status_code == 404
+
+
+def test_cost_reports_spend_breakdown(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    repo = CostRepository(session)
+    repo.record(
+        CostEvent(
+            agent="estimation",
+            task="estimate",
+            provider="openrouter",
+            model="m/x",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.04,
+        )
+    )
+    repo.record(
+        CostEvent(
+            agent="critic",
+            task="critique",
+            provider="openrouter",
+            model="m/y",
+            input_tokens=8,
+            output_tokens=4,
+            cost_usd=0.06,
+        )
+    )
+    body = client.get("/api/cost").json()
+    assert body["total"] == pytest.approx(0.10)
+    assert body["by_agent"]["estimation"] == pytest.approx(0.04)
+    assert body["by_model"]["m/y"] == pytest.approx(0.06)
+    assert body["cost_per_opportunity"] == pytest.approx(0.10)
+    assert len(body["by_day"]) == 1
 
 
 def test_review_approve_opens_a_paper_trade(client: TestClient, session: Session) -> None:
