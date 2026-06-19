@@ -22,6 +22,8 @@ from pythia.common.types import (
     Side,
     Source,
     TradeStatus,
+    Venue,
+    VenueQuote,
 )
 
 __all__ = [
@@ -46,4 +48,6 @@ __all__ = [
     "Side",
     "Source",
     "TradeStatus",
+    "Venue",
+    "VenueQuote",
 ]

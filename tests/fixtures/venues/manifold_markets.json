@@ -1,0 +1,122 @@
+[
+  {
+    "id": "E9CNZA0LZ0",
+    "slug": "does-china-have-an-asml-euv-machine",
+    "question": "Does China have an ASML EUV machine? (as of June 19, 2026)",
+    "probability": 0.259058990923799,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1813449540000,
+    "volume": 706.8261621647825,
+    "totalLiquidity": 1000,
+    "url": "https://manifold.markets/JamesSanders/does-china-have-an-asml-euv-machine"
+  },
+  {
+    "id": "QhtyEtEgCn",
+    "slug": "sweet-sour-showdown-will-michigan-s-0l2n6UOOgh",
+    "question": "Sweet & Sour Showdown: Will Michigan Sweet be priced higher than Wyoming Sour crude oil on Juneteenth 2027?",
+    "probability": 0.5901639344262296,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1813449540000,
+    "volume": 26.106792913330967,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/strutheo/sweet-sour-showdown-will-michigan-s-0l2n6UOOgh"
+  },
+  {
+    "id": "UnEzCytQhP",
+    "slug": "will-the-us-be-at-full-employment-i-cRZI5IN02z",
+    "question": "Will the US be at full employment in December 2026?",
+    "probability": 0.3902439024390245,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1798761540000,
+    "volume": 33.33333333333333,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/EnopoletusHarding/will-the-us-be-at-full-employment-i-cRZI5IN02z"
+  },
+  {
+    "id": "8NIPIE2nOy",
+    "slug": "2026-fifa-world-cup-will-there-be-e",
+    "question": "2026 FIFA World Cup: Will there be exactly 6 or 7 knockout matches ending 3\u20130?",
+    "probability": 0.0766186167909389,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1784505540000,
+    "volume": 263.2627690188788,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/Web3ICP/2026-fifa-world-cup-will-there-be-e"
+  },
+  {
+    "id": "llEzLEOR9y",
+    "slug": "2026-fifa-world-cup-will-there-be-a",
+    "question": "2026 FIFA World Cup: Will there be at least one 4\u20130 knockout match AND fewer than 8 total 3\u20130 knockout matches?",
+    "probability": 0.45,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1784505540000,
+    "volume": 0,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/Web3ICP/2026-fifa-world-cup-will-there-be-a"
+  },
+  {
+    "id": "SddUqchR8R",
+    "slug": "will-a-country-do-a-bombing-live-st",
+    "question": "Will a country do a bombing live stream by EOY 2030?",
+    "probability": 0.6000000000000001,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1924991940000,
+    "volume": 34.95124539435988,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/ILikeAnanas/will-a-country-do-a-bombing-live-st"
+  },
+  {
+    "id": "qtpU6tRusZ",
+    "slug": "2026-fifa-world-cup-will-exactly-2",
+    "question": "2026 FIFA World Cup: Will exactly 2 knockout matches be decided by penalty shootouts?",
+    "probability": 0.3700122095487308,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1784505540000,
+    "volume": 26.6666666666666,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/Web3ICP/2026-fifa-world-cup-will-exactly-2"
+  },
+  {
+    "id": "qd86E8tnAI",
+    "slug": "pourrait-il-avoir-un-attentat-au-us",
+    "question": "Pourrait il avoir un attentat au USA pendant la coupe du monde 2026?",
+    "probability": 0.2831927298383079,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1784505540000,
+    "volume": 945.9999999999997,
+    "totalLiquidity": 1000,
+    "url": "https://manifold.markets/JnMcMckzy/pourrait-il-avoir-un-attentat-au-us"
+  },
+  {
+    "id": "qLLsgQQZyu",
+    "slug": "will-sam-altman-have-visible-grey-h",
+    "question": "Will Sam altman have visible grey hair by eoy2028?",
+    "probability": 0.6033494931687969,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1861919940000,
+    "volume": 69.99999999999997,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/AutopoieticErgodicity/will-sam-altman-have-visible-grey-h"
+  },
+  {
+    "id": "zRhIs96s0h",
+    "slug": "will-the-fcdo-advise-against-travel",
+    "question": "Will the FCDO advise against travel to  Manama, Bahrain at any time by the end of 2026?",
+    "probability": 0.6,
+    "outcomeType": "BINARY",
+    "isResolved": false,
+    "closeTime": 1798761540000,
+    "volume": 0,
+    "totalLiquidity": 100,
+    "url": "https://manifold.markets/Tetraspace/will-the-fcdo-advise-against-travel"
+  }
+]

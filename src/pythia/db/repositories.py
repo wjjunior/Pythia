@@ -24,6 +24,8 @@ from pythia.common import (
     Side,
     Source,
     TradeStatus,
+    Venue,
+    VenueQuote,
 )
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
@@ -598,6 +600,53 @@ class EvidenceRepository:
         ).all()
         by_id = {str(row.id): _from_db_evidence(row) for row in rows}
         return [by_id[eid] for eid in evidence_ids if eid in by_id]
+
+
+def _to_db_venue_quote(quote: VenueQuote) -> models.VenueQuote:
+    return models.VenueQuote(
+        id=uuid.UUID(quote.id),
+        market_id=uuid.UUID(quote.market_id),
+        venue=quote.venue.value,
+        external_ref=quote.external_ref,
+        ts=quote.ts,
+        yes_price=quote.yes_price,
+        match_confidence=quote.match_confidence,
+    )
+
+
+def _from_db_venue_quote(row: models.VenueQuote) -> VenueQuote:
+    return VenueQuote(
+        id=str(row.id),
+        market_id=str(row.market_id),
+        venue=Venue(row.venue),
+        external_ref=row.external_ref,
+        ts=row.ts,
+        yes_price=row.yes_price,
+        match_confidence=row.match_confidence,
+    )
+
+
+class VenueQuoteRepository:
+    """Append-only, point-in-time store of matched cross-venue quotes (§4.10)."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, quote: VenueQuote) -> VenueQuote:
+        row = _to_db_venue_quote(quote)
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return _from_db_venue_quote(row)
+
+    def retrieve(self, market_id: str, asof: datetime) -> list[VenueQuote]:
+        rows = self._session.exec(
+            select(models.VenueQuote)
+            .where(models.VenueQuote.market_id == uuid.UUID(market_id))
+            .where(col(models.VenueQuote.ts) <= asof)
+            .order_by(col(models.VenueQuote.ts))
+        ).all()
+        return [_from_db_venue_quote(row) for row in rows]
 
 
 def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot]]) -> None:
