@@ -39,8 +39,12 @@ function withParams(path: string, params?: Params): string {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    headers: { Accept: "application/json", ...(init?.body ? { "Content-Type": "application/json" } : {}) },
     ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
   })
   if (!res.ok) {
     throw new ApiError(res.status, `${init?.method ?? "GET"} ${path} → ${res.status}`)

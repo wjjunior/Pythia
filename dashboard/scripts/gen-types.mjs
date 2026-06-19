@@ -3,8 +3,10 @@
 import { execSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-const dashboardDir = path.resolve(import.meta.dirname, "..")
+const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+const dashboardDir = path.resolve(scriptDir, "..")
 const repoRoot = path.resolve(dashboardDir, "..")
 const schemaPath = path.join(dashboardDir, "openapi.json")
 const outPath = path.join(dashboardDir, "src", "lib", "api.gen.ts")

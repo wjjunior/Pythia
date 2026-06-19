@@ -133,7 +133,7 @@ export function MarketDetailView() {
                               <a
                                 href={item.url}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noreferrer noopener"
                                 className="flex items-center gap-1 hover:text-foreground"
                               >
                                 source <ExternalLink className="h-3 w-3" />

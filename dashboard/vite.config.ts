@@ -1,4 +1,4 @@
-import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -9,7 +9,7 @@ const apiTarget = process.env.PYTHIA_API_URL ?? "http://localhost:8000"
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { "@": path.resolve(import.meta.dirname, "./src") },
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
     proxy: {
