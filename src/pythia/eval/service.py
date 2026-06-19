@@ -68,7 +68,7 @@ class CalibrationService:
         rows = self._session.exec(
             select(models.Estimate)
             .where(col(models.Estimate.market_id).in_(market_ids))
-            .order_by(col(models.Estimate.created_at))
+            .order_by(col(models.Estimate.created_at), col(models.Estimate.id))
         ).all()
         latest: dict[uuid.UUID, models.Estimate] = {}
         for row in rows:

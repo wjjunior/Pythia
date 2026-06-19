@@ -160,10 +160,16 @@ class MarketCrawler:
         raise last
 
     def list_markets(self, **filters: object) -> list[Market]:
-        return [to_market(raw, _market_id(raw["conditionId"])) for raw in self._fetch()]
+        markets: list[Market] = []
+        for raw in self._fetch():
+            try:
+                markets.append(to_market(raw, _market_id(raw["conditionId"])))
+            except (KeyError, ValueError, TypeError) as exc:
+                _logger.warning("dropping malformed market payload: %s", exc)
+        return markets
 
     def snapshot(self, external_id: str) -> MarketSnapshot:
-        raw = next((m for m in self._fetch() if m["conditionId"] == external_id), None)
+        raw = next((m for m in self._fetch() if m.get("conditionId") == external_id), None)
         if raw is None:
             raise MarketNotFoundError(external_id)
         ts = self._clock()
@@ -173,7 +179,12 @@ class MarketCrawler:
         ts = self._clock()
         pairs: list[tuple[Market, MarketSnapshot]] = []
         for raw in self._fetch():
-            external_id = raw["conditionId"]
-            market = to_market(raw, _market_id(external_id))
-            pairs.append((market, to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)))
+            try:
+                external_id = raw["conditionId"]
+                market = to_market(raw, _market_id(external_id))
+                snapshot = to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)
+            except (KeyError, ValueError, TypeError) as exc:
+                _logger.warning("dropping malformed market payload: %s", exc)
+                continue
+            pairs.append((market, snapshot))
         return pairs

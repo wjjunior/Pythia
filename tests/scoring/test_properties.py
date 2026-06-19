@@ -77,8 +77,9 @@ def test_position_size_is_zero_when_confidence_is_zero(
     assert position_size(bankroll, kelly_frac, kelly_mult, 0.0, cap) == 0.0
 
 
-@given(finite, unit, unit, unit, unit)
-def test_opportunity_score_is_zero_when_a_penalty_is_zero(
-    ev_unit: float, conf: float, p_liq: float, p_time: float, p_corr: float
+@given(finite, unit, st.lists(unit, min_size=4, max_size=4), st.integers(min_value=0, max_value=3))
+def test_opportunity_score_is_zero_when_any_penalty_is_zero(
+    ev_unit: float, conf: float, penalties: list[float], zeroed: int
 ) -> None:
-    assert opportunity_score(ev_unit, conf, 0.0, p_liq, p_time, p_corr) == 0.0
+    penalties[zeroed] = 0.0
+    assert opportunity_score(ev_unit, conf, *penalties) == 0.0
