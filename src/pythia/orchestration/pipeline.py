@@ -24,6 +24,7 @@ from pythia.common import (
     MarketSnapshot,
     Score,
 )
+from pythia.common.logging import bind, bind_correlation, clear_correlation, get_logger
 from pythia.config import Settings
 from pythia.db.repositories import (
     AuditRepository,
@@ -45,6 +46,8 @@ DEFAULT_RESEARCH_K = 8
 NEUTRAL_PENALTY = 1.0
 DEFAULT_FEE = 0.0
 DEFAULT_SLIPPAGE = 0.0
+
+_log = get_logger(__name__)
 
 
 class PipelineRunStatus(StrEnum):
@@ -87,12 +90,19 @@ class Pipeline:
 
     def run(self, market: Market, snapshot: MarketSnapshot) -> PipelineResult:
         run_id = self._runs.open(market.id, self._routing)
+        bind_correlation(run_id, market_id=market.id)
+        _log.info(
+            "pipeline_run_start", market_external_id=market.external_id, snapshot_id=snapshot.id
+        )
         try:
             return self._run(run_id, market, snapshot)
         except Exception:
             self._session.rollback()
             self._runs.finish(run_id, status=PipelineRunStatus.FAILED)
+            _log.exception("pipeline_run_failed")
             raise
+        finally:
+            clear_correlation()
 
     def _run(self, run_id: str, market: Market, snapshot: MarketSnapshot) -> PipelineResult:
         portfolio = PortfolioService(self._session, self._settings)
@@ -107,6 +117,13 @@ class Pipeline:
 
         estimate = self._llm.estimate(
             EstimationContext(market=market, snapshot=snapshot, evidence=evidence)
+        )
+        bind(estimate_id=estimate.id)
+        _log.info(
+            "estimate",
+            p_model=estimate.p_model,
+            confidence=estimate.confidence,
+            model=estimate.model_name,
         )
         self._audit.append(
             AuditEvent(
@@ -124,6 +141,7 @@ class Pipeline:
 
         critiqued = self._critic.review(estimate, evidence)
         self._estimates.add(critiqued)
+        _log.info("critic_verdict", confidence=critiqued.confidence)
         self._audit.append(
             AuditEvent(
                 kind=AuditKind.CRITIC_VERDICT,
@@ -139,6 +157,7 @@ class Pipeline:
 
         score = self._score(market, critiqued, snapshot)
         self._scores.add(score)
+        _log.info("score", opportunity_score=score.opportunity_score, edge_net=score.edge_net)
         self._audit.append(
             AuditEvent(
                 kind=AuditKind.SCORE,
@@ -154,6 +173,12 @@ class Pipeline:
 
         decision = self._evaluate_risk(
             market, critiqued, score, evidence, capital.available_capital, exposure, limits
+        )
+        _log.info(
+            "risk_decision",
+            approved_size=decision.approved_size,
+            vetoed=decision.vetoed,
+            paper_only=decision.paper_only,
         )
         self._audit.append(
             AuditEvent(
@@ -171,6 +196,7 @@ class Pipeline:
         )
 
         self._runs.finish(run_id, status=PipelineRunStatus.COMPLETED)
+        _log.info("pipeline_run_finish")
         return PipelineResult(run_id=run_id, estimate=critiqued, score=score, decision=decision)
 
     def _veto_before_estimation(self, run_id: str, market: Market) -> PipelineResult:
@@ -180,6 +206,7 @@ class Pipeline:
             reasons=(RiskReason.CAP_PER_CATEGORY,),
             paper_only=True,
         )
+        _log.info("risk_decision", approved_size=0.0, vetoed=True, paper_only=True)
         self._audit.append(
             AuditEvent(
                 kind=AuditKind.RISK_DECISION,
@@ -195,6 +222,7 @@ class Pipeline:
             )
         )
         self._runs.finish(run_id, status=PipelineRunStatus.COMPLETED)
+        _log.info("pipeline_run_finish")
         return PipelineResult(run_id=run_id, estimate=None, score=None, decision=decision)
 
     def _score(self, market: Market, estimate: Estimate, snapshot: MarketSnapshot) -> Score:

@@ -6,7 +6,6 @@ retrying blindly; transient errors retry with backoff.
 """
 
 import json
-import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -17,8 +16,9 @@ from typing import Any, Protocol
 import httpx
 
 from pythia.common import Market, MarketSnapshot
+from pythia.common.logging import get_logger
 
-_logger = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 class LiveVenueAccessError(RuntimeError):
@@ -153,7 +153,7 @@ class MarketCrawler:
                 raise
             except TransientTransportError as exc:
                 last = exc
-                _logger.warning("market crawl transient failure (attempt %d): %s", attempt + 1, exc)
+                _log.warning("market_crawl_transient_failure", attempt=attempt + 1, error=str(exc))
                 if attempt + 1 < self._retries:
                     self._sleep(self._backoff_base * (2**attempt))
         assert last is not None
@@ -165,7 +165,7 @@ class MarketCrawler:
             try:
                 markets.append(to_market(raw, _market_id(raw["conditionId"])))
             except (KeyError, ValueError, TypeError) as exc:
-                _logger.warning("dropping malformed market payload: %s", exc)
+                _log.warning("malformed_market_dropped", error=str(exc))
         return markets
 
     def snapshot(self, external_id: str) -> MarketSnapshot:
@@ -184,7 +184,7 @@ class MarketCrawler:
                 market = to_market(raw, _market_id(external_id))
                 snapshot = to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)
             except (KeyError, ValueError, TypeError) as exc:
-                _logger.warning("dropping malformed market payload: %s", exc)
+                _log.warning("malformed_market_dropped", error=str(exc))
                 continue
             pairs.append((market, snapshot))
         return pairs

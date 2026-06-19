@@ -14,9 +14,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 from pythia.agents.router import CriticDiversityError, ModelRouter
 from pythia.common import CostEvent, CriticVerdict, Estimate, EstimationContext, Evidence, LLMPort
+from pythia.common.logging import current_correlation_id, get_logger
 from pythia.config import Settings
 
 CostSink = Callable[[CostEvent], None]
+
+_log = get_logger(__name__)
 
 
 class LLMResponseError(RuntimeError):
@@ -199,31 +202,48 @@ class OpenRouterLLMPort:
             return response, model, int((self._clock() - start) * 1000)
         raise errors[-1]
 
-    def _emit_cost(
+    def _record_call(
         self, agent: str, task: str, model: str, response: dict[str, Any], latency_ms: int
     ) -> None:
-        if self._cost_sink is None:
-            return
         usage = response.get("usage", {})
         details = usage.get("prompt_tokens_details", {}) or {}
+        provider = str(response.get("provider", "openrouter"))
+        input_tokens = int(usage.get("prompt_tokens", 0))
+        output_tokens = int(usage.get("completion_tokens", 0))
+        cached_tokens = int(details.get("cached_tokens", 0))
+        cost_usd = float(usage.get("cost", 0.0))
+        _log.info(
+            "llm_call",
+            agent=agent,
+            task=task,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+        )
+        if self._cost_sink is None:
+            return
         self._cost_sink(
             CostEvent(
                 agent=agent,
                 task=task,
-                provider=str(response.get("provider", "openrouter")),
+                provider=provider,
                 model=model,
-                input_tokens=int(usage.get("prompt_tokens", 0)),
-                output_tokens=int(usage.get("completion_tokens", 0)),
-                cached_tokens=int(details.get("cached_tokens", 0)),
-                cost_usd=float(usage.get("cost", 0.0)),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cost_usd=cost_usd,
                 latency_ms=latency_ms,
-                correlation_id=self._correlation_id,
+                correlation_id=current_correlation_id() or self._correlation_id,
             )
         )
 
     def estimate(self, ctx: EstimationContext) -> Estimate:
         response, model, latency_ms = self._complete("estimation", _estimation_messages(ctx))
-        self._emit_cost("estimation", "estimate", model, response, latency_ms)
+        self._record_call("estimation", "estimate", model, response, latency_ms)
         payload = _parse_payload(response, _EstimationPayload)
         return Estimate(
             id=_deterministic_id("estimate", ctx.snapshot.id, model),
@@ -245,7 +265,7 @@ class OpenRouterLLMPort:
         response, model, latency_ms = self._complete(
             "critic", _critique_messages(est, evidence), candidates
         )
-        self._emit_cost("critic", "critique", model, response, latency_ms)
+        self._record_call("critic", "critique", model, response, latency_ms)
         payload = _parse_payload(response, _CritiquePayload)
         adjusted = payload.adjusted_confidence
         return CriticVerdict(
