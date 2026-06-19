@@ -5,11 +5,12 @@ append-only (no update path); sources upsert by name. Contract ids are used as p
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 
 from sqlmodel import Session, col, select
 
-from pythia.common import Estimate, Market, MarketSnapshot, Source
+from pythia.common import AuditEvent, Estimate, Market, MarketSnapshot, Score, Source
 from pythia.db import models
 
 
@@ -129,6 +130,10 @@ class SourceRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def get(self, source_id: str) -> Source | None:
+        row = self._session.get(models.Source, uuid.UUID(source_id))
+        return _from_db_source(row) if row is not None else None
+
     def get_by_name(self, name: str) -> Source | None:
         row = self._session.exec(
             select(models.Source).where(models.Source.name == name)
@@ -196,6 +201,110 @@ class EstimateRepository:
     def get(self, estimate_id: str) -> Estimate | None:
         row = self._session.get(models.Estimate, uuid.UUID(estimate_id))
         return _from_db_estimate(row) if row is not None else None
+
+
+def _to_db_score(score: Score) -> models.Score:
+    return models.Score(
+        estimate_id=uuid.UUID(score.estimate_id),
+        edge=score.edge,
+        edge_net=score.edge_net,
+        ev_unit=score.ev_unit,
+        p_resol=score.p_resol,
+        p_liq=score.p_liq,
+        p_time=score.p_time,
+        p_corr=score.p_corr,
+        opportunity_score=score.opportunity_score,
+        kelly_fraction=score.kelly_fraction,
+    )
+
+
+def _from_db_score(row: models.Score) -> Score:
+    return Score(
+        estimate_id=str(row.estimate_id),
+        edge=row.edge,
+        edge_net=row.edge_net,
+        ev_unit=row.ev_unit,
+        p_resol=row.p_resol,
+        p_liq=row.p_liq,
+        p_time=row.p_time,
+        p_corr=row.p_corr,
+        opportunity_score=row.opportunity_score,
+        kelly_fraction=row.kelly_fraction,
+    )
+
+
+class ScoreRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, score: Score) -> Score:
+        row = _to_db_score(score)
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return _from_db_score(row)
+
+    def get_by_estimate(self, estimate_id: str) -> Score | None:
+        row = self._session.exec(
+            select(models.Score).where(models.Score.estimate_id == uuid.UUID(estimate_id))
+        ).one_or_none()
+        return _from_db_score(row) if row is not None else None
+
+
+class PipelineRunRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def open(self, market_id: str | None, routing: Mapping[str, str]) -> str:
+        row = models.PipelineRun(
+            market_id=uuid.UUID(market_id) if market_id is not None else None,
+            routing=dict(routing),
+        )
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return str(row.id)
+
+    def finish(self, run_id: str, *, status: str) -> None:
+        row = self._session.get(models.PipelineRun, uuid.UUID(run_id))
+        if row is None:
+            return
+        row.status = status
+        row.finished_at = datetime.now(UTC)
+        self._session.add(row)
+        self._session.commit()
+
+
+class AuditRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def append(self, event: AuditEvent) -> None:
+        row = models.AuditEvent(
+            kind=event.kind,
+            market_id=uuid.UUID(event.market_id) if event.market_id is not None else None,
+            payload=event.payload,
+        )
+        if event.ts is not None:
+            row.ts = event.ts
+        self._session.add(row)
+        self._session.commit()
+
+    def list_for_market(self, market_id: str) -> list[AuditEvent]:
+        rows = self._session.exec(
+            select(models.AuditEvent)
+            .where(models.AuditEvent.market_id == uuid.UUID(market_id))
+            .order_by(col(models.AuditEvent.ts), col(models.AuditEvent.id))
+        ).all()
+        return [
+            AuditEvent(
+                kind=row.kind,
+                payload=row.payload,
+                market_id=str(row.market_id) if row.market_id is not None else None,
+                ts=row.ts,
+            )
+            for row in rows
+        ]
 
 
 def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot]]) -> None:

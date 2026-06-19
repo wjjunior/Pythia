@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from pythia.common import (
     AuditEvent,
+    AuditKind,
     AuditPort,
     Evidence,
     EvidencePort,
@@ -46,7 +47,7 @@ def test_ledger_stub_conforms() -> None:
 
 def test_audit_stub_conforms() -> None:
     port: AuditPort = _StubAudit()
-    port.append(AuditEvent(kind="opened", payload={}))
+    port.append(AuditEvent(kind=AuditKind.ESTIMATE, payload={}))
 
 
 def test_contracts_import_no_infrastructure() -> None:

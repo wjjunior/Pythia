@@ -14,6 +14,16 @@ class Side(StrEnum):
     NO = "NO"
 
 
+class AuditKind(StrEnum):
+    ESTIMATE = "estimate"
+    CRITIC_VERDICT = "critic_verdict"
+    SCORE = "score"
+    RISK_DECISION = "risk_decision"
+    APPROVAL = "approval"
+    PAPER_OPEN = "paper_open"
+    RESOLUTION = "resolution"
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -109,7 +119,7 @@ class CriticVerdict(_Frozen):
 
 
 class AuditEvent(_Frozen):
-    kind: str
+    kind: AuditKind
     payload: dict[str, Any]
     market_id: str | None = None
     ts: datetime | None = None
