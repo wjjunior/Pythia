@@ -17,13 +17,25 @@ from pythia.api.routers import (
     portfolio,
     radar,
     review,
+    simulation,
 )
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Pythia", version="0.1.0")
     app.state.broadcaster = EventBroadcaster()
-    routers = (markets, radar, estimates, paper, portfolio, calibration, review, events, health)
+    routers = (
+        markets,
+        radar,
+        estimates,
+        paper,
+        portfolio,
+        calibration,
+        simulation,
+        review,
+        events,
+        health,
+    )
     for module in routers:
         app.include_router(module.router)
     return app
