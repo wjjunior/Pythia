@@ -119,7 +119,7 @@ class CriticVerdict(_Frozen):
 
 
 class AuditEvent(_Frozen):
-    kind: str
+    kind: AuditKind
     payload: dict[str, Any]
     market_id: str | None = None
     ts: datetime | None = None

@@ -81,6 +81,7 @@ class Pipeline:
         self._settings = settings
         self._routing = dict(routing)
         self._k = k
+        self._session = session
         self._estimates = EstimateRepository(session)
         self._scores = ScoreRepository(session)
         self._runs = PipelineRunRepository(session)
@@ -89,7 +90,14 @@ class Pipeline:
 
     def run(self, market: Market, snapshot: MarketSnapshot) -> PipelineResult:
         run_id = self._runs.open(market.id, self._routing)
+        try:
+            return self._run(run_id, market, snapshot)
+        except Exception:
+            self._session.rollback()
+            self._runs.finish(run_id, status=PipelineRunStatus.FAILED)
+            raise
 
+    def _run(self, run_id: str, market: Market, snapshot: MarketSnapshot) -> PipelineResult:
         evidence = self._evidence.retrieve(market.id, snapshot.ts, self._k)
 
         estimate = self._llm.estimate(
@@ -100,6 +108,7 @@ class Pipeline:
                 kind=AuditKind.ESTIMATE,
                 market_id=market.id,
                 payload={
+                    "run_id": run_id,
                     "estimate_id": estimate.id,
                     "p_model": estimate.p_model,
                     "confidence": estimate.confidence,
@@ -115,6 +124,7 @@ class Pipeline:
                 kind=AuditKind.CRITIC_VERDICT,
                 market_id=market.id,
                 payload={
+                    "run_id": run_id,
                     "estimate_id": critiqued.id,
                     "confidence": critiqued.confidence,
                     "critic_notes": critiqued.critic_notes,
@@ -129,6 +139,7 @@ class Pipeline:
                 kind=AuditKind.SCORE,
                 market_id=market.id,
                 payload={
+                    "run_id": run_id,
                     "estimate_id": critiqued.id,
                     "opportunity_score": score.opportunity_score,
                     "edge_net": score.edge_net,
@@ -142,6 +153,7 @@ class Pipeline:
                 kind=AuditKind.RISK_DECISION,
                 market_id=market.id,
                 payload={
+                    "run_id": run_id,
                     "estimate_id": critiqued.id,
                     "approved_size": decision.approved_size,
                     "vetoed": decision.vetoed,

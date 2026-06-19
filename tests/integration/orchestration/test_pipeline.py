@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from pythia.agents import StubLLMPort
 from pythia.common import (
@@ -110,6 +110,14 @@ class _ConfidentLLM:
         )
 
 
+class _BrokenLLM:
+    def estimate(self, ctx: EstimationContext) -> Estimate:
+        raise RuntimeError("estimation boom")
+
+    def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
+        raise NotImplementedError
+
+
 def test_pipeline_scores_persists_and_audits_every_step(session: Session) -> None:
     market, snapshot = _seed(session)
     result = _pipeline(session, StubLLMPort()).run(market, snapshot)
@@ -148,3 +156,15 @@ def test_pipeline_sizes_a_confident_paper_only_opportunity(session: Session) -> 
     assert result.decision.approved_size > 0.0
     assert result.decision.paper_only
     assert result.score.edge_net == pytest.approx(0.7 - 0.5 - 0.02 / 2)
+
+
+def test_pipeline_marks_the_run_failed_on_error(session: Session) -> None:
+    market, snapshot = _seed(session)
+    with pytest.raises(RuntimeError):
+        _pipeline(session, _BrokenLLM()).run(market, snapshot)
+    runs = session.exec(
+        select(models.PipelineRun).where(models.PipelineRun.market_id == uuid.UUID(MARKET_ID))
+    ).all()
+    assert len(runs) == 1
+    assert runs[0].status == PipelineRunStatus.FAILED
+    assert runs[0].finished_at is not None
