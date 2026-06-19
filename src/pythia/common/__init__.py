@@ -20,6 +20,7 @@ from pythia.common.types import (
     Score,
     Side,
     Source,
+    TradeStatus,
 )
 
 __all__ = [
@@ -42,4 +43,5 @@ __all__ = [
     "Score",
     "Side",
     "Source",
+    "TradeStatus",
 ]
