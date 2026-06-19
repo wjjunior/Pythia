@@ -1,7 +1,7 @@
 """add venue_quotes (§4.7, §4.10, PYT-34)
 
 Revision ID: c3d5f1a2b8e4
-Revises: b7c1e2f3a4d5
+Revises: c3d8f1a920b4
 Create Date: 2026-06-19 15:30:00.000000
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c3d5f1a2b8e4"
-down_revision: str | Sequence[str] | None = "b7c1e2f3a4d5"
+down_revision: str | Sequence[str] | None = "c3d8f1a920b4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
