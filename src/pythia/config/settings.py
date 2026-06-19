@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     recalibration_min_n: int = 50
     dispute_risk_lookback: int = 90
 
+    # Post-mortem & improvement loop (§5.5)
+    postmortem_surprise_threshold: float = 0.6
+    postmortem_min_confidence: float = 0.6
+    postmortem_drift_window: int = 20
+    postmortem_stale_evidence_days: int = 30
+    improvement_min_n: int = 30
+
     # Observability (§3.10, §8.4) — JSON logs everywhere; Logfire sends only when a token is set
     log_level: LogLevel = "INFO"
     log_json: bool = True

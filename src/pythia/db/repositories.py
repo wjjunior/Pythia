@@ -13,13 +13,18 @@ from sqlmodel import Session, col, select
 
 from pythia.common import (
     AuditEvent,
+    CandidateStatus,
     CostEvent,
     Estimate,
     Evidence,
+    FailureClass,
+    ImprovementAction,
+    ImprovementCandidate,
     Market,
     MarketSnapshot,
     MemberForecast,
     PaperTrade,
+    Postmortem,
     Score,
     Side,
     Source,
@@ -677,6 +682,120 @@ class VenueQuoteRepository:
             .order_by(col(models.VenueQuote.ts))
         ).all()
         return [_from_db_venue_quote(row) for row in rows]
+
+
+def _from_db_postmortem(row: models.Postmortem) -> Postmortem:
+    return Postmortem(
+        id=str(row.id),
+        market_id=str(row.market_id),
+        estimate_id=str(row.estimate_id),
+        failure_class=FailureClass(row.failure_class),
+        surprise=row.surprise,
+        rationale=row.rationale,
+        evidence_ids=[str(evidence_id) for evidence_id in row.evidence_ids],
+    )
+
+
+class PostmortemRepository:
+    """Append-only store of attributed failures (§5.5)."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, postmortem: Postmortem) -> Postmortem:
+        row = models.Postmortem(
+            id=uuid.UUID(postmortem.id),
+            market_id=uuid.UUID(postmortem.market_id),
+            estimate_id=uuid.UUID(postmortem.estimate_id),
+            failure_class=postmortem.failure_class.value,
+            surprise=postmortem.surprise,
+            rationale=postmortem.rationale,
+            evidence_ids=[uuid.UUID(evidence_id) for evidence_id in postmortem.evidence_ids],
+        )
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return _from_db_postmortem(row)
+
+    def list_for_market(self, market_id: str) -> list[Postmortem]:
+        rows = self._session.exec(
+            select(models.Postmortem).where(models.Postmortem.market_id == uuid.UUID(market_id))
+        ).all()
+        return [_from_db_postmortem(row) for row in rows]
+
+
+def _from_db_candidate(row: models.ImprovementCandidate) -> ImprovementCandidate:
+    return ImprovementCandidate(
+        id=str(row.id),
+        postmortem_id=str(row.postmortem_id),
+        action=ImprovementAction(row.action),
+        status=CandidateStatus(row.status),
+        rationale=row.rationale,
+        requires_review=row.requires_review,
+        brier_per_dollar=row.brier_per_dollar,
+        n=row.n,
+        human_approved=row.human_approved,
+    )
+
+
+class ImprovementCandidateRepository:
+    """The only mutable §5.5 table: candidates move proposed → validating → adopted | rejected."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, candidate: ImprovementCandidate) -> ImprovementCandidate:
+        row = models.ImprovementCandidate(
+            id=uuid.UUID(candidate.id),
+            postmortem_id=uuid.UUID(candidate.postmortem_id),
+            action=candidate.action.value,
+            status=candidate.status.value,
+            rationale=candidate.rationale,
+            requires_review=candidate.requires_review,
+            brier_per_dollar=candidate.brier_per_dollar,
+            n=candidate.n,
+            human_approved=candidate.human_approved,
+        )
+        self._session.add(row)
+        self._session.commit()
+        self._session.refresh(row)
+        return _from_db_candidate(row)
+
+    def get(self, candidate_id: str) -> ImprovementCandidate | None:
+        row = self._session.get(models.ImprovementCandidate, uuid.UUID(candidate_id))
+        return _from_db_candidate(row) if row is not None else None
+
+    def list_by_status(self, status: CandidateStatus) -> list[ImprovementCandidate]:
+        rows = self._session.exec(
+            select(models.ImprovementCandidate).where(
+                models.ImprovementCandidate.status == status.value
+            )
+        ).all()
+        return [_from_db_candidate(row) for row in rows]
+
+    def set_status(
+        self,
+        candidate_id: str,
+        status: CandidateStatus,
+        *,
+        brier_per_dollar: float | None = None,
+        n: int | None = None,
+        human_approved: bool | None = None,
+    ) -> ImprovementCandidate:
+        row = self._session.get(models.ImprovementCandidate, uuid.UUID(candidate_id))
+        if row is None:
+            raise KeyError(candidate_id)
+        row.status = status.value
+        row.updated_at = datetime.now(UTC)
+        if brier_per_dollar is not None:
+            row.brier_per_dollar = brier_per_dollar
+        if n is not None:
+            row.n = n
+        if human_approved is not None:
+            row.human_approved = human_approved
+        self._session.commit()
+        self._session.refresh(row)
+        return _from_db_candidate(row)
 
 
 def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot]]) -> None:

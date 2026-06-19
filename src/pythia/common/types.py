@@ -166,3 +166,71 @@ class CostEvent(_Frozen):
     cached_tokens: int = 0
     latency_ms: int | None = None
     correlation_id: str | None = None
+
+
+class FailureClass(StrEnum):
+    STALE_EVIDENCE = "stale_evidence"
+    MISSING_EVIDENCE = "missing_evidence"
+    WEAK_SOURCE = "weak_source"
+    RESOLUTION_AMBIGUITY = "resolution_ambiguity"
+    MODEL_OVERCONFIDENCE = "model_overconfidence"
+    WRONG_ROUTING = "wrong_routing"
+    PROMPT_GAP = "prompt_gap"
+    CALIBRATED_LOSS = "calibrated_loss"
+
+
+class ImprovementAction(StrEnum):
+    REROUTE = "reroute"
+    SOURCE = "source"
+    PROMPT = "prompt"
+    RECALIBRATE = "recalibrate"
+    GUARDRAIL = "guardrail"
+    GATE_CATEGORY = "gate_category"
+
+
+class CandidateStatus(StrEnum):
+    PROPOSED = "proposed"
+    VALIDATING = "validating"
+    ADOPTED = "adopted"
+    REJECTED = "rejected"
+
+
+class FailureCase(_Frozen):
+    market_id: str
+    estimate_id: str
+    category: str
+    p_model: Prob
+    confidence: Prob
+    outcome: int
+    surprise: float
+    asof: datetime
+    resolution_ambiguous: bool
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class PostmortemVerdict(_Frozen):
+    failure_class: FailureClass
+    rationale: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class Postmortem(_Frozen):
+    id: str
+    market_id: str
+    estimate_id: str
+    failure_class: FailureClass
+    surprise: float
+    rationale: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class ImprovementCandidate(_Frozen):
+    id: str
+    postmortem_id: str
+    action: ImprovementAction
+    status: CandidateStatus
+    rationale: str
+    requires_review: bool
+    brier_per_dollar: float | None = None
+    n: int | None = None
+    human_approved: bool | None = None

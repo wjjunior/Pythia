@@ -337,3 +337,51 @@ class VenueQuote(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
     )
+
+
+class Postmortem(SQLModel, table=True):
+    __tablename__ = "postmortems"
+    __table_args__ = (Index("postmortems_market", "market_id"),)
+
+    id: uuid.UUID | None = _id()
+    market_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=False)
+    )
+    estimate_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("estimates.id"), nullable=False)
+    )
+    failure_class: str = Field(sa_column=Column(Text, nullable=False))
+    surprise: float = Field(sa_column=Column(Double, nullable=False))
+    rationale: str = Field(sa_column=Column(Text, nullable=False))
+    evidence_ids: list[uuid.UUID] = Field(
+        sa_column=Column(ARRAY(UUID(as_uuid=True)), nullable=False)
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+
+
+class ImprovementCandidate(SQLModel, table=True):
+    __tablename__ = "improvement_candidates"
+    __table_args__ = (Index("improvement_candidates_status", "status"),)
+
+    id: uuid.UUID | None = _id()
+    postmortem_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("postmortems.id"), nullable=False)
+    )
+    action: str = Field(sa_column=Column(Text, nullable=False))
+    status: str = Field(sa_column=Column(Text, nullable=False))
+    rationale: str = Field(sa_column=Column(Text, nullable=False))
+    requires_review: bool = Field(sa_column=Column(Boolean, nullable=False))
+    brier_per_dollar: float | None = Field(default=None, sa_column=Column(Double))
+    n: int | None = Field(default=None, sa_column=Column(Integer))
+    human_approved: bool | None = Field(default=None, sa_column=Column(Boolean))
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )

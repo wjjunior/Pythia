@@ -12,20 +12,43 @@ from datetime import datetime
 
 from sqlmodel import Session, col, select
 
-from pythia.common import Side, TradeStatus
+from pythia.common import (
+    CandidateStatus,
+    Estimate,
+    Evidence,
+    FailureCase,
+    ImprovementCandidate,
+    Postmortem,
+    Side,
+    TradeStatus,
+)
+from pythia.config import Settings
 from pythia.config.settings import RecalibrationMethod
 from pythia.db import models
-from pythia.db.repositories import RecalibrationRepository, ResolutionRepository
+from pythia.db.repositories import (
+    ImprovementCandidateRepository,
+    PostmortemRepository,
+    RecalibrationRepository,
+    ResolutionRepository,
+)
 from pythia.eval.functions import (
     calibration_by_category,
     ev_predicted_vs_realized,
     reliability_bins,
 )
+from pythia.eval.harness.models import Ablation
+from pythia.eval.improvement import adoption_decision, requires_review, suggested_action
 from pythia.eval.models import (
     CategoryCalibration,
     EvCalibration,
     RecalibrationReport,
     ReliabilityBin,
+)
+from pythia.eval.postmortem import (
+    AttributionPort,
+    StubAttributionAgent,
+    is_surprising,
+    surprise_score,
 )
 from pythia.eval.recalibration import Sample, compare_brier, recalibrate
 
@@ -188,3 +211,105 @@ class RecalibrationService:
             select(models.Resolution).where(col(models.Resolution.ambiguous).is_(False))
         ).all()
         return {row.market_id: (row.outcome, row.resolved_at) for row in rows}
+
+
+def _deterministic_id(*parts: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)))
+
+
+class PostmortemService:
+    """Impure §5.5 orchestration: trigger → attribute → persist proposals; harness-gated adoption.
+
+    It never mutates scoring/risk and never auto-adopts. A resolution writes a post-mortem only on
+    statistical surprise; each proposal becomes a `proposed` candidate that only the harness (and,
+    for structural changes, the human) can move to `adopted`.
+    """
+
+    def __init__(
+        self, session: Session, settings: Settings, *, attribution: AttributionPort | None = None
+    ) -> None:
+        self._settings = settings
+        self._postmortems = PostmortemRepository(session)
+        self._candidates = ImprovementCandidateRepository(session)
+        self._attribution = attribution or StubAttributionAgent(
+            stale_evidence_days=settings.postmortem_stale_evidence_days
+        )
+
+    def review_resolution(
+        self,
+        estimate: Estimate,
+        evidence: list[Evidence],
+        *,
+        category: str,
+        outcome: int,
+        ambiguous: bool,
+        asof: datetime,
+    ) -> Postmortem | None:
+        if not is_surprising(
+            estimate.p_model,
+            estimate.confidence,
+            outcome,
+            threshold=self._settings.postmortem_surprise_threshold,
+            min_confidence=self._settings.postmortem_min_confidence,
+        ):
+            return None
+
+        surprise = surprise_score(estimate.p_model, estimate.confidence, outcome)
+        verdict = self._attribution.attribute(
+            FailureCase(
+                market_id=estimate.market_id,
+                estimate_id=estimate.id,
+                category=category,
+                p_model=estimate.p_model,
+                confidence=estimate.confidence,
+                outcome=outcome,
+                surprise=surprise,
+                asof=asof,
+                resolution_ambiguous=ambiguous,
+                evidence=evidence,
+            )
+        )
+        postmortem = self._postmortems.add(
+            Postmortem(
+                id=_deterministic_id("postmortem", estimate.id),
+                market_id=estimate.market_id,
+                estimate_id=estimate.id,
+                failure_class=verdict.failure_class,
+                surprise=surprise,
+                rationale=verdict.rationale,
+                evidence_ids=verdict.evidence_ids,
+            )
+        )
+        action = suggested_action(verdict.failure_class)
+        if action is not None:
+            self._candidates.add(
+                ImprovementCandidate(
+                    id=_deterministic_id("candidate", postmortem.id, action.value),
+                    postmortem_id=postmortem.id,
+                    action=action,
+                    status=CandidateStatus.PROPOSED,
+                    rationale=verdict.rationale,
+                    requires_review=requires_review(action),
+                )
+            )
+        return postmortem
+
+    def validate_candidate(
+        self, candidate_id: str, ablation: Ablation, *, human_approved: bool = False
+    ) -> ImprovementCandidate:
+        candidate = self._candidates.get(candidate_id)
+        if candidate is None:
+            raise KeyError(candidate_id)
+        status = adoption_decision(
+            ablation,
+            min_n=self._settings.improvement_min_n,
+            requires_human_review=candidate.requires_review,
+            human_approved=human_approved,
+        )
+        return self._candidates.set_status(
+            candidate_id,
+            status,
+            brier_per_dollar=ablation.variant.brier_per_dollar,
+            n=ablation.variant.n,
+            human_approved=human_approved if candidate.requires_review else None,
+        )
