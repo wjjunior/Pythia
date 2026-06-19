@@ -71,7 +71,7 @@ def _logit(p: float) -> float:
 
 def _fit_logistic(
     design: np.ndarray, outcomes: np.ndarray, bounds: list[tuple[float | None, float | None]]
-) -> np.ndarray:
+) -> np.ndarray | None:
     def objective(theta: np.ndarray) -> float:
         z = design @ theta
         loss = np.mean(np.logaddexp(0.0, z) - outcomes * z)
@@ -79,19 +79,29 @@ def _fit_logistic(
 
     result = minimize(objective, np.zeros(design.shape[1]), method="L-BFGS-B", bounds=bounds)
     coefficients: np.ndarray = result.x
+    # The L2-regularized log-loss is strictly convex, so a finite solution is the global one;
+    # reject a non-finite result rather than persist NaN/inf coefficients downstream.
+    if not np.isfinite(coefficients).all():
+        return None
     return coefficients
 
 
 def _fit_platt(p: np.ndarray, y: np.ndarray) -> CalibrationMap:
     logits = np.log(p / (1.0 - p))
     design = np.column_stack([logits, np.ones_like(logits)])
-    a, b = _fit_logistic(design, y, [(0.0, None), (None, None)])
+    coefficients = _fit_logistic(design, y, [(0.0, None), (None, None)])
+    if coefficients is None:
+        return CalibrationMap(method="identity", params={})
+    a, b = coefficients
     return CalibrationMap(method="platt", params={"a": float(a), "b": float(b)})
 
 
 def _fit_beta(p: np.ndarray, y: np.ndarray) -> CalibrationMap:
     design = np.column_stack([np.log(p), -np.log(1.0 - p), np.ones_like(p)])
-    a, b, c = _fit_logistic(design, y, [(0.0, None), (0.0, None), (None, None)])
+    coefficients = _fit_logistic(design, y, [(0.0, None), (0.0, None), (None, None)])
+    if coefficients is None:
+        return CalibrationMap(method="identity", params={})
+    a, b, c = coefficients
     return CalibrationMap(method="beta", params={"a": float(a), "b": float(b), "c": float(c)})
 
 

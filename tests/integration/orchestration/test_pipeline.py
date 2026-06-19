@@ -232,6 +232,19 @@ def test_pipeline_scores_on_the_recalibrated_probability(session: Session) -> No
     assert result.score.edge == pytest.approx(0.62 - 0.5)
 
 
+def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> None:
+    market, snapshot = _seed(session)
+    RecalibrationRepository(session).save(
+        "politics",
+        CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.55, 0.65]}),
+        n_fit=1,
+    )
+    result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.score is not None
+    # n_fit=1 is below the default min_n: the raw p_model (0.7) is scored, not p_calibrated.
+    assert result.score.edge == pytest.approx(0.7 - 0.5)
+
+
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:
     market, snapshot = _seed(session)
     result = _pipeline(session, StubLLMPort()).run(market, snapshot)

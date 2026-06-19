@@ -250,8 +250,9 @@ class Pipeline:
         if active is None:
             return estimate, False
         cmap, n_fit = active
-        calibrated = n_fit >= self._settings.recalibration_min_n
-        return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), calibrated
+        if n_fit < self._settings.recalibration_min_n:
+            return estimate, False
+        return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
 
     def _score(self, market: Market, estimate: Estimate, snapshot: MarketSnapshot) -> Score:
         p_resol = resolution_penalty(classify_resolution_source(market.resolution_source))

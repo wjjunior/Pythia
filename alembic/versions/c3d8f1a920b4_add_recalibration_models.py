@@ -40,9 +40,17 @@ def upgrade() -> None:
     op.create_index(
         "recalibration_active", "recalibration_models", ["category", "active"], unique=False
     )
+    op.create_index(
+        "recalibration_one_active",
+        "recalibration_models",
+        ["category"],
+        unique=True,
+        postgresql_where=sa.text("active"),
+    )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index("recalibration_one_active", table_name="recalibration_models")
     op.drop_index("recalibration_active", table_name="recalibration_models")
     op.drop_table("recalibration_models")

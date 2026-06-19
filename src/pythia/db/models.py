@@ -155,7 +155,15 @@ class EstimateMember(SQLModel, table=True):
 
 class RecalibrationModel(SQLModel, table=True):
     __tablename__ = "recalibration_models"
-    __table_args__ = (Index("recalibration_active", "category", "active"),)
+    __table_args__ = (
+        Index("recalibration_active", "category", "active"),
+        Index(
+            "recalibration_one_active",
+            "category",
+            unique=True,
+            postgresql_where=text("active"),
+        ),
+    )
 
     id: uuid.UUID | None = _id()
     category: str = Field(sa_column=Column(Text, nullable=False))

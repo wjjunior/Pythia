@@ -279,6 +279,7 @@ class RecalibrationRepository:
         for row in self._active_rows(category):
             row.active = False
             self._session.add(row)
+        self._session.flush()  # deactivate before inserting (partial unique index on active)
         self._session.add(
             models.RecalibrationModel(
                 category=category,

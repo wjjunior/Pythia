@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from pythia.db import models
@@ -105,6 +106,22 @@ def test_unknown_category_has_no_active_map(session: Session) -> None:
     assert RecalibrationRepository(session).active_for_category("nope") is None
 
 
+def test_db_rejects_two_active_maps_for_one_category(session: Session) -> None:
+    session.add(
+        models.RecalibrationModel(
+            category="politics", method="identity", params={}, n_fit=1, active=True
+        )
+    )
+    session.commit()
+    session.add(
+        models.RecalibrationModel(
+            category="politics", method="identity", params={}, n_fit=2, active=True
+        )
+    )
+    with pytest.raises(IntegrityError):
+        session.commit()
+
+
 def test_fit_and_store_persists_a_point_in_time_map(session: Session) -> None:
     _seed_politics(session)
     RecalibrationService(session).fit_and_store(_TS + timedelta(days=100), method="platt", min_n=4)
@@ -131,5 +148,6 @@ def test_evaluate_reports_raw_vs_recalibrated_per_category(session: Session) -> 
         _TS + timedelta(days=100), method="platt", min_n=4
     )
     assert "politics" in reports
-    assert reports["politics"].n == 4
+    # holdout: 4 eligible → train on the earliest 2, evaluate on the latest 2.
+    assert reports["politics"].n == 2
     assert reports["politics"].brier_recalibrated <= reports["politics"].brier_raw

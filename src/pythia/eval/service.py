@@ -17,7 +17,6 @@ from pythia.config.settings import RecalibrationMethod
 from pythia.db import models
 from pythia.db.repositories import RecalibrationRepository
 from pythia.eval.functions import (
-    brier_score,
     calibration_by_category,
     ev_predicted_vs_realized,
     reliability_bins,
@@ -28,7 +27,7 @@ from pythia.eval.models import (
     RecalibrationReport,
     ReliabilityBin,
 )
-from pythia.eval.recalibration import Sample, recalibrate
+from pythia.eval.recalibration import Sample, compare_brier, recalibrate
 
 DEFAULT_RELIABILITY_BINS = 10
 
@@ -163,19 +162,12 @@ class RecalibrationService:
             eligible = sorted(
                 (sample for sample in samples if sample[2] < asof), key=lambda sample: sample[2]
             )
-            if not eligible:
+            if len(eligible) < 2:
                 continue
-            raw, recalibrated, outcomes = [], [], []
-            for index, (p_model, outcome, resolved_at) in enumerate(eligible):
-                cmap = recalibrate(eligible[:index], resolved_at, method=method, min_n=min_n)
-                raw.append(p_model)
-                recalibrated.append(cmap.apply(p_model))
-                outcomes.append(outcome)
-            reports[category] = RecalibrationReport(
-                brier_raw=brier_score(raw, outcomes),
-                brier_recalibrated=brier_score(recalibrated, outcomes),
-                n=len(eligible),
-            )
+            split = len(eligible) // 2
+            train, test = eligible[:split], eligible[split:]
+            cmap = recalibrate(train, test[0][2], method=method, min_n=min_n)
+            reports[category] = compare_brier([(p, o) for p, o, _ in test], cmap)
         return reports
 
     def _samples_by_category(self) -> dict[str, list[Sample]]:

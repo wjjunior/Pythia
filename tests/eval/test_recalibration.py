@@ -71,3 +71,10 @@ def test_isotonic_is_chosen_for_large_n_and_stays_monotone() -> None:
 @given(st.floats(min_value=0.0, max_value=1.0))
 def test_apply_stays_in_unit_interval(p: float) -> None:
     assert 0.0 <= _PLATT.apply(p) <= 1.0
+
+
+def test_fit_on_degenerate_data_yields_a_finite_usable_map() -> None:
+    # single distinct p / all-same outcome must never produce a NaN/inf map.
+    for cmap in (fit("platt", [0.5] * 4, [1, 1, 1, 1]), fit("beta", [0.5] * 4, [0, 0, 0, 0])):
+        for p in (0.0, 0.3, 0.7, 1.0):
+            assert 0.0 <= cmap.apply(p) <= 1.0
