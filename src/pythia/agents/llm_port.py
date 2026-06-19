@@ -294,7 +294,8 @@ class OpenRouterLLMPort:
                 estimates.append(self._run_estimation(ctx, [model]))
             except BudgetExceeded:
                 raise
-            except Exception:  # a member provider failed; aggregate the survivors
+            except Exception as exc:  # a member provider failed; aggregate the survivors
+                _log.warning("ensemble_member_dropped", model=model, error=str(exc))
                 continue
         if not estimates:
             return self._run_estimation(ctx)

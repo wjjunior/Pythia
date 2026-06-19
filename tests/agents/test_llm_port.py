@@ -221,6 +221,21 @@ def test_ensemble_drops_a_member_that_errors() -> None:
     assert estimate.p_model == pytest.approx(0.5)
 
 
+def test_ensemble_logs_a_dropped_member() -> None:
+    transport = _ByModelTransport(
+        {
+            "a/m1": _member_response(0.4),
+            "b/m2": RuntimeError("provider down"),
+            "c/m3": _member_response(0.6),
+        }
+    )
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    with capture_logs() as logs:
+        OpenRouterLLMPort(transport, router, ensemble_size=3).estimate(_ctx())
+    dropped = [entry for entry in logs if entry["event"] == "ensemble_member_dropped"]
+    assert [entry["model"] for entry in dropped] == ["b/m2"]
+
+
 def test_ensemble_size_one_keeps_the_single_model_path() -> None:
     transport = _FakeTransport([_estimate_response()])
     router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]})

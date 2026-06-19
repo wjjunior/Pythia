@@ -64,6 +64,16 @@ def test_empty_ensemble_raises() -> None:
     raise AssertionError("expected ValueError for empty ensemble")
 
 
+def test_method_defaults_to_median() -> None:
+    members = [_member(0.2), _member(0.9), _member(0.5)]
+    assert aggregate(members).p_model == 0.5
+
+
+def test_mismatched_weights_length_raises_a_clear_error() -> None:
+    with pytest.raises(ValueError, match="weights"):
+        aggregate([_member(0.2), _member(0.8)], "weighted", weights=[1.0])
+
+
 @given(
     st.lists(
         st.tuples(

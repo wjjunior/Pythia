@@ -36,12 +36,14 @@ def _combine(values: Sequence[float], method: AggregationMethod, weights: Sequen
 
 def aggregate(
     members: Sequence[Estimate],
-    method: AggregationMethod,
+    method: AggregationMethod = "median",
     *,
     weights: Sequence[float] | None = None,
 ) -> AggregatedForecast:
     if not members:
         raise ValueError("cannot aggregate an empty ensemble")
+    if weights is not None and len(weights) != len(members):
+        raise ValueError("weights length must match the number of members")
     w = list(weights) if weights is not None else [1.0] * len(members)
     return AggregatedForecast(
         p_model=_combine([m.p_model for m in members], method, w),
