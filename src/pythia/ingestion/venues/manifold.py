@@ -13,6 +13,8 @@ MARKETS_URL = "https://api.manifold.markets/v0/markets"
 def to_candidate(raw: dict[str, Any]) -> VenueCandidate | None:
     if raw.get("outcomeType") != "BINARY" or raw.get("probability") is None:
         return None
+    if raw.get("isResolved"):
+        return None  # a settled price would poison divergence against an open market
     close = raw.get("closeTime")
     return VenueCandidate(
         external_ref=str(raw["id"]),

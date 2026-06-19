@@ -46,6 +46,43 @@ def test_kalshi_normalises_active_markets_with_dollar_prices() -> None:
         assert candidate.yes_price is None or 0.0 <= candidate.yes_price <= 1.0
 
 
+def _kalshi_market(**over: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "status": "active",
+        "ticker": "T",
+        "title": "q",
+        "close_time": "2026-06-22T18:00:00Z",
+        "last_price_dollars": 0.0,
+        "yes_bid_dollars": 0.0,
+        "yes_ask_dollars": 0.0,
+    }
+    base.update(over)
+    return base
+
+
+def test_kalshi_all_zero_book_is_unpriced() -> None:
+    candidate = kalshi.to_candidate(_kalshi_market())
+    assert candidate is not None
+    assert candidate.yes_price is None  # no trade, empty book ⇒ not a real 0% YES
+
+
+def test_kalshi_uses_mid_when_book_is_present() -> None:
+    candidate = kalshi.to_candidate(_kalshi_market(yes_bid_dollars=0.30, yes_ask_dollars=0.50))
+    assert candidate is not None
+    assert candidate.yes_price == pytest.approx(0.40)
+
+
+def test_manifold_discards_resolved_markets() -> None:
+    resolved = {
+        "id": "m",
+        "question": "q",
+        "outcomeType": "BINARY",
+        "probability": 1.0,
+        "isResolved": True,
+    }
+    assert manifold.to_candidate(resolved) is None
+
+
 def test_metaculus_real_fixture_has_no_price_at_this_token_tier() -> None:
     client = VenueClient(
         FixtureTransport(FIXTURES / "metaculus_questions.json", extract=lambda d: d["questions"]),

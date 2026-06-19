@@ -20,9 +20,9 @@ def _yes_price(raw: dict[str, Any]) -> float | None:
         return float(last)
     bid = raw.get("yes_bid_dollars")
     ask = raw.get("yes_ask_dollars")
-    if bid is not None and ask is not None:
+    if bid is not None and ask is not None and (float(bid) != 0.0 or float(ask) != 0.0):
         return (float(bid) + float(ask)) / 2.0
-    return None
+    return None  # no trade and no book ⇒ unpriced, not a real 0% YES
 
 
 def to_candidate(raw: dict[str, Any]) -> VenueCandidate | None:
