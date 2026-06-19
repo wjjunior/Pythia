@@ -36,7 +36,7 @@ Ports & Adapters only where domain reasoning lives — the deterministic core is
 | Contracts | `common/` | Canonical Pydantic types (§4.1), `ports.py` Protocols (§4.5), structlog + Logfire logging. |
 | Pure core | `scoring/` | `edge`, `net_edge`, `confidence`, `opportunity_score`, `kelly_fraction`, `position_size`; `assembly.py` builds a `Score` and grades the resolution source; `divergence.py` is the cross-venue feature. |
 | Pure core | `risk/` | Deterministic caps, gating and correlated-exposure veto (`functions.py`); `resolution_risk.py` grades `P_resol` by the measured invalid-rate. |
-| Pure core | `eval/` | `brier`, reliability bins, per-category calibration (`functions.py`); `service.py` wires it to the store; `recalibration.py` (Platt/Beta/isotonic maps); `harness/` (Brier-per-dollar) and `simulation/` (Monte-Carlo growth). |
+| Pure core | `eval/` | `brier`, reliability bins, per-category calibration (`functions.py`); `service.py` wires it to the store; `recalibration.py` (Platt/Beta/isotonic maps); `harness/` (Brier-per-dollar) and `simulation/` (Monte-Carlo growth); `postmortem.py` classifies statistical-surprise failures and `improvement.py` gates candidate fixes on harness validation. |
 | Pure core | `portfolio/` | `available_capital`, `exposure_fraction`, exposure aggregation; `service.py` reads the ledger for live capital. |
 | Adapter | `ingestion/` | `market_crawler.py` (Gamma fixtures / live, VPN-gated) and `venue_match.py` (cross-venue quotes). |
 | Adapter | `rag/` | Chunk · embed (pgvector) · `retrieve(market, asof, k)` ranked by freshness × reliability; never returns `observed_at > asof`. |
@@ -49,9 +49,9 @@ Ports & Adapters only where domain reasoning lives — the deterministic core is
 
 ## Data model (§4.7)
 
-PostgreSQL 18 + pgvector is the single stateful store — relational system of record, vector evidence index, and append-only audit ledger in one. The 14 tables (in `db/models.py`, migrated under `alembic/versions/`):
+PostgreSQL 18 + pgvector is the single stateful store — relational system of record, vector evidence index, and append-only audit ledger in one. The 16 tables (in `db/models.py`, migrated under `alembic/versions/`):
 
-`markets` · `market_snapshots` (immutable) · `sources` · `evidence` (`vector(1536)`, HNSW) · `estimates` · `estimate_members` · `scores` · `paper_trades` · `resolutions` (carries `ambiguous`) · `recalibration_models` (one active map per category) · `cost_events` (measured) · `audit_events` (append-only) · `pipeline_runs` · `venue_quotes`.
+`markets` · `market_snapshots` (immutable) · `sources` · `evidence` (`vector(1536)`, HNSW) · `estimates` · `estimate_members` · `scores` · `paper_trades` · `resolutions` (carries `ambiguous`) · `recalibration_models` (one active map per category) · `cost_events` (measured) · `audit_events` (append-only) · `pipeline_runs` · `venue_quotes` · `postmortems` · `improvement_candidates`.
 
 Two invariants are load-bearing: `market_snapshots`/`evidence` have **no update path** (point-in-time), and a snapshot's `ts` becomes the downstream `asof` for research. Invalid (50/50) `resolutions` are excluded from Brier and tracked separately as a per-category invalid-rate.
 
@@ -65,4 +65,4 @@ One `uv` project, two process entrypoints — `python -m pythia.api` (REST + SSE
 
 ## Where this design deliberately ends
 
-At the calibration gate. Real-money execution, auto-promotion past paper, and the post-mortem/improvement loop (AC-16, PYT-36) are out of the current scope by design — see [`README.md`](README.md#intentionally-absent).
+At the calibration gate. Real-money execution and auto-promotion past paper are out of scope by design — see [`README.md`](README.md#intentionally-absent). The post-mortem/improvement loop (`eval/postmortem.py`, `eval/improvement.py`) closes the self-improvement cycle but never mutates scoring or risk autonomously: a flagged failure becomes an `improvement_candidate` adopted only after the harness validates it on held-out resolved markets, and structural changes still pass the human review gate.

@@ -51,8 +51,8 @@ The same checks CI runs on every pull request:
 uv run ruff check .            # lint
 uv run ruff format --check .   # formatting
 uv run mypy                    # strict type checking
-uv run pytest                  # 247 unit tests — pure core, no Docker, no secrets, ~3s
-uv run pytest -m integration   # 76 integration tests — real Postgres + pgvector via testcontainers
+uv run pytest                  # 266 unit tests — pure core, no Docker, no secrets, ~3s
+uv run pytest -m integration   # 81 integration tests — real Postgres + pgvector via testcontainers
 ```
 
 Install the static gates locally with `uv run pre-commit install` (ruff lint+format, mypy on each commit).
@@ -93,13 +93,12 @@ Each acceptance criterion from the System Design maps to the files that satisfy 
 | AC-13 | Recalibration: monotone point-in-time `p_model→p_calibrated`, versioned, raw-vs-recalibrated | `eval/recalibration.py`, `eval/service.py`, `db/models.py` (`recalibration_models`), `orchestration/pipeline.py` |
 | AC-14 | Cross-venue signal: matched point-in-time `venue_quotes` + divergence feature; no execution | `ingestion/venue_match.py`, `scoring/divergence.py`, `db/models.py` (`venue_quotes`) |
 | AC-15 | Resolution & dispute risk: invalid-rate per category grading `P_resol`; poor sources paper-gated | `risk/resolution_risk.py`, `scoring/assembly.py`, `eval/functions.py`, `orchestration/pipeline.py` |
-| AC-16 | Post-mortem & harness-validated improvement loop | **Pending — PYT-36** (`postmortems` / `improvement_candidates` not yet implemented) |
+| AC-16 | Post-mortem on statistical surprise → harness-validated improvement loop | `eval/postmortem.py`, `eval/improvement.py`, `eval/service.py`, `db/models.py` (`postmortems`, `improvement_candidates`) |
 
 ## Intentionally absent
 
 The design ends at the calibration gate; these are deliberate non-goals, not gaps:
 
 - **Real-money execution.** There is **no execution path and no execution adapter** in the code; `MODE=paper` is the only mode and `ensure_paper_mode()` hard-fails anything else. The design reserves an `ExecutionPort` to force the gas/slippage/credentials conversation if the calibration gate is ever cleared — deliberately not added yet.
-- **Auto-promotion past paper.** Promotion needs Brier(system) < Brier(market), stable over significant `n`, with realized EV ≈ predicted EV — a human decision, not code.
-- **The post-mortem / improvement loop (AC-16).** Tracked as PYT-36.
+- **Auto-promotion past paper.** Promotion needs Brier(system) < Brier(market), stable over significant `n`, with realized EV ≈ predicted EV — a human decision, not code. The post-mortem/improvement loop (AC-16) proposes fixes but never mutates scoring or risk autonomously, and structural changes still pass the human review gate.
 - **LangGraph / Celery.** Orchestration is plain Python and scheduling is in-process APScheduler until scale genuinely justifies otherwise.

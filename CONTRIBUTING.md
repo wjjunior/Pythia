@@ -26,8 +26,8 @@ Run the same gates CI runs, before pushing:
 uv run ruff check .            # lint
 uv run ruff format --check .   # formatting
 uv run mypy                    # strict type checking
-uv run pytest                  # 247 unit tests (pure core, no Docker, no secrets)
-uv run pytest -m integration   # 76 integration tests (real Postgres + pgvector via testcontainers)
+uv run pytest                  # 266 unit tests (pure core, no Docker, no secrets)
+uv run pytest -m integration   # 81 integration tests (real Postgres + pgvector via testcontainers)
 ```
 
 For the dashboard: `cd dashboard && npm install && npm run gen && npm run build` (the `gen` step regenerates `src/lib/types.ts` from the API's OpenAPI schema, so a contract break fails the build).
