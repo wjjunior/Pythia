@@ -14,6 +14,16 @@ class Side(StrEnum):
     NO = "NO"
 
 
+class AuditKind(StrEnum):
+    ESTIMATE = "estimate"
+    CRITIC_VERDICT = "critic_verdict"
+    SCORE = "score"
+    RISK_DECISION = "risk_decision"
+    APPROVAL = "approval"
+    PAPER_OPEN = "paper_open"
+    RESOLUTION = "resolution"
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 

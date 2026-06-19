@@ -55,9 +55,11 @@ class Settings(BaseSettings):
     bankroll_paper: float = 10_000.0
     kelly_mult: float = 0.25
     cap_per_trade: float = 0.02
+    cap_per_market: float = 0.05
     cap_per_category: float = 0.10
     cap_daily: float = 0.05
     cap_weekly: float = 0.15
+    cap_absolute: float = 1.0
     min_source_reliability: float = 0.5
     min_confidence: float = 0.5
     max_p_resol_severity: float = 0.5
