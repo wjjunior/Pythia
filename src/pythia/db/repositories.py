@@ -11,7 +11,19 @@ from datetime import UTC, datetime
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from pythia.common import AuditEvent, CostEvent, Estimate, Market, MarketSnapshot, Score, Source
+from pythia.common import (
+    AuditEvent,
+    CostEvent,
+    Estimate,
+    Evidence,
+    Market,
+    MarketSnapshot,
+    PaperTrade,
+    Score,
+    Side,
+    Source,
+    TradeStatus,
+)
 from pythia.db import models
 
 
@@ -105,6 +117,21 @@ class MarketRepository:
         self._session.commit()
         self._session.refresh(row)
         return _from_db_market(row)
+
+    def list(self, *, category: str | None = None, status: str | None = None) -> list[Market]:
+        statement = select(models.Market)
+        if category is not None:
+            statement = statement.where(models.Market.category == category)
+        if status == "resolved":
+            statement = statement.where(col(models.Market.resolved).is_(True))
+        elif status == "open":
+            statement = statement.where(col(models.Market.resolved).is_(False))
+        rows = self._session.exec(statement.order_by(col(models.Market.created_at))).all()
+        return [_from_db_market(row) for row in rows]
+
+    def get(self, market_id: str) -> Market | None:
+        row = self._session.get(models.Market, uuid.UUID(market_id))
+        return _from_db_market(row) if row is not None else None
 
 
 class SnapshotRepository:
@@ -203,6 +230,14 @@ class EstimateRepository:
         row = self._session.get(models.Estimate, uuid.UUID(estimate_id))
         return _from_db_estimate(row) if row is not None else None
 
+    def latest_for_market(self, market_id: str) -> Estimate | None:
+        row = self._session.exec(
+            select(models.Estimate)
+            .where(models.Estimate.market_id == uuid.UUID(market_id))
+            .order_by(col(models.Estimate.created_at).desc(), col(models.Estimate.id).desc())
+        ).first()
+        return _from_db_estimate(row) if row is not None else None
+
 
 def _to_db_score(score: Score) -> models.Score:
     return models.Score(
@@ -250,6 +285,19 @@ class ScoreRepository:
             select(models.Score).where(models.Score.estimate_id == uuid.UUID(estimate_id))
         ).one_or_none()
         return _from_db_score(row) if row is not None else None
+
+    def radar(self, limit: int) -> list[tuple[Score, Estimate, Market]]:
+        rows = self._session.exec(
+            select(models.Score, models.Estimate, models.Market)
+            .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
+            .join(models.Market, col(models.Estimate.market_id) == col(models.Market.id))
+            .order_by(col(models.Score.opportunity_score).desc())
+            .limit(limit)
+        ).all()
+        return [
+            (_from_db_score(score), _from_db_estimate(estimate), _from_db_market(market))
+            for score, estimate, market in rows
+        ]
 
 
 class PipelineRunRepository:
@@ -388,6 +436,77 @@ class CostRepository:
     def cost_per_scored_opportunity(self) -> float:
         scored = self._session.exec(select(func.count()).select_from(models.Score)).one()
         return self.total() / scored if scored else 0.0
+
+
+def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
+    return PaperTrade(
+        id=str(row.id),
+        market_id=str(row.market_id),
+        estimate_id=str(row.estimate_id),
+        side=Side(row.side),
+        entry_price=row.entry_price,
+        size=row.size,
+        status=TradeStatus(row.status),
+        opened_at=row.opened_at,
+        resolved_at=row.resolved_at,
+        pnl=row.pnl,
+    )
+
+
+class PaperTradeRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_all(self) -> list[PaperTrade]:
+        rows = self._session.exec(
+            select(models.PaperTrade).order_by(col(models.PaperTrade.opened_at))
+        ).all()
+        return [_from_db_trade(row) for row in rows]
+
+    def list_open(self) -> list[PaperTrade]:
+        rows = self._session.exec(
+            select(models.PaperTrade).where(models.PaperTrade.status == TradeStatus.OPEN)
+        ).all()
+        return [_from_db_trade(row) for row in rows]
+
+    def realized_pnl(self) -> float:
+        statement = select(func.coalesce(func.sum(models.PaperTrade.pnl), 0.0)).where(
+            models.PaperTrade.status == TradeStatus.RESOLVED
+        )
+        return float(self._session.exec(statement).one() or 0.0)
+
+    def locked_in_open(self) -> float:
+        statement = select(func.coalesce(func.sum(models.PaperTrade.size), 0.0)).where(
+            models.PaperTrade.status == TradeStatus.OPEN
+        )
+        return float(self._session.exec(statement).one())
+
+
+def _from_db_evidence(row: models.Evidence) -> Evidence:
+    return Evidence(
+        id=str(row.id),
+        market_id=str(row.market_id),
+        source_id=str(row.source_id),
+        observed_at=row.observed_at,
+        url=row.url,
+        content=row.content,
+    )
+
+
+class EvidenceRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_by_ids(self, evidence_ids: list[str]) -> list[Evidence]:
+        if not evidence_ids:
+            return []
+        rows = self._session.exec(
+            select(models.Evidence).where(
+                col(models.Evidence.id).in_([uuid.UUID(eid) for eid in evidence_ids])
+            )
+        ).all()
+        by_id = {str(row.id): _from_db_evidence(row) for row in rows}
+        return [by_id[eid] for eid in evidence_ids if eid in by_id]
 
 
 def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot]]) -> None:

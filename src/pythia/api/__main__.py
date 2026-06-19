@@ -1,8 +1,12 @@
-"""Stub entrypoint for the FastAPI process; the REST + SSE app is wired in PYT-26."""
+"""Entrypoint for the FastAPI process: `python -m pythia.api`."""
+
+import uvicorn
+
+from pythia.api.app import app
 
 
 def main() -> None:
-    print("pythia.api: stub entrypoint — FastAPI app not yet wired (PYT-26)")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 if __name__ == "__main__":
