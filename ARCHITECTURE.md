@@ -5,7 +5,7 @@ A condensed map of how Pythia is built and why. The Notion **System Design — P
 ## The thesis (what shapes every decision)
 
 - **Calibration is the product, not PnL (§3.1).** The system exists to answer whether it is more calibrated than the market in some category — Brier(system) vs Brier(market) per category, with `n`. PnL is a noisy secondary readout. Measure honesty before chasing profit.
-- **Paper trading is a gate, not a stage (§3.2).** `MODE=paper` is the only mode; `ExecutionPort` has no implementation. The only path to a paper position is the human review gate; the only path to real money is clearing the calibration gate — a human decision the design deliberately stops short of.
+- **Paper trading is a gate, not a stage (§3.2).** `MODE=paper` is the only mode, and there is no execution adapter in the code at all. The only path to a paper position is the human review gate; the only path to real money is clearing the calibration gate — a human decision the design deliberately stops short of.
 - **No LLM on the critical path (§3.3).** `scoring/` and `risk/` are pure deterministic Python. LLMs estimate and critique; math decides and sizes. An agent that sizes positions is an agent that will, occasionally and convincingly, bet the bankroll.
 - **Point-in-time correctness is a storage invariant (§3.4).** `market_snapshots` and `evidence` have no update path; every retrieval is filtered by `asof`. Lookahead is a defect caught by a property test, not a review note.
 - **Zero-secret runnability.** A deterministic stub `LLMPort` returns a plausible, low-confidence `Estimate`/`CriticVerdict`, so the whole pipeline — and all of CI — runs offline with no keys.
@@ -24,7 +24,7 @@ A `pipeline_run` is opened per market; every step writes an append-only `audit_e
 Ports & Adapters only where domain reasoning lives — the deterministic core is insulated from Postgres, the LLM, and the market API; dumb pipes are not wrapped in ceremony.
 
 - **Pure core** — `scoring/`, `risk/`, `eval/`, `portfolio/`, and the pure types in `common/`. No framework, no I/O, no `db`, no `datetime.now()`/`random`. Time and randomness enter as parameters (`asof`, `seed`). This is what makes 100% unit coverage possible without mocks and every decision reproducible.
-- **Ports** — `typing.Protocol` classes in `common/ports.py`: `MarketDataPort`, `EvidencePort`, `EmbeddingPort`, `LLMPort`, `PaperLedgerPort`, `AuditPort`. `ExecutionPort` is defined the same way but is intentionally unimplemented.
+- **Ports** — `typing.Protocol` classes in `common/ports.py`: `MarketDataPort`, `EvidencePort`, `EmbeddingPort`, `LLMPort`, `PaperLedgerPort`, `AuditPort`. (The design reserves an `ExecutionPort` of the same shape for real-money execution; it is deliberately not added to the code.)
 - **Adapters** — `ingestion/`, `rag/`, `agents/`, `db/` implement the ports and depend on the core, never the reverse. A reverse import (core importing an adapter) is a defect.
 - **Composition roots** — `orchestration/`, `api/`, `worker/` are the only places that wire adapters to the core.
 

@@ -24,7 +24,7 @@ uv sync                          # create the venv and install all deps (incl. d
 cp .env.example .env             # paper mode, no secrets needed (stub LLM, offline)
 docker compose up -d             # Postgres + pgvector on :5434 (Redis behind the `redis` profile)
 uv run alembic upgrade head      # apply the §4.7 schema migrations
-uv run python -m pythia.config   # boot check → "boot ok — mode=paper live_venues=False llm=stub ..."
+uv run python -m pythia.config   # → "pythia.config: boot ok — mode=paper live_venues=False llm=stub db=..."
 uv run python -m pythia.api      # FastAPI REST + SSE on http://localhost:8000 (OpenAPI at /docs)
 ```
 
@@ -78,7 +78,7 @@ Each acceptance criterion from the System Design maps to the files that satisfy 
 
 | AC | Criterion | Primary files |
 | --- | --- | --- |
-| AC-1 | Pure domain core; §4.6 invariants property-tested in <5s, no Docker/env | `scoring/functions.py`, `scoring/assembly.py`, `risk/functions.py`, `eval/functions.py`, `portfolio/functions.py`; `tests/{scoring,risk,eval,portfolio}/test_properties.py` |
+| AC-1 | Pure domain core; §4.6 invariants property-tested in <5s, no Docker/env | `scoring/functions.py`, `scoring/assembly.py`, `risk/functions.py`, `eval/functions.py`, `portfolio/functions.py`; `tests/{scoring,risk,eval}/test_properties.py`, `tests/portfolio/test_functions.py` |
 | AC-2 | Point-in-time integrity: `retrieve` never returns `observed_at > asof`; snapshots immutable | `rag/retrieval.py`, `db/models.py` (`market_snapshots`, no update path); `tests/integration/rag/` |
 | AC-3 | Full pipeline runs with zero secrets via the stub; the critic always runs | `agents/llm_port.py` (`StubLLMPort`), `orchestration/pipeline.py`, `config/settings.py` |
 | AC-4 | Calibration (the headline): Brier(system) vs Brier(market) per category + reliability + EV | `eval/functions.py`, `eval/service.py`, `api/routers/calibration.py`, `dashboard/src/views/calibration-view.tsx` |
@@ -99,7 +99,7 @@ Each acceptance criterion from the System Design maps to the files that satisfy 
 
 The design ends at the calibration gate; these are deliberate non-goals, not gaps:
 
-- **Real-money execution.** `ExecutionPort` is defined as a Protocol but has **no implementation**; it exists only to force the gas/slippage/credentials conversation at the boundary. `MODE=paper` is the only mode.
+- **Real-money execution.** There is **no execution path and no execution adapter** in the code; `MODE=paper` is the only mode and `ensure_paper_mode()` hard-fails anything else. The design reserves an `ExecutionPort` to force the gas/slippage/credentials conversation if the calibration gate is ever cleared — deliberately not added yet.
 - **Auto-promotion past paper.** Promotion needs Brier(system) < Brier(market), stable over significant `n`, with realized EV ≈ predicted EV — a human decision, not code.
 - **The post-mortem / improvement loop (AC-16).** Tracked as PYT-36.
 - **LangGraph / Celery.** Orchestration is plain Python and scheduling is in-process APScheduler until scale genuinely justifies otherwise.
