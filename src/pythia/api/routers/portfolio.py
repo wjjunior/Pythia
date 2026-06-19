@@ -13,17 +13,15 @@ router = APIRouter(tags=["portfolio"])
 @router.get("/api/portfolio")
 def portfolio(session: SessionDep, settings: SettingsDep) -> PortfolioResponse:
     service = PortfolioService(session, settings)
-    realized = service.realized_pnl()
-    locked = service.locked_in_open()
+    capital = service.capital()
     exposure = service.exposure_state()
-    total_capital = settings.bankroll_paper + realized
     return PortfolioResponse(
         capital=CapitalState(
-            starting_bankroll=settings.bankroll_paper,
-            realized_pnl=realized,
-            locked_in_open=locked,
-            available_capital=service.available_capital(),
-            exposure_fraction=exposure_fraction(locked, total_capital),
+            starting_bankroll=capital.starting_bankroll,
+            realized_pnl=capital.realized_pnl,
+            locked_in_open=capital.locked_in_open,
+            available_capital=capital.available_capital,
+            exposure_fraction=exposure_fraction(capital.locked_in_open, capital.total_capital),
         ),
         exposure=ExposureView(
             per_category=exposure.per_category,

@@ -140,8 +140,9 @@ def _pipeline(session: Session, llm: object) -> Pipeline:
 def test_available_capital_reflects_open_positions(session: Session) -> None:
     _open_position(session, "p1", "politics", 1500.0)
     service = PortfolioService(session, _settings())
-    assert service.locked_in_open() == pytest.approx(1500.0)
-    assert service.available_capital() == pytest.approx(10_000.0 - 1500.0)
+    capital = service.capital()
+    assert capital.locked_in_open == pytest.approx(1500.0)
+    assert capital.available_capital == pytest.approx(10_000.0 - 1500.0)
     assert service.exposure_state().per_category["politics"] == pytest.approx(1500.0)
 
 

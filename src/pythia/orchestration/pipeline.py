@@ -96,9 +96,9 @@ class Pipeline:
 
     def _run(self, run_id: str, market: Market, snapshot: MarketSnapshot) -> PipelineResult:
         portfolio = PortfolioService(self._session, self._settings)
-        available = portfolio.available_capital()
+        capital = portfolio.capital()
         exposure = portfolio.exposure_state()
-        limits = self._risk_limits(portfolio.total_capital())
+        limits = self._risk_limits(capital.total_capital)
 
         if exposure.per_category.get(market.category, 0.0) >= limits.cap_per_category:
             return self._veto_before_estimation(run_id, market)
@@ -153,7 +153,7 @@ class Pipeline:
         )
 
         decision = self._evaluate_risk(
-            market, critiqued, score, evidence, available, exposure, limits
+            market, critiqued, score, evidence, capital.available_capital, exposure, limits
         )
         self._audit.append(
             AuditEvent(
@@ -231,7 +231,7 @@ class Pipeline:
         proposal = TradeProposal(
             proposed_size=proposed,
             category=market.category,
-            correlation_group=market.category,
+            correlation_group=market.id,
             confidence=estimate.confidence,
             source_reliability=self._source_reliability(evidence),
             p_resol_severity=1.0 - score.p_resol,
