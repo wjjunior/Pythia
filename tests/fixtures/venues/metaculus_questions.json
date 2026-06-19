@@ -1,0 +1,95 @@
+{
+  "_capture_note": "Metadata captured live from GET /api/questions/{id}/. recency_weighted.latest is null because the METACULUS_API_KEY tier does not include community-prediction aggregations (approved API access required); the adapter discards unpriced quotes. See tests for a documented-shape CP example.",
+  "questions": [
+    {
+      "id": 43937,
+      "title": "Will the US and India finalise a new bilateral trade agreement before August 2026?",
+      "type": "binary",
+      "resolution_criteria": "This question will resolve as **Yes** if a new bilateral trade agreement between the US and India is signed or finalised and jointly announced before August 1, 2026. Government officials from both countries must officially announce the trade agreement.",
+      "scheduled_close_time": "2026-07-31T22:59:00Z",
+      "aggregations": {
+        "recency_weighted": {
+          "history": null,
+          "latest": null,
+          "score_data": null,
+          "movement": null
+        }
+      }
+    },
+    {
+      "id": 44017,
+      "title": "Will July 2026 be the warmest July on record, according to Copernicus?",
+      "type": "binary",
+      "resolution_criteria": "This question resolves as **Yes** July 2026 is the warmest July on record in the ERA5 [dataset](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview), according to the Copernicus Climate Change Service (C3S) monthly [Climate Bulletin](https://climate.copernicus.eu/climate-bulletin) covering July 2026.&#x20;",
+      "scheduled_close_time": "2026-07-31T06:00:00Z",
+      "aggregations": {
+        "recency_weighted": {
+          "history": null,
+          "latest": null,
+          "score_data": null,
+          "movement": null
+        }
+      }
+    },
+    {
+      "id": 44016,
+      "title": "On July 8, 2026, will Marine Le Pen be ineligible to run in the 2027 French presidential election?",
+      "type": "binary",
+      "resolution_criteria": "This question resolves as **Yes** if, on July 8, 2026, Marine Le Pen is subject to a court-imposed disqualification from running for public office ([peine d\u2019in\u00e9ligibilit\u00e9](https://libdedroit.fr/blogs/fiches-grand-oral-crfpa/la-peine-d-ineligibilite?srsltid=AfmBOoopwrMhMXuXIc875nwjrfSFvRFyrDV7pEIPimeNPbydTFiBFzps)) that prevents her from being a candidate in the 2027 French presidential election.",
+      "scheduled_close_time": "2026-07-07T00:00:00Z",
+      "aggregations": {
+        "recency_weighted": {
+          "history": null,
+          "latest": null,
+          "score_data": null,
+          "movement": null
+        }
+      }
+    },
+    {
+      "id": 44013,
+      "title": "Will Ukraine announce a presidential election before September 1, 2026?",
+      "type": "binary",
+      "resolution_criteria": "This question resolves as **Yes** if, before September 1, 2026, a specific date on which a presidential election will be held is officially announced by the government of Ukraine or any of its agencies that have the authority to do so. If no such announcement occurs before that date, this question resolves as **No**.",
+      "scheduled_close_time": "2026-09-01T00:00:00Z",
+      "aggregations": {
+        "recency_weighted": {
+          "history": null,
+          "latest": null,
+          "score_data": null,
+          "movement": null
+        }
+      }
+    },
+    {
+      "id": 43967,
+      "title": "Will Karen Bass be reelected Mayor of Los Angeles in 2026?",
+      "type": "binary",
+      "resolution_criteria": "This question resolves **Yes** if Karen Bass is officially declared the winner of the 2026 Los Angeles mayoral election after any recounts.",
+      "scheduled_close_time": "2026-11-02T12:00:00Z",
+      "aggregations": {
+        "recency_weighted": {
+          "history": null,
+          "latest": null,
+          "score_data": null,
+          "movement": null
+        }
+      }
+    },
+    {
+      "id": 44011,
+      "title": "Will the Liberal Party officially nominate Fl\u00e1vio Bolsonaro as its candidate for president of Brazil before August 15, 2026?",
+      "type": "binary",
+      "resolution_criteria": "This question resolves as **Yes** if, before August 15, 2026, the *Partido Liberal* (PL) or Liberal Party officially nominates Fl\u00e1vio Bolsonaro as its candidate for president in the [2026 Brazilian general election](https://en.wikipedia.org/wiki/2026_Brazilian_general_election).",
+      "scheduled_close_time": "2026-07-19T21:00:00Z",
+      "aggregations": {
+        "recency_weighted": {
+          "history": null,
+          "latest": null,
+          "score_data": null,
+          "movement": null
+        }
+      }
+    }
+  ]
+}

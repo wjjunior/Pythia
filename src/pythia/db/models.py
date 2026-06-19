@@ -318,3 +318,22 @@ class CostEvent(SQLModel, table=True):
     cost_usd: float = Field(sa_column=Column(Double, nullable=False))
     latency_ms: int | None = Field(default=None, sa_column=Column(Integer))
     correlation_id: str | None = Field(default=None, sa_column=Column(Text))
+
+
+class VenueQuote(SQLModel, table=True):
+    __tablename__ = "venue_quotes"
+    __table_args__ = (Index("venue_quotes_market_time", "market_id", "ts"),)
+
+    id: uuid.UUID | None = _id()
+    market_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=False)
+    )
+    venue: str = Field(sa_column=Column(Text, nullable=False))
+    external_ref: str = Field(sa_column=Column(Text, nullable=False))
+    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    yes_price: float = Field(sa_column=Column(Double, nullable=False))
+    match_confidence: float = Field(sa_column=Column(Double, nullable=False))
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )

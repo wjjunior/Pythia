@@ -62,6 +62,22 @@ class Source(_Frozen):
     reliability: Prob
 
 
+class Venue(StrEnum):
+    KALSHI = "kalshi"
+    MANIFOLD = "manifold"
+    METACULUS = "metaculus"
+
+
+class VenueQuote(_Frozen):
+    id: str
+    market_id: str
+    venue: Venue
+    external_ref: str
+    ts: datetime
+    yes_price: Prob
+    match_confidence: Prob
+
+
 class Evidence(_Frozen):
     id: str
     market_id: str

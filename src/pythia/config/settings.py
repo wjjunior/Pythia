@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     polymarket_api_base: str = "https://gamma-api.polymarket.com"
     kalshi_api_base: str | None = None
     metaculus_api_base: str | None = None
+    metaculus_api_key: str | None = None
     cross_venue_sources: str = ""
     crawl_interval_seconds: int = 300
 
