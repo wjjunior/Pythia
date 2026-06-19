@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from pythia.agents.router import ModelRouter
+from pythia.agents.router import CriticDiversityError, ModelRouter
 from pythia.common import CostEvent, CriticVerdict, Estimate, EstimationContext, Evidence, LLMPort
 from pythia.config import Settings
 
@@ -148,9 +148,13 @@ class OpenRouterLLMPort:
         self._clock = clock
 
     def _complete(
-        self, agent: str, messages: list[dict[str, str]]
+        self,
+        agent: str,
+        messages: list[dict[str, str]],
+        candidates: list[str] | None = None,
     ) -> tuple[dict[str, Any], str, int]:
-        candidates = self._router.candidates(agent)
+        if candidates is None:
+            candidates = self._router.candidates(agent)
         if not candidates:
             raise ValueError(f"no model candidates configured for agent {agent!r}")
         errors: list[Exception] = []
@@ -205,7 +209,12 @@ class OpenRouterLLMPort:
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
-        response, model, latency_ms = self._complete("critic", _critique_messages(est, evidence))
+        candidates = self._router.diverse_candidates("critic", exclude_family_of=est.model_name)
+        if not candidates:
+            raise CriticDiversityError(est.model_name)
+        response, model, latency_ms = self._complete(
+            "critic", _critique_messages(est, evidence), candidates
+        )
         self._emit_cost("critic", "critique", model, response, latency_ms)
         payload = _parse_content(response)
         notes = payload.get("notes")

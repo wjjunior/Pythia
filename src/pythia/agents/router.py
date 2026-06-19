@@ -26,6 +26,14 @@ class UnknownAgentError(KeyError):
     """No candidate slate is configured for the requested agent."""
 
 
+class CriticDiversityError(RuntimeError):
+    """No critic candidate of a different model family than the estimator is available (§5.1)."""
+
+
+def model_family(model: str) -> str:
+    return model.split("/", 1)[0]
+
+
 _SUPPORTED_STRATEGIES = frozenset({"static"})
 
 
@@ -58,6 +66,10 @@ class ModelRouter:
             if slate is not None:
                 return list(slate)
         raise UnknownAgentError(agent)
+
+    def diverse_candidates(self, agent: str, *, exclude_family_of: str) -> list[str]:
+        excluded = model_family(exclude_family_of)
+        return [model for model in self.candidates(agent) if model_family(model) != excluded]
 
     def route(self, agent: str, task: str = "") -> str:
         return self.candidates(agent, task)[0]
