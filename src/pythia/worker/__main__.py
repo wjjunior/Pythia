@@ -1,30 +1,37 @@
 """Worker entrypoint: schedule the market crawl on CRAWL_INTERVAL_SECONDS (§8.6 VPN-gated)."""
 
-import logging
-
 from pythia.common import Market, MarketSnapshot
-from pythia.config import get_settings
+from pythia.common.logging import configure_logging, get_logger
+from pythia.config import Settings, get_settings
 from pythia.ingestion import HttpxTransport, MarketCrawler
 from pythia.worker.scheduler import build_scheduler
 
-_logger = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _log_sink(pairs: list[tuple[Market, MarketSnapshot]]) -> None:
-    _logger.info("market crawl tick: %d snapshots", len(pairs))
+    _log.info("market_crawl_tick", snapshots=len(pairs))
+
+
+def _configure(settings: Settings) -> None:
+    configure_logging(
+        service="worker",
+        level=settings.log_level,
+        json_logs=settings.log_json,
+        logfire_token=settings.logfire_token,
+        environment=settings.environment,
+    )
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
     settings = get_settings()
+    _configure(settings)
     if not settings.use_live_venues:
-        _logger.info(
-            "USE_LIVE_VENUES is false — market crawl disabled; enable it and the VPN (§8.6)"
-        )
+        _log.info("market_crawl_disabled", reason="USE_LIVE_VENUES is false; enable VPN (§8.6)")
         return
     crawler = MarketCrawler(HttpxTransport(settings.polymarket_api_base))
     scheduler = build_scheduler(crawler, _log_sink, settings.crawl_interval_seconds)
-    _logger.info("starting market crawl every %ds", settings.crawl_interval_seconds)
+    _log.info("market_crawl_start", interval_seconds=settings.crawl_interval_seconds)
     scheduler.start()
 
 

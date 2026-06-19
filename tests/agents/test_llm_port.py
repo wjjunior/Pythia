@@ -1,10 +1,12 @@
 """Tests for the LLM gateway: the deterministic stub and the mocked OpenRouter path."""
 
 import json
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from structlog.testing import capture_logs
 
 from pythia.agents import (
     LLMResponseError,
@@ -23,9 +25,16 @@ from pythia.common import (
     Market,
     MarketSnapshot,
 )
+from pythia.common.logging import bind_correlation, clear_correlation
 from pythia.config import Settings
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _clear_correlation() -> Iterator[None]:
+    yield
+    clear_correlation()
 
 
 def _ctx() -> EstimationContext:
@@ -115,6 +124,42 @@ def test_openrouter_estimate_parses_and_emits_measured_cost() -> None:
     assert costs[0].agent == "estimation"
     assert costs[0].input_tokens == 1200
     assert transport.calls[0]["max_price"] == 0.5
+
+
+def test_estimate_emits_llm_call_log_with_cost_fields() -> None:
+    transport = _FakeTransport([_estimate_response()])
+    router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]}, max_price=0.5)
+    port = OpenRouterLLMPort(transport, router)
+    with capture_logs() as logs:
+        port.estimate(_ctx())
+    call = next(entry for entry in logs if entry["event"] == "llm_call")
+    assert call["agent"] == "estimation"
+    assert call["task"] == "estimate"
+    assert call["model"] == "minimax/minimax-m3"
+    assert call["cost_usd"] == 0.0021
+    assert call["input_tokens"] == 1200
+    assert call["output_tokens"] == 300
+    assert "latency_ms" in call
+
+
+def test_cost_event_is_stamped_with_the_bound_correlation_id() -> None:
+    costs: list[CostEvent] = []
+    transport = _FakeTransport([_estimate_response()])
+    router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]})
+    port = OpenRouterLLMPort(transport, router, cost_sink=costs.append)
+    bind_correlation("run-xyz")
+    port.estimate(_ctx())
+    assert costs[0].correlation_id == "run-xyz"
+
+
+def test_bound_correlation_id_overrides_the_constructor_value() -> None:
+    costs: list[CostEvent] = []
+    transport = _FakeTransport([_estimate_response()])
+    router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]})
+    port = OpenRouterLLMPort(transport, router, cost_sink=costs.append, correlation_id="ctor-id")
+    bind_correlation("run-bound")
+    port.estimate(_ctx())
+    assert costs[0].correlation_id == "run-bound"
 
 
 def test_openrouter_fails_over_to_the_next_model_on_error() -> None:

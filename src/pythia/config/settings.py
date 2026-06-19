@@ -9,6 +9,7 @@ Mode = Literal["paper", "live"]
 RoutingStrategy = Literal["static", "escalate", "ensemble"]
 AggregationMethod = Literal["median", "weighted"]
 RecalibrationMethod = Literal["platt", "beta", "isotonic"]
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 
 class ExecutionModeError(RuntimeError):
@@ -80,6 +81,12 @@ class Settings(BaseSettings):
     recalibration_method: RecalibrationMethod = "platt"
     recalibration_min_n: int = 50
     dispute_risk_lookback: int = 90
+
+    # Observability (§3.10, §8.4) — JSON logs everywhere; Logfire sends only when a token is set
+    log_level: LogLevel = "INFO"
+    log_json: bool = True
+    logfire_token: str | None = None
+    environment: str = "dev"
 
     @property
     def cross_venue_source_list(self) -> list[str]:

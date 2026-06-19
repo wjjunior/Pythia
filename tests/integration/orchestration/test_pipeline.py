@@ -1,9 +1,12 @@
 """End-to-end orchestration on real pgvector with the zero-secret stub (§2.3, §3.6)."""
 
+import json
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import structlog
 from sqlmodel import Session, select
 
 from pythia.agents import StubLLMPort
@@ -17,6 +20,7 @@ from pythia.common import (
     MarketSnapshot,
     Source,
 )
+from pythia.common.logging import clear_correlation, configure_logging
 from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
@@ -32,6 +36,23 @@ from pythia.rag import EvidenceStore, StubEmbeddingPort
 from pythia.risk import RiskReason
 
 pytestmark = pytest.mark.integration
+
+_LIFECYCLE_EVENTS = {
+    "pipeline_run_start",
+    "estimate",
+    "critic_verdict",
+    "score",
+    "risk_decision",
+    "pipeline_run_finish",
+}
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging() -> Iterator[None]:
+    yield
+    structlog.reset_defaults()
+    clear_correlation()
+
 
 QUESTION = "Will candidate Alpha win the 2026 governor election?"
 MARKET_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt20-market"))
@@ -142,6 +163,21 @@ def test_pipeline_scores_persists_and_audits_every_step(session: Session) -> Non
         AuditKind.SCORE,
         AuditKind.RISK_DECISION,
     }
+
+
+def test_one_correlation_id_reconstructs_the_run_lifecycle(
+    session: Session, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure_logging(service="pipeline-test")
+    market, snapshot = _seed(session)
+    result = _pipeline(session, StubLLMPort()).run(market, snapshot)
+
+    records = [
+        json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")
+    ]
+    lifecycle = [r for r in records if r["event"] in _LIFECYCLE_EVENTS]
+    assert {r["event"] for r in lifecycle} == _LIFECYCLE_EVENTS
+    assert {r["correlation_id"] for r in lifecycle} == {result.run_id}
 
 
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:
