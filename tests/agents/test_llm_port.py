@@ -162,6 +162,88 @@ def test_bound_correlation_id_overrides_the_constructor_value() -> None:
     assert costs[0].correlation_id == "run-bound"
 
 
+class _ByModelTransport:
+    def __init__(self, responses: dict[str, dict[str, Any] | Exception]) -> None:
+        self.calls: list[str] = []
+        self._responses = responses
+
+    def complete(
+        self, *, model: str, messages: list[dict[str, str]], max_price: float | None
+    ) -> dict[str, Any]:
+        self.calls.append(model)
+        item = self._responses[model]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def _member_response(p: float, *, cost: float = 0.001) -> dict[str, Any]:
+    content = json.dumps(
+        {"p_model": p, "confidence": 0.5, "lower": 0.4, "upper": 0.6, "rationale": "r"}
+    )
+    return {
+        "model": "m",
+        "provider": "prov",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": cost},
+    }
+
+
+def test_ensemble_runs_distinct_family_members_and_aggregates_the_median() -> None:
+    costs: list[CostEvent] = []
+    transport = _ByModelTransport(
+        {
+            "a/m1": _member_response(0.2),
+            "b/m2": _member_response(0.5),
+            "c/m3": _member_response(0.9),
+        }
+    )
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    port = OpenRouterLLMPort(transport, router, cost_sink=costs.append, ensemble_size=3)
+    estimate = port.estimate(_ctx())
+    assert estimate.model_name == "ensemble"
+    assert estimate.p_model == 0.5
+    assert {member.model for member in estimate.members} == {"a/m1", "b/m2", "c/m3"}
+    assert len(costs) == 3
+
+
+def test_ensemble_drops_a_member_that_errors() -> None:
+    transport = _ByModelTransport(
+        {
+            "a/m1": _member_response(0.4),
+            "b/m2": RuntimeError("provider down"),
+            "c/m3": _member_response(0.6),
+        }
+    )
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    estimate = OpenRouterLLMPort(transport, router, ensemble_size=3).estimate(_ctx())
+    assert {member.model for member in estimate.members} == {"a/m1", "c/m3"}
+    assert estimate.p_model == pytest.approx(0.5)
+
+
+def test_ensemble_logs_a_dropped_member() -> None:
+    transport = _ByModelTransport(
+        {
+            "a/m1": _member_response(0.4),
+            "b/m2": RuntimeError("provider down"),
+            "c/m3": _member_response(0.6),
+        }
+    )
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    with capture_logs() as logs:
+        OpenRouterLLMPort(transport, router, ensemble_size=3).estimate(_ctx())
+    dropped = [entry for entry in logs if entry["event"] == "ensemble_member_dropped"]
+    assert [entry["model"] for entry in dropped] == ["b/m2"]
+
+
+def test_ensemble_size_one_keeps_the_single_model_path() -> None:
+    transport = _FakeTransport([_estimate_response()])
+    router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]})
+    estimate = OpenRouterLLMPort(transport, router, ensemble_size=1).estimate(_ctx())
+    assert estimate.members == []
+    assert estimate.model_name == "minimax/minimax-m3"
+
+
 def test_openrouter_fails_over_to_the_next_model_on_error() -> None:
     transport = _FakeTransport(
         [RuntimeError("provider down"), _estimate_response(model="google/gemini-3-flash")]

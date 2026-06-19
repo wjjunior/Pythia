@@ -12,10 +12,21 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
+from pythia.agents.aggregation import aggregate
+from pythia.agents.cost import BudgetExceeded
 from pythia.agents.router import CriticDiversityError, ModelRouter
-from pythia.common import CostEvent, CriticVerdict, Estimate, EstimationContext, Evidence, LLMPort
+from pythia.common import (
+    CostEvent,
+    CriticVerdict,
+    Estimate,
+    EstimationContext,
+    Evidence,
+    LLMPort,
+    MemberForecast,
+)
 from pythia.common.logging import current_correlation_id, get_logger
 from pythia.config import Settings
+from pythia.config.settings import AggregationMethod
 
 CostSink = Callable[[CostEvent], None]
 
@@ -168,6 +179,8 @@ class OpenRouterLLMPort:
         cost_sink: CostSink | None = None,
         budget_check: Callable[[], None] | None = None,
         correlation_id: str | None = None,
+        ensemble_size: int = 1,
+        aggregation_method: AggregationMethod = "median",
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._transport = transport
@@ -175,6 +188,8 @@ class OpenRouterLLMPort:
         self._cost_sink = cost_sink
         self._budget_check = budget_check
         self._correlation_id = correlation_id
+        self._ensemble_size = ensemble_size
+        self._aggregation_method = aggregation_method
         self._clock = clock
 
     def _complete(
@@ -242,7 +257,21 @@ class OpenRouterLLMPort:
         )
 
     def estimate(self, ctx: EstimationContext) -> Estimate:
-        response, model, latency_ms = self._complete("estimation", _estimation_messages(ctx))
+        models = (
+            self._router.ensemble_candidates("estimation", self._ensemble_size)
+            if self._ensemble_size > 1
+            else []
+        )
+        if len(models) <= 1:
+            return self._run_estimation(ctx)
+        return self._aggregate_members(ctx, models)
+
+    def _run_estimation(
+        self, ctx: EstimationContext, candidates: list[str] | None = None
+    ) -> Estimate:
+        response, model, latency_ms = self._complete(
+            "estimation", _estimation_messages(ctx), candidates
+        )
         self._record_call("estimation", "estimate", model, response, latency_ms)
         payload = _parse_payload(response, _EstimationPayload)
         return Estimate(
@@ -256,6 +285,36 @@ class OpenRouterLLMPort:
             rationale=payload.rationale,
             evidence_ids=[evidence.id for evidence in ctx.evidence],
             model_name=model,
+        )
+
+    def _aggregate_members(self, ctx: EstimationContext, models: list[str]) -> Estimate:
+        estimates: list[Estimate] = []
+        for model in models:
+            try:
+                estimates.append(self._run_estimation(ctx, [model]))
+            except BudgetExceeded:
+                raise
+            except Exception as exc:  # a member provider failed; aggregate the survivors
+                _log.warning("ensemble_member_dropped", model=model, error=str(exc))
+                continue
+        if not estimates:
+            return self._run_estimation(ctx)
+        forecast = aggregate(estimates, self._aggregation_method)
+        members = [
+            MemberForecast(model=member.model_name, p_member=member.p_model) for member in estimates
+        ]
+        return Estimate(
+            id=_deterministic_id("estimate", ctx.snapshot.id, "ensemble"),
+            market_id=ctx.market.id,
+            snapshot_id=ctx.snapshot.id,
+            p_model=forecast.p_model,
+            confidence=forecast.confidence,
+            lower=forecast.lower,
+            upper=forecast.upper,
+            rationale=f"ensemble {self._aggregation_method} of {len(members)} members",
+            evidence_ids=[evidence.id for evidence in ctx.evidence],
+            model_name="ensemble",
+            members=members,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
@@ -294,5 +353,7 @@ def make_llm_port(
             cost_sink=cost_sink,
             budget_check=budget_check,
             correlation_id=correlation_id,
+            ensemble_size=settings.ensemble_size,
+            aggregation_method=settings.aggregation_method,
         )
     return StubLLMPort()

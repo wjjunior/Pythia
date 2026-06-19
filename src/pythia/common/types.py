@@ -71,6 +71,12 @@ class Evidence(_Frozen):
     content: str
 
 
+class MemberForecast(_Frozen):
+    model: str
+    p_member: Prob
+    weight: float = 1.0
+
+
 class Estimate(_Frozen):
     id: str
     market_id: str
@@ -83,6 +89,7 @@ class Estimate(_Frozen):
     evidence_ids: list[str]
     model_name: str
     critic_notes: str | None = None
+    members: list[MemberForecast] = Field(default_factory=list)
 
 
 class Score(_Frozen):
