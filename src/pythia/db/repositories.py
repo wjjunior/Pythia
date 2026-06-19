@@ -8,9 +8,10 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
+from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from pythia.common import AuditEvent, Estimate, Market, MarketSnapshot, Score, Source
+from pythia.common import AuditEvent, CostEvent, Estimate, Market, MarketSnapshot, Score, Source
 from pythia.db import models
 
 
@@ -305,6 +306,88 @@ class AuditRepository:
             )
             for row in rows
         ]
+
+
+def _to_db_cost(
+    event: CostEvent,
+    *,
+    pipeline_run_id: str | None,
+    market_id: str | None,
+    estimate_id: str | None,
+) -> models.CostEvent:
+    return models.CostEvent(
+        pipeline_run_id=uuid.UUID(pipeline_run_id) if pipeline_run_id is not None else None,
+        market_id=uuid.UUID(market_id) if market_id is not None else None,
+        estimate_id=uuid.UUID(estimate_id) if estimate_id is not None else None,
+        agent=event.agent,
+        task=event.task,
+        provider=event.provider,
+        model=event.model,
+        input_tokens=event.input_tokens,
+        output_tokens=event.output_tokens,
+        cached_tokens=event.cached_tokens,
+        cost_usd=event.cost_usd,
+        latency_ms=event.latency_ms,
+        correlation_id=event.correlation_id,
+    )
+
+
+class CostRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def record(
+        self,
+        event: CostEvent,
+        *,
+        pipeline_run_id: str | None = None,
+        market_id: str | None = None,
+        estimate_id: str | None = None,
+    ) -> None:
+        self._session.add(
+            _to_db_cost(
+                event,
+                pipeline_run_id=pipeline_run_id,
+                market_id=market_id,
+                estimate_id=estimate_id,
+            )
+        )
+        self._session.commit()
+
+    def total(self) -> float:
+        return float(
+            self._session.exec(
+                select(func.coalesce(func.sum(models.CostEvent.cost_usd), 0.0))
+            ).one()
+        )
+
+    def daily_total(self, since: datetime) -> float:
+        statement = select(func.coalesce(func.sum(models.CostEvent.cost_usd), 0.0)).where(
+            col(models.CostEvent.ts) >= since
+        )
+        return float(self._session.exec(statement).one())
+
+    def run_total(self, pipeline_run_id: str) -> float:
+        statement = select(func.coalesce(func.sum(models.CostEvent.cost_usd), 0.0)).where(
+            col(models.CostEvent.pipeline_run_id) == uuid.UUID(pipeline_run_id)
+        )
+        return float(self._session.exec(statement).one())
+
+    def by_agent(self) -> dict[str, float]:
+        statement = select(models.CostEvent.agent, func.sum(models.CostEvent.cost_usd)).group_by(
+            col(models.CostEvent.agent)
+        )
+        return {agent: float(total) for agent, total in self._session.exec(statement).all()}
+
+    def by_model(self) -> dict[str, float]:
+        statement = select(models.CostEvent.model, func.sum(models.CostEvent.cost_usd)).group_by(
+            col(models.CostEvent.model)
+        )
+        return {model: float(total) for model, total in self._session.exec(statement).all()}
+
+    def cost_per_scored_opportunity(self) -> float:
+        scored = self._session.exec(select(func.count()).select_from(models.Score)).one()
+        return self.total() / scored if scored else 0.0
 
 
 def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot]]) -> None:

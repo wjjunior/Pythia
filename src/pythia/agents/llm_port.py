@@ -163,11 +163,15 @@ class OpenRouterLLMPort:
         router: ModelRouter,
         *,
         cost_sink: CostSink | None = None,
+        budget_check: Callable[[], None] | None = None,
+        correlation_id: str | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._transport = transport
         self._router = router
         self._cost_sink = cost_sink
+        self._budget_check = budget_check
+        self._correlation_id = correlation_id
         self._clock = clock
 
     def _complete(
@@ -176,6 +180,8 @@ class OpenRouterLLMPort:
         messages: list[dict[str, str]],
         candidates: list[str] | None = None,
     ) -> tuple[dict[str, Any], str, int]:
+        if self._budget_check is not None:
+            self._budget_check()
         if candidates is None:
             candidates = self._router.candidates(agent)
         if not candidates:
@@ -211,6 +217,7 @@ class OpenRouterLLMPort:
                 cached_tokens=int(details.get("cached_tokens", 0)),
                 cost_usd=float(usage.get("cost", 0.0)),
                 latency_ms=latency_ms,
+                correlation_id=self._correlation_id,
             )
         )
 
@@ -249,11 +256,23 @@ class OpenRouterLLMPort:
         )
 
 
-def make_llm_port(settings: Settings, *, cost_sink: CostSink | None = None) -> LLMPort:
+def make_llm_port(
+    settings: Settings,
+    *,
+    cost_sink: CostSink | None = None,
+    budget_check: Callable[[], None] | None = None,
+    correlation_id: str | None = None,
+) -> LLMPort:
     if settings.openrouter_api_key:
         transport = HttpxChatTransport(settings.openrouter_api_key, settings.openrouter_base_url)
         router = ModelRouter(
             strategy=settings.model_routing_strategy, max_price=settings.max_price_per_call
         )
-        return OpenRouterLLMPort(transport, router, cost_sink=cost_sink)
+        return OpenRouterLLMPort(
+            transport,
+            router,
+            cost_sink=cost_sink,
+            budget_check=budget_check,
+            correlation_id=correlation_id,
+        )
     return StubLLMPort()
