@@ -1,5 +1,7 @@
 """Markets endpoints (§A.1): list/filter and detail."""
 
+import uuid
+
 from fastapi import APIRouter, HTTPException
 
 from pythia.api.deps import SessionDep
@@ -23,15 +25,15 @@ def list_markets(
 
 
 @router.get("/api/markets/{market_id}")
-def market_detail(market_id: str, session: SessionDep) -> MarketDetail:
-    market = MarketRepository(session).get(market_id)
+def market_detail(market_id: uuid.UUID, session: SessionDep) -> MarketDetail:
+    market = MarketRepository(session).get(str(market_id))
     if market is None:
         raise HTTPException(status_code=404, detail="market not found")
-    latest = EstimateRepository(session).latest_for_market(market_id)
+    latest = EstimateRepository(session).latest_for_market(str(market_id))
     evidence = EvidenceRepository(session).get_by_ids(latest.evidence_ids) if latest else []
     return MarketDetail(
         market=market,
-        snapshots=SnapshotRepository(session).list_for_market(market_id),
+        snapshots=SnapshotRepository(session).list_for_market(str(market_id)),
         latest_estimate=latest,
         evidence=evidence,
     )

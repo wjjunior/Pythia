@@ -16,7 +16,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 def health(session: SessionDep) -> HealthResponse:
     try:
-        session.exec(select(text("1")))
+        session.exec(select(text("1"))).one()
     except Exception:
         return HealthResponse(
             status="degraded",

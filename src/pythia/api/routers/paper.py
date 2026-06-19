@@ -17,7 +17,7 @@ def paper_positions(session: SessionDep, settings: SettingsDep) -> PaperPortfoli
     locked = repo.locked_in_open()
     total_capital = settings.bankroll_paper + realized
     return PaperPortfolio(
-        positions=repo.list_all(),
+        positions=repo.list_open(),
         capital=CapitalState(
             starting_bankroll=settings.bankroll_paper,
             realized_pnl=realized,

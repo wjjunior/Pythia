@@ -22,6 +22,7 @@ from pythia.db.repositories import (
     SnapshotRepository,
     SourceRepository,
 )
+from pythia.paper import PaperLedger
 
 pytestmark = pytest.mark.integration
 
@@ -191,6 +192,35 @@ def test_review_reject_opens_nothing(client: TestClient, session: Session) -> No
     response = client.post(f"/api/review/{ESTIMATE_ID}", json={"action": "reject"})
     assert response.status_code == 200
     assert response.json()["trade"] is None
+
+
+def test_review_rejects_non_positive_size(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    response = client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 0.0}
+    )
+    assert response.status_code == 422
+
+
+def test_paper_positions_excludes_resolved_trades(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
+    )
+    PaperLedger(session).resolve(MARKET_ID, outcome=1, at=TS + timedelta(days=5))
+    body = client.get("/api/paper/positions").json()
+    assert body["positions"] == []
+    assert body["capital"]["realized_pnl"] > 0.0
+
+
+def test_radar_rejects_invalid_limit(client: TestClient) -> None:
+    assert client.get("/api/radar?limit=-1").status_code == 422
+    assert client.get("/api/radar?limit=0").status_code == 422
+
+
+def test_non_uuid_path_is_422_not_500(client: TestClient) -> None:
+    assert client.get("/api/markets/not-a-uuid").status_code == 422
+    assert client.get("/api/estimates/not-a-uuid").status_code == 422
 
 
 def test_review_unknown_estimate_is_404(client: TestClient) -> None:
