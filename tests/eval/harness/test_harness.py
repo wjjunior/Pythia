@@ -1,12 +1,14 @@
 """Tests for the evaluation harness: metrics, ranking and per-agent ablation (§5.2)."""
 
+import json
 import math
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
-from pythia.agents import StubLLMPort
+from pythia.agents import ModelRouter, OpenRouterLLMPort, StubLLMPort
 from pythia.common import (
     CriticVerdict,
     Estimate,
@@ -132,3 +134,60 @@ def test_llm_runner_counts_estimation_failures_as_errors() -> None:
     report = run_harness(_DATASET, [config])
     assert report.configs[0].error_rate == 1.0
     assert report.configs[0].n == 0
+
+
+class _ByModelTransport:
+    def __init__(self, responses: dict[str, dict[str, Any]]) -> None:
+        self._responses = responses
+
+    def complete(
+        self, *, model: str, messages: list[dict[str, str]], max_price: float | None
+    ) -> dict[str, Any]:
+        return self._responses[model]
+
+
+def _estimation_response(p: float, cost: float) -> dict[str, Any]:
+    content = json.dumps(
+        {"p_model": p, "confidence": 0.6, "lower": 0.4, "upper": 0.7, "rationale": "r"}
+    )
+    return {
+        "provider": "prov",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": cost},
+    }
+
+
+def _critique_response(cost: float) -> dict[str, Any]:
+    content = json.dumps(
+        {"adjusted_confidence": 0.5, "objections": [], "lookahead_leak": False, "notes": "ok"}
+    )
+    return {
+        "provider": "prov",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": cost},
+    }
+
+
+def test_single_best_vs_ensemble_is_a_ranked_harness_axis() -> None:
+    responses = {
+        "a/m1": _estimation_response(0.6, cost=0.01),
+        "b/m2": _estimation_response(0.5, cost=0.01),
+        "c/m3": _estimation_response(0.4, cost=0.01),
+        "k/crit": _critique_response(cost=0.005),
+    }
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"], "critic": ["k/crit"]})
+
+    def build(size: int) -> Callable[[Callable[[Any], None]], OpenRouterLLMPort]:
+        return lambda sink: OpenRouterLLMPort(
+            _ByModelTransport(responses), router, cost_sink=sink, ensemble_size=size
+        )
+
+    single = HarnessConfig("single", llm_runner(build(1)))
+    ensemble = HarnessConfig("ensemble", llm_runner(build(3)))
+    report = run_harness(_DATASET, [single, ensemble])
+
+    costs = {config.name: config.total_cost_usd for config in report.configs}
+    assert set(costs) == {"single", "ensemble"}
+    assert costs["ensemble"] > costs["single"]
+    ranked = [config.brier_per_dollar for config in report.configs]
+    assert ranked == sorted(ranked, reverse=True)

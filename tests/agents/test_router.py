@@ -63,3 +63,15 @@ def test_diverse_candidates_keeps_all_when_families_differ() -> None:
 def test_diverse_candidates_empty_when_all_share_the_estimator_family() -> None:
     router = ModelRouter(slates={"critic": ["anthropic/a", "anthropic/b"]})
     assert router.diverse_candidates("critic", exclude_family_of="anthropic/x") == []
+
+
+def test_ensemble_candidates_selects_one_model_per_distinct_family() -> None:
+    router = ModelRouter(
+        slates={"estimation": ["google/a", "google/b", "deepseek/x", "anthropic/y"]}
+    )
+    assert router.ensemble_candidates("estimation", 3) == ["google/a", "deepseek/x", "anthropic/y"]
+
+
+def test_ensemble_candidates_caps_at_the_distinct_family_count() -> None:
+    router = ModelRouter(slates={"estimation": ["google/a", "google/b", "deepseek/x"]})
+    assert router.ensemble_candidates("estimation", 9) == ["google/a", "deepseek/x"]

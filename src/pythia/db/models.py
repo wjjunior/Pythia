@@ -133,6 +133,26 @@ class Estimate(SQLModel, table=True):
     )
 
 
+class EstimateMember(SQLModel, table=True):
+    __tablename__ = "estimate_members"
+    __table_args__ = (Index("estimate_members_estimate", "estimate_id"),)
+
+    id: uuid.UUID | None = _id()
+    estimate_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("estimates.id"), nullable=False)
+    )
+    model: str = Field(sa_column=Column(Text, nullable=False))
+    p_member: float = Field(sa_column=Column(Double, nullable=False))
+    weight: float = Field(
+        default=1.0,
+        sa_column=Column(Double, nullable=False, server_default=text("1.0")),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+
+
 class Score(SQLModel, table=True):
     __tablename__ = "scores"
 

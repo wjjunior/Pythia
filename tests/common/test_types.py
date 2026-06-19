@@ -9,6 +9,7 @@ from pythia.common import (
     Estimate,
     Market,
     MarketSnapshot,
+    MemberForecast,
     Side,
 )
 
@@ -64,6 +65,42 @@ def test_estimate_rejects_confidence_outside_unit_interval() -> None:
             evidence_ids=[],
             model_name="stub",
         )
+
+
+def _estimate(**overrides: object) -> Estimate:
+    fields: dict[str, object] = {
+        "id": "e1",
+        "market_id": "m1",
+        "snapshot_id": "s1",
+        "p_model": 0.5,
+        "confidence": 0.5,
+        "lower": 0.4,
+        "upper": 0.6,
+        "rationale": "because",
+        "evidence_ids": [],
+        "model_name": "stub",
+    }
+    fields.update(overrides)
+    return Estimate(**fields)
+
+
+def test_estimate_has_no_members_by_default() -> None:
+    assert _estimate().members == []
+
+
+def test_estimate_carries_ensemble_members() -> None:
+    members = [
+        MemberForecast(model="a/m1", p_member=0.4),
+        MemberForecast(model="b/m2", p_member=0.6, weight=2.0),
+    ]
+    estimate = _estimate(members=members)
+    assert estimate.members == members
+    assert estimate.members[1].weight == 2.0
+
+
+def test_member_forecast_rejects_probability_outside_unit_interval() -> None:
+    with pytest.raises(ValidationError):
+        MemberForecast(model="a/m1", p_member=1.5)
 
 
 def test_contracts_are_frozen() -> None:

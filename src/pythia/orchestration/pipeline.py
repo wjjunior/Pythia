@@ -28,6 +28,7 @@ from pythia.common.logging import bind, bind_correlation, clear_correlation, get
 from pythia.config import Settings
 from pythia.db.repositories import (
     AuditRepository,
+    EstimateMemberRepository,
     EstimateRepository,
     PipelineRunRepository,
     ScoreRepository,
@@ -83,6 +84,7 @@ class Pipeline:
         self._k = k
         self._session = session
         self._estimates = EstimateRepository(session)
+        self._members = EstimateMemberRepository(session)
         self._scores = ScoreRepository(session)
         self._runs = PipelineRunRepository(session)
         self._audit = AuditRepository(session)
@@ -141,6 +143,7 @@ class Pipeline:
 
         critiqued = self._critic.review(estimate, evidence)
         self._estimates.add(critiqued)
+        self._members.add_many(critiqued.id, critiqued.members)
         _log.info("critic_verdict", confidence=critiqued.confidence)
         self._audit.append(
             AuditEvent(

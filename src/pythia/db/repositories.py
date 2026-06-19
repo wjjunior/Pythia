@@ -18,6 +18,7 @@ from pythia.common import (
     Evidence,
     Market,
     MarketSnapshot,
+    MemberForecast,
     PaperTrade,
     Score,
     Side,
@@ -237,6 +238,36 @@ class EstimateRepository:
             .order_by(col(models.Estimate.created_at).desc(), col(models.Estimate.id).desc())
         ).first()
         return _from_db_estimate(row) if row is not None else None
+
+
+class EstimateMemberRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add_many(self, estimate_id: str, members: list[MemberForecast]) -> None:
+        if not members:
+            return
+        for member in members:
+            self._session.add(
+                models.EstimateMember(
+                    estimate_id=uuid.UUID(estimate_id),
+                    model=member.model,
+                    p_member=member.p_member,
+                    weight=member.weight,
+                )
+            )
+        self._session.commit()
+
+    def list_for_estimate(self, estimate_id: str) -> list[MemberForecast]:
+        rows = self._session.exec(
+            select(models.EstimateMember)
+            .where(models.EstimateMember.estimate_id == uuid.UUID(estimate_id))
+            .order_by(col(models.EstimateMember.model))
+        ).all()
+        return [
+            MemberForecast(model=row.model, p_member=row.p_member, weight=row.weight)
+            for row in rows
+        ]
 
 
 def _to_db_score(score: Score) -> models.Score:

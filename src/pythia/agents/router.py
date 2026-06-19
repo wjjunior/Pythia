@@ -71,5 +71,18 @@ class ModelRouter:
         excluded = model_family(exclude_family_of)
         return [model for model in self.candidates(agent) if model_family(model) != excluded]
 
+    def ensemble_candidates(self, agent: str, size: int) -> list[str]:
+        selected: list[str] = []
+        seen: set[str] = set()
+        for model in self.candidates(agent):
+            family = model_family(model)
+            if family in seen:
+                continue
+            seen.add(family)
+            selected.append(model)
+            if len(selected) == size:
+                break
+        return selected
+
     def route(self, agent: str, task: str = "") -> str:
         return self.candidates(agent, task)[0]

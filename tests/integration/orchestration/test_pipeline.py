@@ -18,6 +18,7 @@ from pythia.common import (
     Evidence,
     Market,
     MarketSnapshot,
+    MemberForecast,
     Source,
 )
 from pythia.common.logging import clear_correlation, configure_logging
@@ -25,6 +26,7 @@ from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
     AuditRepository,
+    EstimateMemberRepository,
     EstimateRepository,
     MarketRepository,
     ScoreRepository,
@@ -131,6 +133,31 @@ class _ConfidentLLM:
         )
 
 
+class _EnsembleLLM:
+    def estimate(self, ctx: EstimationContext) -> Estimate:
+        return Estimate(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"ensemble-{ctx.snapshot.id}")),
+            market_id=ctx.market.id,
+            snapshot_id=ctx.snapshot.id,
+            p_model=0.7,
+            confidence=0.9,
+            lower=0.6,
+            upper=0.8,
+            rationale="ensemble median of 2 members",
+            evidence_ids=[item.id for item in ctx.evidence],
+            model_name="ensemble",
+            members=[
+                MemberForecast(model="a/m1", p_member=0.6),
+                MemberForecast(model="b/m2", p_member=0.8),
+            ],
+        )
+
+    def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
+        return CriticVerdict(
+            adjusted_confidence=0.8, objections=[], lookahead_leak=False, notes="ok"
+        )
+
+
 class _BrokenLLM:
     def estimate(self, ctx: EstimationContext) -> Estimate:
         raise RuntimeError("estimation boom")
@@ -178,6 +205,14 @@ def test_one_correlation_id_reconstructs_the_run_lifecycle(
     lifecycle = [r for r in records if r["event"] in _LIFECYCLE_EVENTS]
     assert {r["event"] for r in lifecycle} == _LIFECYCLE_EVENTS
     assert {r["correlation_id"] for r in lifecycle} == {result.run_id}
+
+
+def test_pipeline_persists_ensemble_members(session: Session) -> None:
+    market, snapshot = _seed(session)
+    result = _pipeline(session, _EnsembleLLM()).run(market, snapshot)
+    assert result.estimate is not None
+    stored = EstimateMemberRepository(session).list_for_estimate(result.estimate.id)
+    assert {member.model for member in stored} == {"a/m1", "b/m2"}
 
 
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:
