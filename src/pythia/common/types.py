@@ -25,6 +25,7 @@ class AuditKind(StrEnum):
     SCORE = "score"
     RISK_DECISION = "risk_decision"
     APPROVAL = "approval"
+    REJECTION = "rejection"
     PAPER_OPEN = "paper_open"
     RESOLUTION = "resolution"
 
