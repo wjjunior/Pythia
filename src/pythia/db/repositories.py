@@ -481,6 +481,23 @@ class PaperTradeRepository:
         )
         return float(self._session.exec(statement).one())
 
+    def open_positions(self) -> list[tuple[float, str, str, datetime]]:
+        rows = self._session.exec(
+            select(
+                models.PaperTrade.size,
+                models.Market.category,
+                models.PaperTrade.market_id,
+                models.PaperTrade.opened_at,
+            )
+            .join(models.Market, col(models.PaperTrade.market_id) == col(models.Market.id))
+            .where(models.PaperTrade.status == TradeStatus.OPEN)
+        ).all()
+        return [
+            (size, category, str(market_id), opened_at)
+            for size, category, market_id, opened_at in rows
+            if opened_at is not None
+        ]
+
 
 def _from_db_evidence(row: models.Evidence) -> Evidence:
     return Evidence(

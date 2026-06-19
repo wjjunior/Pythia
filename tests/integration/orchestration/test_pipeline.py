@@ -122,6 +122,8 @@ def test_pipeline_scores_persists_and_audits_every_step(session: Session) -> Non
     market, snapshot = _seed(session)
     result = _pipeline(session, StubLLMPort()).run(market, snapshot)
 
+    assert result.estimate is not None
+    assert result.score is not None
     persisted_score = ScoreRepository(session).get_by_estimate(result.estimate.id)
     assert persisted_score is not None
     assert persisted_score.opportunity_score == result.score.opportunity_score
@@ -155,6 +157,7 @@ def test_pipeline_sizes_a_confident_paper_only_opportunity(session: Session) -> 
     assert not result.decision.vetoed
     assert result.decision.approved_size > 0.0
     assert result.decision.paper_only
+    assert result.score is not None
     assert result.score.edge_net == pytest.approx(0.7 - 0.5 - 0.02 / 2)
 
 
