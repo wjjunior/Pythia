@@ -14,6 +14,11 @@ class Side(StrEnum):
     NO = "NO"
 
 
+class TradeStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
 class AuditKind(StrEnum):
     ESTIMATE = "estimate"
     CRITIC_VERDICT = "critic_verdict"
@@ -99,7 +104,7 @@ class PaperTrade(_Frozen):
     side: Side
     entry_price: Prob
     size: float
-    status: str
+    status: TradeStatus
     opened_at: datetime
     resolved_at: datetime | None = None
     pnl: float | None = None
