@@ -153,6 +153,33 @@ class EstimateMember(SQLModel, table=True):
     )
 
 
+class RecalibrationModel(SQLModel, table=True):
+    __tablename__ = "recalibration_models"
+    __table_args__ = (
+        Index("recalibration_active", "category", "active"),
+        Index(
+            "recalibration_one_active",
+            "category",
+            unique=True,
+            postgresql_where=text("active"),
+        ),
+    )
+
+    id: uuid.UUID | None = _id()
+    category: str = Field(sa_column=Column(Text, nullable=False))
+    method: str = Field(sa_column=Column(Text, nullable=False))
+    params: dict[str, Any] = Field(sa_column=Column(JSONB, nullable=False))
+    n_fit: int = Field(sa_column=Column(Integer, nullable=False))
+    fitted_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+    active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default=text("true")),
+    )
+
+
 class Score(SQLModel, table=True):
     __tablename__ = "scores"
 

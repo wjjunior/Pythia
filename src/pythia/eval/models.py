@@ -26,3 +26,10 @@ class EvCalibration:
     mean_predicted: float
     mean_realized: float
     n: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecalibrationReport:
+    brier_raw: float
+    brier_recalibrated: float
+    n: int

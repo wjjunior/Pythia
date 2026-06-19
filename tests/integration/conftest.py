@@ -38,5 +38,8 @@ def session(migrated_engine: Engine) -> Iterator[Session]:
         yield db_session
     with migrated_engine.begin() as connection:
         connection.execute(
-            text("TRUNCATE markets, market_snapshots, sources, audit_events CASCADE")
+            text(
+                "TRUNCATE markets, market_snapshots, sources, audit_events, "
+                "recalibration_models CASCADE"
+            )
         )

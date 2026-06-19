@@ -31,6 +31,7 @@ from pythia.db.repositories import (
     EstimateMemberRepository,
     EstimateRepository,
     PipelineRunRepository,
+    RecalibrationRepository,
     ScoreRepository,
     SourceRepository,
 )
@@ -85,6 +86,7 @@ class Pipeline:
         self._session = session
         self._estimates = EstimateRepository(session)
         self._members = EstimateMemberRepository(session)
+        self._recalibration = RecalibrationRepository(session)
         self._scores = ScoreRepository(session)
         self._runs = PipelineRunRepository(session)
         self._audit = AuditRepository(session)
@@ -158,9 +160,15 @@ class Pipeline:
             )
         )
 
-        score = self._score(market, critiqued, snapshot)
+        scored, category_calibrated = self._recalibrated(market.category, critiqued)
+        score = self._score(market, scored, snapshot)
         self._scores.add(score)
-        _log.info("score", opportunity_score=score.opportunity_score, edge_net=score.edge_net)
+        _log.info(
+            "score",
+            opportunity_score=score.opportunity_score,
+            edge_net=score.edge_net,
+            p_calibrated=scored.p_model,
+        )
         self._audit.append(
             AuditEvent(
                 kind=AuditKind.SCORE,
@@ -170,12 +178,21 @@ class Pipeline:
                     "estimate_id": critiqued.id,
                     "opportunity_score": score.opportunity_score,
                     "edge_net": score.edge_net,
+                    "p_calibrated": scored.p_model,
+                    "category_calibrated": category_calibrated,
                 },
             )
         )
 
         decision = self._evaluate_risk(
-            market, critiqued, score, evidence, capital.available_capital, exposure, limits
+            market,
+            critiqued,
+            score,
+            evidence,
+            capital.available_capital,
+            exposure,
+            limits,
+            category_calibrated,
         )
         _log.info(
             "risk_decision",
@@ -228,6 +245,15 @@ class Pipeline:
         _log.info("pipeline_run_finish")
         return PipelineResult(run_id=run_id, estimate=None, score=None, decision=decision)
 
+    def _recalibrated(self, category: str, estimate: Estimate) -> tuple[Estimate, bool]:
+        active = self._recalibration.active_for_category(category)
+        if active is None:
+            return estimate, False
+        cmap, n_fit = active
+        if n_fit < self._settings.recalibration_min_n:
+            return estimate, False
+        return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
+
     def _score(self, market: Market, estimate: Estimate, snapshot: MarketSnapshot) -> Score:
         p_resol = resolution_penalty(classify_resolution_source(market.resolution_source))
         return build_score(
@@ -251,6 +277,7 @@ class Pipeline:
         available: float,
         exposure: ExposureState,
         limits: RiskLimits,
+        category_calibrated: bool,
     ) -> RiskDecision:
         proposed = position_size(
             available,
@@ -266,7 +293,7 @@ class Pipeline:
             confidence=estimate.confidence,
             source_reliability=self._source_reliability(evidence),
             p_resol_severity=1.0 - score.p_resol,
-            category_calibrated=False,
+            category_calibrated=category_calibrated,
         )
         return evaluate(proposal, limits, exposure)
 
