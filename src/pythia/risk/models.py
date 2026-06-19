@@ -48,6 +48,7 @@ class TradeProposal:
     source_reliability: float
     p_resol_severity: float
     category_calibrated: bool
+    resolution_gated: bool = False
 
 
 @dataclass(frozen=True, slots=True)

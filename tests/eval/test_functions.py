@@ -65,6 +65,17 @@ def test_calibration_by_category_reports_delta_and_n() -> None:
     assert calibration.brier_system < calibration.brier_market
     assert calibration.delta == pytest.approx(calibration.brier_market - calibration.brier_system)
     assert calibration.delta > 0
+    assert calibration.invalid_count == 0
+    assert calibration.invalid_rate == 0.0
+
+
+def test_calibration_by_category_reports_invalid_rate_excluding_it_from_brier_n() -> None:
+    records = {"politics": [(0.9, 0.6, 1), (0.1, 0.4, 0)]}
+    result = calibration_by_category(records, invalid_counts={"politics": 2})
+    calibration = result[0]
+    assert calibration.n == 2  # Brier population: valid resolutions only
+    assert calibration.invalid_count == 2
+    assert calibration.invalid_rate == pytest.approx(2 / 4)  # invalid / (valid + invalid)
 
 
 def test_ev_predicted_vs_realized_aggregates() -> None:

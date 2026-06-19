@@ -37,6 +37,13 @@ def test_classify_detects_chainlink() -> None:
     assert classify_resolution_source("Chainlink price feed") == ResolutionSourceType.CHAINLINK
 
 
+def test_classify_detects_clean_binary() -> None:
+    assert (
+        classify_resolution_source("Official binary settlement")
+        == ResolutionSourceType.CLEAN_BINARY
+    )
+
+
 def test_resolution_penalty_grades_safer_sources_higher() -> None:
     assert resolution_penalty(ResolutionSourceType.CHAINLINK) > resolution_penalty(
         ResolutionSourceType.SUBJECTIVE_UMA

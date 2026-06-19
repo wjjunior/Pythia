@@ -7,6 +7,7 @@ and writes an append-only `audit_event` at every step under one `pipeline_run`.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 
 from sqlmodel import Session
@@ -32,11 +33,22 @@ from pythia.db.repositories import (
     EstimateRepository,
     PipelineRunRepository,
     RecalibrationRepository,
+    ResolutionRepository,
     ScoreRepository,
     SourceRepository,
 )
 from pythia.portfolio.service import PortfolioService
-from pythia.risk import ExposureState, RiskDecision, RiskLimits, RiskReason, TradeProposal, evaluate
+from pythia.risk import (
+    ExposureState,
+    RiskDecision,
+    RiskLimits,
+    RiskReason,
+    TradeProposal,
+    evaluate,
+    grade_p_resol,
+    invalid_rate,
+    is_resolution_gated,
+)
 from pythia.scoring import (
     build_score,
     classify_resolution_source,
@@ -87,6 +99,7 @@ class Pipeline:
         self._estimates = EstimateRepository(session)
         self._members = EstimateMemberRepository(session)
         self._recalibration = RecalibrationRepository(session)
+        self._resolutions = ResolutionRepository(session)
         self._scores = ScoreRepository(session)
         self._runs = PipelineRunRepository(session)
         self._audit = AuditRepository(session)
@@ -160,8 +173,9 @@ class Pipeline:
             )
         )
 
+        graded_p_resol, resolution_gated = self._resolution_risk(market, snapshot)
         scored, category_calibrated = self._recalibrated(market.category, critiqued)
-        score = self._score(market, scored, snapshot)
+        score = self._score(scored, snapshot, graded_p_resol)
         self._scores.add(score)
         _log.info(
             "score",
@@ -193,6 +207,7 @@ class Pipeline:
             exposure,
             limits,
             category_calibrated,
+            resolution_gated,
         )
         _log.info(
             "risk_decision",
@@ -254,8 +269,7 @@ class Pipeline:
             return estimate, False
         return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
 
-    def _score(self, market: Market, estimate: Estimate, snapshot: MarketSnapshot) -> Score:
-        p_resol = resolution_penalty(classify_resolution_source(market.resolution_source))
+    def _score(self, estimate: Estimate, snapshot: MarketSnapshot, p_resol: float) -> Score:
         return build_score(
             estimate,
             snapshot.yes_price,
@@ -268,6 +282,16 @@ class Pipeline:
             p_corr=NEUTRAL_PENALTY,
         )
 
+    def _resolution_risk(self, market: Market, snapshot: MarketSnapshot) -> tuple[float, bool]:
+        since = snapshot.ts - timedelta(days=self._settings.dispute_risk_lookback)
+        invalid, total = self._resolutions.dispute_counts(
+            market.category, since=since, asof=snapshot.ts
+        )
+        rate = invalid_rate(invalid, total)
+        base = resolution_penalty(classify_resolution_source(market.resolution_source))
+        gated = is_resolution_gated(rate, self._settings.max_category_invalid_rate)
+        return grade_p_resol(base, rate), gated
+
     def _evaluate_risk(
         self,
         market: Market,
@@ -278,6 +302,7 @@ class Pipeline:
         exposure: ExposureState,
         limits: RiskLimits,
         category_calibrated: bool,
+        resolution_gated: bool,
     ) -> RiskDecision:
         proposed = position_size(
             available,
@@ -294,6 +319,7 @@ class Pipeline:
             source_reliability=self._source_reliability(evidence),
             p_resol_severity=1.0 - score.p_resol,
             category_calibrated=category_calibrated,
+            resolution_gated=resolution_gated,
         )
         return evaluate(proposal, limits, exposure)
 
