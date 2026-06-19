@@ -26,6 +26,7 @@ from pythia.common import (
     TradeStatus,
 )
 from pythia.db import models
+from pythia.eval.recalibration import CalibrationMap, as_method
 
 
 def _to_db_market(market: Market) -> models.Market:
@@ -268,6 +269,42 @@ class EstimateMemberRepository:
             MemberForecast(model=row.model, p_member=row.p_member, weight=row.weight)
             for row in rows
         ]
+
+
+class RecalibrationRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save(self, category: str, cmap: CalibrationMap, n_fit: int) -> None:
+        for row in self._active_rows(category):
+            row.active = False
+            self._session.add(row)
+        self._session.add(
+            models.RecalibrationModel(
+                category=category,
+                method=cmap.method,
+                params=dict(cmap.params),
+                n_fit=n_fit,
+                active=True,
+            )
+        )
+        self._session.commit()
+
+    def active_for_category(self, category: str) -> tuple[CalibrationMap, int] | None:
+        row = next(iter(self._active_rows(category)), None)
+        if row is None:
+            return None
+        return CalibrationMap(method=as_method(row.method), params=row.params), row.n_fit
+
+    def _active_rows(self, category: str) -> Sequence[models.RecalibrationModel]:
+        return self._session.exec(
+            select(models.RecalibrationModel)
+            .where(
+                models.RecalibrationModel.category == category,
+                col(models.RecalibrationModel.active).is_(True),
+            )
+            .order_by(col(models.RecalibrationModel.fitted_at).desc())
+        ).all()
 
 
 def _to_db_score(score: Score) -> models.Score:

@@ -29,10 +29,12 @@ from pythia.db.repositories import (
     EstimateMemberRepository,
     EstimateRepository,
     MarketRepository,
+    RecalibrationRepository,
     ScoreRepository,
     SnapshotRepository,
     SourceRepository,
 )
+from pythia.eval.recalibration import CalibrationMap
 from pythia.orchestration import Pipeline, PipelineRunStatus
 from pythia.rag import EvidenceStore, StubEmbeddingPort
 from pythia.risk import RiskReason
@@ -213,6 +215,21 @@ def test_pipeline_persists_ensemble_members(session: Session) -> None:
     assert result.estimate is not None
     stored = EstimateMemberRepository(session).list_for_estimate(result.estimate.id)
     assert {member.model for member in stored} == {"a/m1", "b/m2"}
+
+
+def test_pipeline_scores_on_the_recalibrated_probability(session: Session) -> None:
+    market, snapshot = _seed(session)
+    RecalibrationRepository(session).save(
+        "politics",
+        CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.55, 0.65]}),
+        n_fit=100,
+    )
+    result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.estimate is not None
+    assert result.score is not None
+    # The estimate row keeps the raw p_model; the score uses p_calibrated = interp(0.7) = 0.62.
+    assert result.estimate.p_model == 0.7
+    assert result.score.edge == pytest.approx(0.62 - 0.5)
 
 
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:
