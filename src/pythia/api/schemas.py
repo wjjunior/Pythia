@@ -60,6 +60,14 @@ class CalibrationResponse(BaseModel):
     ev: EvCalibration | None
 
 
+class CostResponse(BaseModel):
+    total: float
+    cost_per_opportunity: float
+    by_agent: dict[str, float]
+    by_model: dict[str, float]
+    by_day: dict[str, float]
+
+
 class GrowthCurvePointView(BaseModel):
     kelly_mult: float
     log_growth_rate: float

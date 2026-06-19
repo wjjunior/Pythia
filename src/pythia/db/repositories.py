@@ -437,6 +437,11 @@ class CostRepository:
         scored = self._session.exec(select(func.count()).select_from(models.Score)).one()
         return self.total() / scored if scored else 0.0
 
+    def by_day(self) -> dict[str, float]:
+        day = func.date(col(models.CostEvent.ts))
+        statement = select(day, func.sum(models.CostEvent.cost_usd)).group_by(day).order_by(day)
+        return {str(date): float(total) for date, total in self._session.exec(statement).all()}
+
 
 def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
     return PaperTrade(

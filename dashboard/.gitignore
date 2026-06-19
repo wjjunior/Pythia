@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Generated from the FastAPI OpenAPI schema by `npm run gen` (the contract source).
+openapi.json
+src/lib/api.gen.ts
+
+.DS_Store
+*.log
