@@ -1,0 +1,223 @@
+"""API integration tests (§A.1/A.2): every route against seeded data, SSE, OpenAPI, health."""
+
+import uuid
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlmodel import Session
+
+from pythia.api.app import create_app
+from pythia.api.deps import get_session, settings_dependency
+from pythia.api.events import SseChannel
+from pythia.common import Estimate, Market, MarketSnapshot, Score, Source
+from pythia.config import Settings
+from pythia.db import models
+from pythia.db.repositories import (
+    EstimateRepository,
+    MarketRepository,
+    ScoreRepository,
+    SnapshotRepository,
+    SourceRepository,
+)
+
+pytestmark = pytest.mark.integration
+
+MARKET_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt26-market"))
+SNAPSHOT_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt26-snapshot"))
+ESTIMATE_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt26-estimate"))
+SOURCE_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt26-source"))
+EVIDENCE_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt26-evidence"))
+TS = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def app(session: Session) -> FastAPI:
+    application = create_app()
+    application.dependency_overrides[get_session] = lambda: session
+    application.dependency_overrides[settings_dependency] = lambda: Settings(
+        _env_file=None, database_url="postgresql+psycopg://x/y"
+    )
+    return application
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _seed_scored_market(session: Session, *, category: str = "politics") -> None:
+    MarketRepository(session).upsert(
+        Market(
+            id=MARKET_ID,
+            external_id="pyt26",
+            question="Will it resolve YES?",
+            category=category,
+            resolution_rule="rule",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=SNAPSHOT_ID,
+            market_id=MARKET_ID,
+            ts=TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    SourceRepository(session).upsert(
+        Source(id=SOURCE_ID, name="reuters", kind="news", reliability=0.9)
+    )
+    session.add(
+        models.Evidence(
+            id=uuid.UUID(EVIDENCE_ID),
+            market_id=uuid.UUID(MARKET_ID),
+            source_id=uuid.UUID(SOURCE_ID),
+            observed_at=TS - timedelta(days=1),
+            content="evidence content",
+        )
+    )
+    session.commit()
+    EstimateRepository(session).add(
+        Estimate(
+            id=ESTIMATE_ID,
+            market_id=MARKET_ID,
+            snapshot_id=SNAPSHOT_ID,
+            p_model=0.7,
+            confidence=0.8,
+            lower=0.6,
+            upper=0.8,
+            rationale="r",
+            evidence_ids=[EVIDENCE_ID],
+            model_name="stub",
+        )
+    )
+    ScoreRepository(session).add(
+        Score(
+            estimate_id=ESTIMATE_ID,
+            edge=0.2,
+            edge_net=0.19,
+            ev_unit=0.19,
+            p_resol=0.6,
+            p_liq=1.0,
+            p_time=1.0,
+            p_corr=1.0,
+            opportunity_score=0.0912,
+            kelly_fraction=0.38,
+        )
+    )
+
+
+def test_list_markets_filters_by_category(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session, category="politics")
+    assert len(client.get("/api/markets").json()) == 1
+    assert len(client.get("/api/markets?category=politics").json()) == 1
+    assert client.get("/api/markets?category=sports").json() == []
+
+
+def test_market_detail_includes_snapshot_estimate_and_evidence(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    body = client.get(f"/api/markets/{MARKET_ID}").json()
+    assert body["market"]["id"] == MARKET_ID
+    assert len(body["snapshots"]) == 1
+    assert body["latest_estimate"]["id"] == ESTIMATE_ID
+    assert body["evidence"][0]["id"] == EVIDENCE_ID
+
+
+def test_market_detail_unknown_is_404(client: TestClient) -> None:
+    missing = str(uuid.uuid5(uuid.NAMESPACE_URL, "missing"))
+    assert client.get(f"/api/markets/{missing}").status_code == 404
+
+
+def test_radar_ranks_opportunities(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    body = client.get("/api/radar?limit=10").json()
+    assert len(body) == 1
+    assert body[0]["score"]["opportunity_score"] == pytest.approx(0.0912)
+    assert body[0]["market"]["id"] == MARKET_ID
+
+
+def test_estimate_detail_includes_cited_evidence(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    body = client.get(f"/api/estimates/{ESTIMATE_ID}").json()
+    assert body["estimate"]["id"] == ESTIMATE_ID
+    assert body["evidence"][0]["id"] == EVIDENCE_ID
+
+
+def test_paper_positions_reports_capital_state(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    client.post(
+        f"/api/review/{ESTIMATE_ID}",
+        json={"action": "approve", "side": "YES", "size": 100.0, "reviewer": "alice"},
+    )
+    body = client.get("/api/paper/positions").json()
+    assert len(body["positions"]) == 1
+    assert body["capital"]["locked_in_open"] == pytest.approx(100.0)
+    assert body["capital"]["available_capital"] == pytest.approx(10_000.0 - 100.0)
+
+
+def test_calibration_reports_categories(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    session.add(
+        models.Resolution(
+            market_id=uuid.UUID(MARKET_ID), outcome=1, resolved_at=TS + timedelta(days=10)
+        )
+    )
+    session.commit()
+    body = client.get("/api/calibration").json()
+    assert body["categories"][0]["category"] == "politics"
+    assert body["categories"][0]["n"] == 1
+
+
+def test_review_approve_opens_a_paper_trade(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    response = client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
+    )
+    assert response.status_code == 200
+    assert response.json()["action"] == "approve"
+    assert response.json()["trade"]["status"] == "open"
+
+
+def test_review_reject_opens_nothing(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    response = client.post(f"/api/review/{ESTIMATE_ID}", json={"action": "reject"})
+    assert response.status_code == 200
+    assert response.json()["trade"] is None
+
+
+def test_review_unknown_estimate_is_404(client: TestClient) -> None:
+    missing = str(uuid.uuid5(uuid.NAMESPACE_URL, "missing-estimate"))
+    response = client.post(f"/api/review/{missing}", json={"action": "reject"})
+    assert response.status_code == 404
+
+
+def test_health_reports_db_and_freshness(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["database"] is True
+    assert body["last_snapshot_at"] is not None
+
+
+def test_sse_emits_a_published_event(app: FastAPI, client: TestClient) -> None:
+    app.state.broadcaster.publish(SseChannel.RADAR_CHANGED, "market-xyz")
+    response = client.get("/api/events?limit=1")
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    assert "event: radar_changed" in response.text
+    assert "market-xyz" in response.text
+
+
+def test_openapi_schema_is_emitted(client: TestClient) -> None:
+    spec = client.get("/openapi.json").json()
+    assert "/api/radar" in spec["paths"]
+    assert "/api/review/{estimate_id}" in spec["paths"]
+    assert "CalibrationResponse" in spec["components"]["schemas"]
