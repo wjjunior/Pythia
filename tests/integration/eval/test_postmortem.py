@@ -128,6 +128,12 @@ def test_surprise_writes_postmortem_and_proposes_candidate(session: Session) -> 
     assert ImprovementCandidateRepository(session).list_by_status(CandidateStatus.ADOPTED) == []
 
 
+def test_detect_category_drift_uses_the_configured_window(session: Session) -> None:
+    service = PostmortemService(session, _settings())  # default postmortem_drift_window = 20
+    assert service.detect_category_drift([0.1] * 20 + [-0.05] * 20)  # was ahead, now behind
+    assert not service.detect_category_drift([0.1] * 40)  # steadily ahead of the market
+
+
 def test_calibrated_loss_writes_nothing(session: Session) -> None:
     estimate = _seed_estimate(session, "calibrated", p_model=0.7, confidence=0.7)
     service = PostmortemService(session, _settings())

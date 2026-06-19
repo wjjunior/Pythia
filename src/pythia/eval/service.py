@@ -7,6 +7,7 @@ EV-predicted-vs-realized honesty check over the resolved paper trades.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -47,6 +48,7 @@ from pythia.eval.models import (
 from pythia.eval.postmortem import (
     AttributionPort,
     StubAttributionAgent,
+    is_category_drifting,
     is_surprising,
     surprise_score,
 )
@@ -293,6 +295,14 @@ class PostmortemService:
                 )
             )
         return postmortem
+
+    def detect_category_drift(self, brier_deltas: Sequence[float]) -> bool:
+        """The aggregate-drift trigger: is a category's Brier-vs-market advantage eroding?
+
+        `brier_deltas` is the category's chronological per-resolution `brier_market - brier_system`.
+        Like the surprise trigger, this reacts to a trend, never a single outcome.
+        """
+        return is_category_drifting(brier_deltas, window=self._settings.postmortem_drift_window)
 
     def validate_candidate(
         self, candidate_id: str, ablation: Ablation, *, human_approved: bool = False

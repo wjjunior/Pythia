@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pythia.eval.improvement as improvement_module
 import pythia.eval.postmortem as postmortem_module
+import pythia.eval.service as service_module
 from pythia.common import CandidateStatus, FailureClass, ImprovementAction
 from pythia.eval.harness.models import Ablation, ConfigReport
 from pythia.eval.improvement import adoption_decision, requires_review, suggested_action
@@ -88,8 +89,9 @@ def test_structural_improvement_awaits_the_human_gate() -> None:
 
 
 def test_loop_never_touches_the_money_path() -> None:
-    # Structural guarantee: the loop cannot mutate scoring/risk — it only proposes.
-    for module in (postmortem_module, improvement_module):
+    # Structural guarantee: the loop — including its impure orchestrator — cannot mutate
+    # scoring/risk. It only proposes.
+    for module in (postmortem_module, improvement_module, service_module):
         assert module.__file__ is not None
         source = Path(module.__file__).read_text()
         assert "pythia.scoring" not in source
