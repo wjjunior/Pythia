@@ -60,6 +60,28 @@ class CalibrationResponse(BaseModel):
     ev: EvCalibration | None
 
 
+class GrowthCurvePointView(BaseModel):
+    kelly_mult: float
+    log_growth_rate: float
+
+
+class SimulationResponse(BaseModel):
+    category: str | None
+    n: int
+    paths: int
+    horizon: int
+    starting_bankroll: float
+    terminal_p5: float
+    terminal_p50: float
+    terminal_p95: float
+    log_growth_rate: float
+    mean_max_drawdown: float
+    p95_max_drawdown: float
+    probability_of_ruin: float
+    ruin_floor: float
+    growth_curve: list[GrowthCurvePointView]
+
+
 class ReviewAction(StrEnum):
     APPROVE = "approve"
     REJECT = "reject"

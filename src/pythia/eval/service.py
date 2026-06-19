@@ -36,25 +36,28 @@ class CalibrationService:
 
     def report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
         outcomes = self._resolved_outcomes()
-        latest = self._latest_estimates(list(outcomes))
-
-        records: dict[str, list[tuple[float, float, int]]] = {}
-        forecasts: list[float] = []
-        observed: list[int] = []
-        categories = self._categories(list(latest))
-        prices = self._snapshot_prices([estimate.snapshot_id for estimate in latest.values()])
-        for market_id, estimate in latest.items():
-            outcome = outcomes[market_id]
-            record = (estimate.p_model, prices[estimate.snapshot_id], outcome)
-            records.setdefault(categories[market_id], []).append(record)
-            forecasts.append(estimate.p_model)
-            observed.append(outcome)
+        records = self._records(outcomes)
+        forecasts = [p_model for samples in records.values() for (p_model, _q, _o) in samples]
+        observed = [outcome for samples in records.values() for (_p, _q, outcome) in samples]
 
         return CalibrationReport(
             categories=calibration_by_category(records),
             reliability=reliability_bins(forecasts, observed, n_bins) if forecasts else [],
             ev=self._ev(outcomes),
         )
+
+    def records(self) -> dict[str, list[tuple[float, float, int]]]:
+        return self._records(self._resolved_outcomes())
+
+    def _records(self, outcomes: dict[uuid.UUID, int]) -> dict[str, list[tuple[float, float, int]]]:
+        latest = self._latest_estimates(list(outcomes))
+        categories = self._categories(list(latest))
+        prices = self._snapshot_prices([estimate.snapshot_id for estimate in latest.values()])
+        records: dict[str, list[tuple[float, float, int]]] = {}
+        for market_id, estimate in latest.items():
+            record = (estimate.p_model, prices[estimate.snapshot_id], outcomes[market_id])
+            records.setdefault(categories[market_id], []).append(record)
+        return records
 
     def _resolved_outcomes(self) -> dict[uuid.UUID, int]:
         rows = self._session.exec(

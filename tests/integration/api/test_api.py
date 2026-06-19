@@ -189,6 +189,39 @@ def test_calibration_reports_categories(client: TestClient, session: Session) ->
     assert body["categories"][0]["n"] == 1
 
 
+def _resolve_market(session: Session, *, outcome: int = 1) -> None:
+    session.add(
+        models.Resolution(
+            market_id=uuid.UUID(MARKET_ID), outcome=outcome, resolved_at=TS + timedelta(days=10)
+        )
+    )
+    session.commit()
+
+
+def test_simulation_projects_from_measured_data(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    _resolve_market(session)
+    body = client.get("/api/simulation").json()
+    assert body["n"] == 1
+    assert body["terminal_p5"] <= body["terminal_p50"] <= body["terminal_p95"]
+    assert 0.0 <= body["probability_of_ruin"] <= 1.0
+    assert len(body["growth_curve"]) > 0
+
+
+def test_simulation_is_reproducible(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    _resolve_market(session)
+    first = client.get("/api/simulation").json()
+    second = client.get("/api/simulation").json()
+    assert first == second
+
+
+def test_simulation_without_measurements_is_404(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    _resolve_market(session)
+    assert client.get("/api/simulation?category=sports").status_code == 404
+
+
 def test_review_approve_opens_a_paper_trade(client: TestClient, session: Session) -> None:
     _seed_scored_market(session)
     response = client.post(
