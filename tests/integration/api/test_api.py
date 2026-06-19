@@ -164,6 +164,18 @@ def test_paper_positions_reports_capital_state(client: TestClient, session: Sess
     assert body["capital"]["available_capital"] == pytest.approx(10_000.0 - 100.0)
 
 
+def test_portfolio_reports_capital_and_exposure(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session, category="politics")
+    client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
+    )
+    body = client.get("/api/portfolio").json()
+    assert body["capital"]["locked_in_open"] == pytest.approx(100.0)
+    assert body["capital"]["available_capital"] == pytest.approx(10_000.0 - 100.0)
+    assert body["exposure"]["per_category"]["politics"] == pytest.approx(100.0)
+    assert body["exposure"]["absolute_total"] == pytest.approx(100.0)
+
+
 def test_calibration_reports_categories(client: TestClient, session: Session) -> None:
     _seed_scored_market(session)
     session.add(

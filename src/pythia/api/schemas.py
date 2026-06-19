@@ -41,6 +41,19 @@ class PaperPortfolio(BaseModel):
     capital: CapitalState
 
 
+class ExposureView(BaseModel):
+    per_category: dict[str, float]
+    per_correlation_group: dict[str, float]
+    daily_total: float
+    weekly_total: float
+    absolute_total: float
+
+
+class PortfolioResponse(BaseModel):
+    capital: CapitalState
+    exposure: ExposureView
+
+
 class CalibrationResponse(BaseModel):
     categories: list[CategoryCalibration]
     reliability: list[ReliabilityBin]

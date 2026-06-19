@@ -32,7 +32,8 @@ from pythia.db.repositories import (
     ScoreRepository,
     SourceRepository,
 )
-from pythia.risk import ExposureState, RiskDecision, RiskLimits, TradeProposal, evaluate
+from pythia.portfolio.service import PortfolioService
+from pythia.risk import ExposureState, RiskDecision, RiskLimits, RiskReason, TradeProposal, evaluate
 from pythia.scoring import (
     build_score,
     classify_resolution_source,
@@ -45,10 +46,6 @@ NEUTRAL_PENALTY = 1.0
 DEFAULT_FEE = 0.0
 DEFAULT_SLIPPAGE = 0.0
 
-_EMPTY_EXPOSURE = ExposureState(
-    per_group={}, per_category={}, daily_total=0.0, weekly_total=0.0, absolute_total=0.0
-)
-
 
 class PipelineRunStatus(StrEnum):
     RUNNING = "running"
@@ -59,8 +56,8 @@ class PipelineRunStatus(StrEnum):
 @dataclass(frozen=True, slots=True)
 class PipelineResult:
     run_id: str
-    estimate: Estimate
-    score: Score
+    estimate: Estimate | None
+    score: Score | None
     decision: RiskDecision
 
 
@@ -98,6 +95,14 @@ class Pipeline:
             raise
 
     def _run(self, run_id: str, market: Market, snapshot: MarketSnapshot) -> PipelineResult:
+        portfolio = PortfolioService(self._session, self._settings)
+        available = portfolio.available_capital()
+        exposure = portfolio.exposure_state()
+        limits = self._risk_limits(portfolio.total_capital())
+
+        if exposure.per_category.get(market.category, 0.0) >= limits.cap_per_category:
+            return self._veto_before_estimation(run_id, market)
+
         evidence = self._evidence.retrieve(market.id, snapshot.ts, self._k)
 
         estimate = self._llm.estimate(
@@ -147,7 +152,9 @@ class Pipeline:
             )
         )
 
-        decision = self._evaluate_risk(market, critiqued, score, evidence)
+        decision = self._evaluate_risk(
+            market, critiqued, score, evidence, available, exposure, limits
+        )
         self._audit.append(
             AuditEvent(
                 kind=AuditKind.RISK_DECISION,
@@ -166,6 +173,30 @@ class Pipeline:
         self._runs.finish(run_id, status=PipelineRunStatus.COMPLETED)
         return PipelineResult(run_id=run_id, estimate=critiqued, score=score, decision=decision)
 
+    def _veto_before_estimation(self, run_id: str, market: Market) -> PipelineResult:
+        decision = RiskDecision(
+            approved_size=0.0,
+            vetoed=True,
+            reasons=(RiskReason.CAP_PER_CATEGORY,),
+            paper_only=True,
+        )
+        self._audit.append(
+            AuditEvent(
+                kind=AuditKind.RISK_DECISION,
+                market_id=market.id,
+                payload={
+                    "run_id": run_id,
+                    "estimate_id": None,
+                    "approved_size": 0.0,
+                    "vetoed": True,
+                    "paper_only": True,
+                    "reasons": [RiskReason.CAP_PER_CATEGORY.value],
+                },
+            )
+        )
+        self._runs.finish(run_id, status=PipelineRunStatus.COMPLETED)
+        return PipelineResult(run_id=run_id, estimate=None, score=None, decision=decision)
+
     def _score(self, market: Market, estimate: Estimate, snapshot: MarketSnapshot) -> Score:
         p_resol = resolution_penalty(classify_resolution_source(market.resolution_source))
         return build_score(
@@ -181,10 +212,15 @@ class Pipeline:
         )
 
     def _evaluate_risk(
-        self, market: Market, estimate: Estimate, score: Score, evidence: list[Evidence]
+        self,
+        market: Market,
+        estimate: Estimate,
+        score: Score,
+        evidence: list[Evidence],
+        available: float,
+        exposure: ExposureState,
+        limits: RiskLimits,
     ) -> RiskDecision:
-        available = self._settings.bankroll_paper
-        limits = self._risk_limits(available)
         proposed = position_size(
             available,
             score.kelly_fraction,
@@ -201,17 +237,17 @@ class Pipeline:
             p_resol_severity=1.0 - score.p_resol,
             category_calibrated=False,
         )
-        return evaluate(proposal, limits, _EMPTY_EXPOSURE)
+        return evaluate(proposal, limits, exposure)
 
-    def _risk_limits(self, available: float) -> RiskLimits:
+    def _risk_limits(self, capital: float) -> RiskLimits:
         settings = self._settings
         return RiskLimits(
-            cap_per_trade=available * settings.cap_per_trade,
-            cap_per_market=available * settings.cap_per_market,
-            cap_per_category=available * settings.cap_per_category,
-            cap_daily=available * settings.cap_daily,
-            cap_weekly=available * settings.cap_weekly,
-            cap_absolute=available * settings.cap_absolute,
+            cap_per_trade=capital * settings.cap_per_trade,
+            cap_per_market=capital * settings.cap_per_market,
+            cap_per_category=capital * settings.cap_per_category,
+            cap_daily=capital * settings.cap_daily,
+            cap_weekly=capital * settings.cap_weekly,
+            cap_absolute=capital * settings.cap_absolute,
             min_source_reliability=settings.min_source_reliability,
             min_confidence=settings.min_confidence,
             max_p_resol_severity=settings.max_p_resol_severity,
