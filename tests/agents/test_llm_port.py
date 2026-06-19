@@ -6,7 +6,13 @@ from typing import Any
 
 import pytest
 
-from pythia.agents import ModelRouter, OpenRouterLLMPort, StubLLMPort, make_llm_port
+from pythia.agents import (
+    LLMResponseError,
+    ModelRouter,
+    OpenRouterLLMPort,
+    StubLLMPort,
+    make_llm_port,
+)
 from pythia.common import (
     CostEvent,
     CriticVerdict,
@@ -167,4 +173,21 @@ def test_critique_normalises_string_boolean_and_null_notes() -> None:
 def test_estimate_with_empty_slate_raises_a_clear_error() -> None:
     port = OpenRouterLLMPort(_FakeTransport([]), ModelRouter(slates={"estimation": []}))
     with pytest.raises(ValueError):
+        port.estimate(_ctx())
+
+
+def test_estimate_raises_typed_error_on_non_json_content() -> None:
+    response: dict[str, Any] = {
+        "model": "m",
+        "choices": [{"message": {"content": "sorry, I cannot answer"}}],
+        "usage": {},
+    }
+    port = OpenRouterLLMPort(_FakeTransport([response]), ModelRouter())
+    with pytest.raises(LLMResponseError):
+        port.estimate(_ctx())
+
+
+def test_estimate_raises_typed_error_on_malformed_envelope() -> None:
+    port = OpenRouterLLMPort(_FakeTransport([{"choices": []}]), ModelRouter())
+    with pytest.raises(LLMResponseError):
         port.estimate(_ctx())

@@ -8,15 +8,28 @@ whole RAG path runs on the stub, so CI never needs a key.
 import hashlib
 import math
 import re
-from typing import Any, Protocol
+from typing import Protocol
 
 import httpx
+from pydantic import BaseModel, ValidationError
 
 from pythia.common import EmbeddingPort
 from pythia.config import Settings
 from pythia.db.models import EMBEDDING_DIM
 
 _TOKEN = re.compile(r"[a-z0-9]+")
+
+
+class EmbeddingResponseError(RuntimeError):
+    """The embedding provider returned a response that could not be parsed."""
+
+
+class _EmbeddingItem(BaseModel):
+    embedding: list[float]
+
+
+class _EmbeddingResponse(BaseModel):
+    data: list[_EmbeddingItem]
 
 
 def _tokenize(text: str) -> list[str]:
@@ -62,8 +75,11 @@ class HttpxEmbeddingTransport:
     def embed(self, *, model: str, texts: list[str]) -> list[list[float]]:
         response = self._client.post("/embeddings", json={"model": model, "input": texts})
         response.raise_for_status()
-        data: dict[str, Any] = response.json()
-        return [list(map(float, item["embedding"])) for item in data["data"]]
+        try:
+            parsed = _EmbeddingResponse.model_validate_json(response.text)
+        except ValidationError as exc:
+            raise EmbeddingResponseError(f"invalid embeddings response: {exc}") from exc
+        return [item.embedding for item in parsed.data]
 
 
 class ProviderEmbeddingPort:

@@ -4,19 +4,38 @@ LLMPort is the single choke point where model cost is MEASURED. No secrets are n
 OpenRouter key, the stub runs the pipeline end-to-end.
 """
 
-import json
 import time
 import uuid
 from collections.abc import Callable
 from typing import Any, Protocol
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 from pythia.agents.router import CriticDiversityError, ModelRouter
 from pythia.common import CostEvent, CriticVerdict, Estimate, EstimationContext, Evidence, LLMPort
 from pythia.config import Settings
 
 CostSink = Callable[[CostEvent], None]
+
+
+class LLMResponseError(RuntimeError):
+    """The LLM returned a response that could not be parsed into the expected schema."""
+
+
+class _EstimationPayload(BaseModel):
+    p_model: float
+    confidence: float = 0.5
+    lower: float
+    upper: float
+    rationale: str
+
+
+class _CritiquePayload(BaseModel):
+    adjusted_confidence: float | None = None
+    objections: list[str] = Field(default_factory=list)
+    lookahead_leak: bool = False
+    notes: str | None = None
 
 
 class ChatTransport(Protocol):
@@ -49,12 +68,6 @@ class HttpxChatTransport:
 
 def _deterministic_id(*parts: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)))
-
-
-def _as_bool(value: object) -> bool:
-    if isinstance(value, str):
-        return value.strip().lower() in {"true", "1", "yes"}
-    return bool(value)
 
 
 class StubLLMPort:
@@ -94,10 +107,20 @@ def _strip_json_fence(content: str) -> str:
     return content.strip()
 
 
-def _parse_content(response: dict[str, Any]) -> dict[str, Any]:
-    content = _strip_json_fence(str(response["choices"][0]["message"]["content"]))
-    parsed: dict[str, Any] = json.loads(content)
-    return parsed
+def _message_content(response: dict[str, Any]) -> str:
+    try:
+        content = response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMResponseError(f"malformed chat completion envelope: {exc}") from exc
+    return _strip_json_fence(str(content))
+
+
+def _parse_payload[T: BaseModel](response: dict[str, Any], schema: type[T]) -> T:
+    content = _message_content(response)
+    try:
+        return schema.model_validate_json(content)
+    except ValidationError as exc:
+        raise LLMResponseError(f"invalid {schema.__name__} from LLM: {exc}") from exc
 
 
 def _estimation_messages(ctx: EstimationContext) -> list[dict[str, str]]:
@@ -194,16 +217,16 @@ class OpenRouterLLMPort:
     def estimate(self, ctx: EstimationContext) -> Estimate:
         response, model, latency_ms = self._complete("estimation", _estimation_messages(ctx))
         self._emit_cost("estimation", "estimate", model, response, latency_ms)
-        payload = _parse_content(response)
+        payload = _parse_payload(response, _EstimationPayload)
         return Estimate(
             id=_deterministic_id("estimate", ctx.snapshot.id, model),
             market_id=ctx.market.id,
             snapshot_id=ctx.snapshot.id,
-            p_model=float(payload["p_model"]),
-            confidence=float(payload.get("confidence", 0.5)),
-            lower=float(payload["lower"]),
-            upper=float(payload["upper"]),
-            rationale=str(payload["rationale"]),
+            p_model=payload.p_model,
+            confidence=payload.confidence,
+            lower=payload.lower,
+            upper=payload.upper,
+            rationale=payload.rationale,
             evidence_ids=[evidence.id for evidence in ctx.evidence],
             model_name=model,
         )
@@ -216,13 +239,13 @@ class OpenRouterLLMPort:
             "critic", _critique_messages(est, evidence), candidates
         )
         self._emit_cost("critic", "critique", model, response, latency_ms)
-        payload = _parse_content(response)
-        notes = payload.get("notes")
+        payload = _parse_payload(response, _CritiquePayload)
+        adjusted = payload.adjusted_confidence
         return CriticVerdict(
-            adjusted_confidence=float(payload.get("adjusted_confidence", est.confidence)),
-            objections=[str(objection) for objection in payload.get("objections", [])],
-            lookahead_leak=_as_bool(payload.get("lookahead_leak", False)),
-            notes=str(notes) if notes is not None else None,
+            adjusted_confidence=adjusted if adjusted is not None else est.confidence,
+            objections=payload.objections,
+            lookahead_leak=payload.lookahead_leak,
+            notes=payload.notes,
         )
 
 

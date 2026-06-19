@@ -125,6 +125,7 @@ class CriticVerdict(_Frozen):
 
 class AuditEvent(_Frozen):
     kind: AuditKind
+    # heterogeneous JSON ledger payload; shape varies by AuditKind
     payload: dict[str, Any]
     market_id: str | None = None
     ts: datetime | None = None
