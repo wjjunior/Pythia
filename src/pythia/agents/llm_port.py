@@ -5,7 +5,6 @@ OpenRouter key, the stub runs the pipeline end-to-end.
 """
 
 import time
-import uuid
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -24,6 +23,7 @@ from pythia.common import (
     LLMPort,
     MemberForecast,
 )
+from pythia.common.ids import deterministic_id
 from pythia.common.logging import current_correlation_id, get_logger
 from pythia.config import Settings
 from pythia.config.settings import AggregationMethod
@@ -80,17 +80,13 @@ class HttpxChatTransport:
         return data
 
 
-def _deterministic_id(*parts: str) -> str:
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)))
-
-
 class StubLLMPort:
     """Deterministic, zero-secret estimator/critic: mirrors the market with low confidence."""
 
     def estimate(self, ctx: EstimationContext) -> Estimate:
         q = ctx.snapshot.yes_price
         return Estimate(
-            id=_deterministic_id("estimate", ctx.snapshot.id),
+            id=deterministic_id("estimate", ctx.snapshot.id),
             market_id=ctx.market.id,
             snapshot_id=ctx.snapshot.id,
             p_model=q,
@@ -275,7 +271,7 @@ class OpenRouterLLMPort:
         self._record_call("estimation", "estimate", model, response, latency_ms)
         payload = _parse_payload(response, _EstimationPayload)
         return Estimate(
-            id=_deterministic_id("estimate", ctx.snapshot.id, model),
+            id=deterministic_id("estimate", ctx.snapshot.id, model),
             market_id=ctx.market.id,
             snapshot_id=ctx.snapshot.id,
             p_model=payload.p_model,
@@ -304,7 +300,7 @@ class OpenRouterLLMPort:
             MemberForecast(model=member.model_name, p_member=member.p_model) for member in estimates
         ]
         return Estimate(
-            id=_deterministic_id("estimate", ctx.snapshot.id, "ensemble"),
+            id=deterministic_id("estimate", ctx.snapshot.id, "ensemble"),
             market_id=ctx.market.id,
             snapshot_id=ctx.snapshot.id,
             p_model=forecast.p_model,

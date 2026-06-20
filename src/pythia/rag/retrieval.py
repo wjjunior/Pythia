@@ -12,16 +12,13 @@ from datetime import datetime
 from sqlmodel import Session, col, select
 
 from pythia.common import EmbeddingPort, Evidence
+from pythia.common.ids import deterministic_id
 from pythia.db import models
 from pythia.rag.chunking import chunk
 from pythia.rag.ranking import freshness, rank_score
 
 _DEFAULT_HALFLIFE_SECONDS = 7 * 86400.0
 _CANDIDATE_MULTIPLIER = 4
-
-
-def _deterministic_id(*parts: str) -> uuid.UUID:
-    return uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts))
 
 
 def _from_db_evidence(row: models.Evidence) -> Evidence:
@@ -61,8 +58,10 @@ class EvidenceStore:
         rows: list[models.Evidence] = []
         for index, (text, vector) in enumerate(zip(chunks, vectors, strict=True)):
             row = models.Evidence(
-                id=_deterministic_id(
-                    "evidence", market_id, source_id, observed_at.isoformat(), str(index)
+                id=uuid.UUID(
+                    deterministic_id(
+                        "evidence", market_id, source_id, observed_at.isoformat(), str(index)
+                    )
                 ),
                 market_id=uuid.UUID(market_id),
                 source_id=uuid.UUID(source_id),
