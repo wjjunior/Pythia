@@ -23,6 +23,7 @@ from pythia.common import (
     Side,
     TradeStatus,
 )
+from pythia.common.ids import deterministic_id
 from pythia.config import Settings
 from pythia.config.settings import RecalibrationMethod
 from pythia.db import models
@@ -215,10 +216,6 @@ class RecalibrationService:
         return {row.market_id: (row.outcome, row.resolved_at) for row in rows}
 
 
-def _deterministic_id(*parts: str) -> str:
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)))
-
-
 class PostmortemService:
     """Impure §5.5 orchestration: trigger → attribute → persist proposals; harness-gated adoption.
 
@@ -273,7 +270,7 @@ class PostmortemService:
         )
         postmortem = self._postmortems.add(
             Postmortem(
-                id=_deterministic_id("postmortem", estimate.id),
+                id=deterministic_id("postmortem", estimate.id),
                 market_id=estimate.market_id,
                 estimate_id=estimate.id,
                 failure_class=verdict.failure_class,
@@ -286,7 +283,7 @@ class PostmortemService:
         if action is not None:
             self._candidates.add(
                 ImprovementCandidate(
-                    id=_deterministic_id("candidate", postmortem.id, action.value),
+                    id=deterministic_id("candidate", postmortem.id, action.value),
                     postmortem_id=postmortem.id,
                     action=action,
                     status=CandidateStatus.PROPOSED,
