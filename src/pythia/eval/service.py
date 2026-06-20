@@ -34,6 +34,7 @@ from pythia.db.repositories import (
     ResolutionRepository,
 )
 from pythia.eval.functions import (
+    brier,
     calibration_by_category,
     ev_predicted_vs_realized,
     reliability_bins,
@@ -272,9 +273,10 @@ class PostmortemService:
             Postmortem(
                 id=deterministic_id("postmortem", estimate.id),
                 market_id=estimate.market_id,
+                category=category,
                 estimate_id=estimate.id,
                 failure_class=verdict.failure_class,
-                surprise=surprise,
+                brier=brier(estimate.p_model, outcome),
                 rationale=verdict.rationale,
                 evidence_ids=verdict.evidence_ids,
             )
@@ -285,7 +287,7 @@ class PostmortemService:
                 ImprovementCandidate(
                     id=deterministic_id("candidate", postmortem.id, action.value),
                     postmortem_id=postmortem.id,
-                    action=action,
+                    kind=action,
                     status=CandidateStatus.PROPOSED,
                     rationale=verdict.rationale,
                     requires_review=requires_review(action),
@@ -309,7 +311,7 @@ class PostmortemService:
             raise KeyError(candidate_id)
         status = adoption_decision(
             ablation,
-            min_n=self._settings.improvement_min_n,
+            min_n=self._settings.improvement_validation_min_n,
             requires_human_review=candidate.requires_review,
             human_approved=human_approved,
         )

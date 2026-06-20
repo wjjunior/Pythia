@@ -217,17 +217,19 @@ class PostmortemVerdict(_Frozen):
 class Postmortem(_Frozen):
     id: str
     market_id: str
-    estimate_id: str
+    category: str
     failure_class: FailureClass
-    surprise: float
+    brier: float
     rationale: str
+    estimate_id: str | None = None
+    resolution_id: str | None = None
     evidence_ids: list[str] = Field(default_factory=list)
 
 
 class ImprovementCandidate(_Frozen):
     id: str
     postmortem_id: str
-    action: ImprovementAction
+    kind: ImprovementAction
     status: CandidateStatus
     rationale: str
     requires_review: bool

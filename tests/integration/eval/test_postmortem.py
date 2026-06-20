@@ -123,7 +123,7 @@ def test_surprise_writes_postmortem_and_proposes_candidate(session: Session) -> 
 
     proposed = ImprovementCandidateRepository(session).list_by_status(CandidateStatus.PROPOSED)
     assert len(proposed) == 1
-    assert proposed[0].action == ImprovementAction.RECALIBRATE
+    assert proposed[0].kind == ImprovementAction.RECALIBRATE
     # Guardrail: nothing is auto-adopted on resolution.
     assert ImprovementCandidateRepository(session).list_by_status(CandidateStatus.ADOPTED) == []
 
@@ -167,7 +167,7 @@ def test_structural_candidate_waits_for_human_gate(session: Session) -> None:
         estimate, _fresh_evidence(), category="politics", outcome=0, ambiguous=True, asof=AT
     )
     candidate = ImprovementCandidateRepository(session).list_by_status(CandidateStatus.PROPOSED)[0]
-    assert candidate.action == ImprovementAction.GATE_CATEGORY
+    assert candidate.kind == ImprovementAction.GATE_CATEGORY
 
     pending = service.validate_candidate(candidate.id, _positive_ablation(), human_approved=False)
     assert pending.status == CandidateStatus.VALIDATING
