@@ -3,6 +3,9 @@
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
 
 from pythia.common import (
     AuditEvent,
@@ -10,11 +13,13 @@ from pythia.common import (
     AuditPort,
     Evidence,
     EvidencePort,
+    ExecutionPort,
     PaperLedgerPort,
     PaperTrade,
 )
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
+_SRC = Path(__file__).resolve().parents[2] / "src" / "pythia"
 
 
 class _StubEvidence:
@@ -48,6 +53,21 @@ def test_ledger_stub_conforms() -> None:
 def test_audit_stub_conforms() -> None:
     port: AuditPort = _StubAudit()
     port.append(AuditEvent(kind=AuditKind.ESTIMATE, payload={}))
+
+
+def test_execution_port_is_an_abstract_seam_with_no_instance() -> None:
+    with pytest.raises(TypeError):
+        ExecutionPort()  # type: ignore[misc]  # a Protocol seam, never instantiated
+
+
+def test_execution_port_stays_unimplemented_with_no_caller() -> None:
+    allowed = {_SRC / "common" / "ports.py", _SRC / "common" / "__init__.py"}
+    leaks = sorted(
+        str(path.relative_to(_SRC))
+        for path in _SRC.rglob("*.py")
+        if path not in allowed and "ExecutionPort" in path.read_text()
+    )
+    assert leaks == [], f"ExecutionPort must stay unimplemented until the calibration gate: {leaks}"
 
 
 def test_contracts_import_no_infrastructure() -> None:
