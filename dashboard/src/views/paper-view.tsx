@@ -11,14 +11,56 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { usePaper } from "@/hooks/use-api"
+import { usePaper, usePortfolio } from "@/hooks/use-api"
 import { isoDate, pct, signedNum, usd } from "@/lib/format"
 import { exposureSeverity } from "@/lib/ranking"
 
 const SEVERITY_VARIANT = { ok: "positive", warn: "muted", high: "negative" } as const
 
+function ExposureCard({
+  title,
+  label,
+  record,
+}: {
+  title: string
+  label: string
+  record: Record<string, number>
+}) {
+  const rows = Object.entries(record).sort((a, b) => b[1] - a[1])
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <EmptyState message="No exposure." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{label}</TableHead>
+                <TableHead className="text-right">Exposure</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(([key, value]) => (
+                <TableRow key={key}>
+                  <TableCell className="font-medium">{key}</TableCell>
+                  <TableCell className="text-right tabular-nums">{usd(value)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function PaperView() {
   const paper = usePaper()
+  const portfolio = usePortfolio()
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,6 +93,21 @@ export function PaperView() {
                   />
                 </CardContent>
               </Card>
+
+              {portfolio.data ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <ExposureCard
+                    title="Exposure by category"
+                    label="Category"
+                    record={portfolio.data.exposure.per_category}
+                  />
+                  <ExposureCard
+                    title="Exposure by correlation group"
+                    label="Group"
+                    record={portfolio.data.exposure.per_correlation_group}
+                  />
+                </div>
+              ) : null}
 
               <Card>
                 <CardHeader>

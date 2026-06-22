@@ -72,6 +72,7 @@ export function CalibrationView() {
                           <TableHead className="text-right">Brier(system)</TableHead>
                           <TableHead className="text-right">Brier(market)</TableHead>
                           <TableHead className="text-right">Δ</TableHead>
+                          <TableHead className="text-right">invalid-rate</TableHead>
                           <TableHead>Verdict</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -90,6 +91,9 @@ export function CalibrationView() {
                               </TableCell>
                               <TableCell className="text-right tabular-nums">
                                 {signedNum(category.delta)}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {pct(category.invalid_rate)}
                               </TableCell>
                               <TableCell>
                                 <Badge variant={verdict.variant}>{verdict.label}</Badge>

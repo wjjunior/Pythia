@@ -102,9 +102,10 @@ export function CostView() {
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4 lg:grid-cols-3">
                 <BreakdownTable title="Agent" record={report.by_agent} />
                 <BreakdownTable title="Model" record={report.by_model} />
+                <BreakdownTable title="Category" record={report.by_category} />
               </div>
             </div>
           )
