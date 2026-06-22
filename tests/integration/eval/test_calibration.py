@@ -119,6 +119,29 @@ def test_per_category_brier_with_n_excluding_ambiguous(session: Session) -> None
     assert by_cat["sports"].invalid_count == 0
 
 
+def test_blended_report_uses_the_venue_baseline(session: Session) -> None:
+    _resolved_market(session, "p1", "politics", q=0.5, p_model=0.9, outcome=1)
+    session.add(
+        models.VenueQuote(
+            market_id=_uid("p1"),
+            venue="manifold",
+            external_ref="m1",
+            ts=_TS,
+            yes_price=0.8,
+            match_confidence=0.9,
+        )
+    )
+    session.commit()
+
+    market = {c.category: c for c in CalibrationService(session).report().categories}["politics"]
+    blended = {c.category: c for c in CalibrationService(session).blended_report().categories}[
+        "politics"
+    ]
+    # market baseline q=0.5; blended = (0.5 + 0.8) / 2 = 0.65, against outcome 1.
+    assert market.brier_market == pytest.approx((0.5 - 1) ** 2)
+    assert blended.brier_market == pytest.approx((0.65 - 1) ** 2)
+
+
 def test_latest_estimate_per_market_wins(session: Session) -> None:
     _market(session, "m1", "politics")
     _snapshot(session, "m1", 0.5)

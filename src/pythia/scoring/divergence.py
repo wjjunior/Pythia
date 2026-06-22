@@ -5,11 +5,12 @@ a wide spread means the venues disagree on the event, so the edge is less trustw
 prices are passed in; retrieval (asof-filtered) and venue I/O live in the adapter layer.
 """
 
+from pythia.common.venue import blended_baseline as blended_baseline
+from pythia.common.venue import latest_prices_per_venue as latest_prices_per_venue
 
-def blended_baseline(market_q: float, venue_prices: list[float]) -> float:
-    if not venue_prices:
-        return market_q
-    return (market_q + sum(venue_prices)) / (1 + len(venue_prices))
+
+def divergence_penalty(divergence: float, weight: float = 1.0) -> float:
+    return min(max(1.0 - weight * divergence, 0.0), 1.0)
 
 
 def divergence(market_q: float, venue_prices: list[float]) -> float:

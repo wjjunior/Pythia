@@ -36,6 +36,7 @@ from pythia.db.repositories import (
     ResolutionRepository,
     ScoreRepository,
     SourceRepository,
+    VenueQuoteRepository,
 )
 from pythia.portfolio.service import PortfolioService
 from pythia.risk import (
@@ -55,6 +56,7 @@ from pythia.scoring import (
     position_size,
     resolution_penalty,
 )
+from pythia.scoring.divergence import divergence, divergence_penalty, latest_prices_per_venue
 
 DEFAULT_RESEARCH_K = 8
 NEUTRAL_PENALTY = 1.0
@@ -100,6 +102,7 @@ class Pipeline:
         self._members = EstimateMemberRepository(session)
         self._recalibration = RecalibrationRepository(session)
         self._resolutions = ResolutionRepository(session)
+        self._venue_quotes = VenueQuoteRepository(session)
         self._scores = ScoreRepository(session)
         self._runs = PipelineRunRepository(session)
         self._audit = AuditRepository(session)
@@ -174,8 +177,9 @@ class Pipeline:
         )
 
         graded_p_resol, resolution_gated = self._resolution_risk(market, snapshot)
+        p_corr = self._venue_p_corr(market, snapshot)
         scored, category_calibrated = self._recalibrated(market.category, critiqued)
-        score = self._score(scored, snapshot, graded_p_resol)
+        score = self._score(scored, snapshot, graded_p_resol, p_corr)
         self._scores.add(score)
         _log.info(
             "score",
@@ -269,7 +273,9 @@ class Pipeline:
             return estimate, False
         return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
 
-    def _score(self, estimate: Estimate, snapshot: MarketSnapshot, p_resol: float) -> Score:
+    def _score(
+        self, estimate: Estimate, snapshot: MarketSnapshot, p_resol: float, p_corr: float
+    ) -> Score:
         return build_score(
             estimate,
             snapshot.yes_price,
@@ -279,8 +285,13 @@ class Pipeline:
             p_resol=p_resol,
             p_liq=NEUTRAL_PENALTY,
             p_time=NEUTRAL_PENALTY,
-            p_corr=NEUTRAL_PENALTY,
+            p_corr=p_corr,
         )
+
+    def _venue_p_corr(self, market: Market, snapshot: MarketSnapshot) -> float:
+        quotes = self._venue_quotes.retrieve(market.id, asof=snapshot.ts)
+        spread = divergence(snapshot.yes_price, latest_prices_per_venue(quotes))
+        return divergence_penalty(spread, self._settings.divergence_penalty_weight)
 
     def _resolution_risk(self, market: Market, snapshot: MarketSnapshot) -> tuple[float, bool]:
         since = snapshot.ts - timedelta(days=self._settings.dispute_risk_lookback)

@@ -1,10 +1,12 @@
-"""Worker entrypoint: schedule the market crawl on CRAWL_INTERVAL_SECONDS (§8.6 VPN-gated)."""
+"""Worker entrypoint: market crawl + cross-venue ingest on CRAWL_INTERVAL_SECONDS (§8.6)."""
 
 from pythia.common import Market, MarketSnapshot
 from pythia.common.logging import configure_logging, get_logger
 from pythia.config import Settings, get_settings
+from pythia.db.session import session_scope
 from pythia.ingestion import HttpxTransport, MarketCrawler
 from pythia.worker.scheduler import build_scheduler
+from pythia.worker.venue_ingest import build_venue_clients
 
 _log = get_logger(__name__)
 
@@ -27,11 +29,22 @@ def main() -> None:
     settings = get_settings()
     _configure(settings)
     if not settings.use_live_venues:
-        _log.info("market_crawl_disabled", reason="USE_LIVE_VENUES is false; enable VPN (§8.6)")
+        _log.info("worker_disabled", reason="USE_LIVE_VENUES is false; enable VPN (§8.6)")
         return
     crawler = MarketCrawler(HttpxTransport(settings.polymarket_api_base))
-    scheduler = build_scheduler(crawler, _log_sink, settings.crawl_interval_seconds)
-    _log.info("market_crawl_start", interval_seconds=settings.crawl_interval_seconds)
+    venue_clients = build_venue_clients(settings)
+    scheduler = build_scheduler(
+        crawler,
+        _log_sink,
+        settings.crawl_interval_seconds,
+        session_factory=session_scope,
+        venue_clients=venue_clients,
+    )
+    _log.info(
+        "worker_start",
+        interval_seconds=settings.crawl_interval_seconds,
+        venue_count=len(venue_clients),
+    )
     scheduler.start()
 
 

@@ -24,6 +24,7 @@ from pythia.common import (
     TradeStatus,
 )
 from pythia.common.ids import deterministic_id
+from pythia.common.venue import blended_baseline, latest_prices_per_venue
 from pythia.config import Settings
 from pythia.config.settings import RecalibrationMethod
 from pythia.db import models
@@ -32,6 +33,7 @@ from pythia.db.repositories import (
     PostmortemRepository,
     RecalibrationRepository,
     ResolutionRepository,
+    VenueQuoteRepository,
 )
 from pythia.eval.functions import (
     brier,
@@ -95,10 +97,20 @@ class CalibrationService:
 
     def report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
         outcomes = self._resolved_outcomes()
-        records = self._records(outcomes)
+        return self._assemble(self._records(outcomes), outcomes, n_bins)
+
+    def blended_report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
+        outcomes = self._resolved_outcomes()
+        return self._assemble(self._blended_records(outcomes), outcomes, n_bins)
+
+    def _assemble(
+        self,
+        records: dict[str, list[tuple[float, float, int]]],
+        outcomes: dict[uuid.UUID, int],
+        n_bins: int,
+    ) -> CalibrationReport:
         forecasts = [p_model for samples in records.values() for (p_model, _q, _o) in samples]
         observed = [outcome for samples in records.values() for (_p, _q, outcome) in samples]
-
         invalid_counts = ResolutionRepository(self._session).invalid_counts_by_category()
         return CalibrationReport(
             categories=calibration_by_category(records, invalid_counts),
@@ -108,6 +120,33 @@ class CalibrationService:
 
     def records(self) -> dict[str, list[tuple[float, float, int]]]:
         return self._records(self._resolved_outcomes())
+
+    def _blended_records(
+        self, outcomes: dict[uuid.UUID, int]
+    ) -> dict[str, list[tuple[float, float, int]]]:
+        latest = _latest_estimate_per_market(self._session, list(outcomes))
+        categories = _categories_of(self._session, list(latest))
+        snapshots = self._snapshots([estimate.snapshot_id for estimate in latest.values()])
+        all_quotes = VenueQuoteRepository(self._session).retrieve_for_markets(
+            [str(mid) for mid in latest]
+        )
+        records: dict[str, list[tuple[float, float, int]]] = {}
+        for market_id, estimate in latest.items():
+            q_market, ts = snapshots[estimate.snapshot_id]
+            quotes = [q for q in all_quotes.get(str(market_id), []) if q.ts <= ts]
+            q_blended = blended_baseline(q_market, latest_prices_per_venue(quotes))
+            records.setdefault(categories[market_id], []).append(
+                (estimate.p_model, q_blended, outcomes[market_id])
+            )
+        return records
+
+    def _snapshots(self, snapshot_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[float, datetime]]:
+        if not snapshot_ids:
+            return {}
+        rows = self._session.exec(
+            select(models.MarketSnapshot).where(col(models.MarketSnapshot.id).in_(snapshot_ids))
+        ).all()
+        return {row.id: (row.yes_price, row.ts) for row in rows if row.id is not None}
 
     def _records(self, outcomes: dict[uuid.UUID, int]) -> dict[str, list[tuple[float, float, int]]]:
         latest = _latest_estimate_per_market(self._session, list(outcomes))

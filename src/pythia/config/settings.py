@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     min_confidence: float = 0.5
     max_p_resol_severity: float = 0.5
     max_category_invalid_rate: float = 0.15
+    divergence_penalty_weight: float = 1.0
 
     # Cost guards
     cost_cap_per_run: float = 1.0

@@ -32,6 +32,7 @@ from pythia.common.types import (
     Venue,
     VenueQuote,
 )
+from pythia.common.venue import blended_baseline, latest_prices_per_venue
 
 __all__ = [
     "AuditEvent",
@@ -64,4 +65,6 @@ __all__ = [
     "TradeStatus",
     "Venue",
     "VenueQuote",
+    "blended_baseline",
+    "latest_prices_per_venue",
 ]

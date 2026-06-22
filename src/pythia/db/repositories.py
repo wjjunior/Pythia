@@ -683,6 +683,20 @@ class VenueQuoteRepository:
         ).all()
         return [_from_db_venue_quote(row) for row in rows]
 
+    def retrieve_for_markets(self, market_ids: list[str]) -> dict[str, list[VenueQuote]]:
+        """Batch fetch all quotes for the given markets — no asof filter (caller filters)."""
+        if not market_ids:
+            return {}
+        rows = self._session.exec(
+            select(models.VenueQuote)
+            .where(col(models.VenueQuote.market_id).in_([uuid.UUID(mid) for mid in market_ids]))
+            .order_by(col(models.VenueQuote.ts))
+        ).all()
+        result: dict[str, list[VenueQuote]] = {}
+        for row in rows:
+            result.setdefault(str(row.market_id), []).append(_from_db_venue_quote(row))
+        return result
+
 
 def _from_db_postmortem(row: models.Postmortem) -> Postmortem:
     return Postmortem(
