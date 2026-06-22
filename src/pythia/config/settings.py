@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     postmortem_min_confidence: float = 0.6
     postmortem_drift_window: int = 20
     postmortem_stale_evidence_days: int = 30
-    improvement_min_n: int = 30
+    improvement_validation_min_n: int = 30
 
     # Observability (§3.10, §8.4) — JSON logs everywhere; Logfire sends only when a token is set
     log_level: LogLevel = "INFO"

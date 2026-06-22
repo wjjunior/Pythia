@@ -688,10 +688,12 @@ def _from_db_postmortem(row: models.Postmortem) -> Postmortem:
     return Postmortem(
         id=str(row.id),
         market_id=str(row.market_id),
-        estimate_id=str(row.estimate_id),
+        category=row.category,
         failure_class=FailureClass(row.failure_class),
-        surprise=row.surprise,
+        brier=row.brier,
         rationale=row.rationale,
+        estimate_id=str(row.estimate_id) if row.estimate_id is not None else None,
+        resolution_id=str(row.resolution_id) if row.resolution_id is not None else None,
         evidence_ids=[str(evidence_id) for evidence_id in row.evidence_ids],
     )
 
@@ -706,9 +708,17 @@ class PostmortemRepository:
         row = models.Postmortem(
             id=uuid.UUID(postmortem.id),
             market_id=uuid.UUID(postmortem.market_id),
-            estimate_id=uuid.UUID(postmortem.estimate_id),
+            category=postmortem.category,
+            estimate_id=(
+                uuid.UUID(postmortem.estimate_id) if postmortem.estimate_id is not None else None
+            ),
+            resolution_id=(
+                uuid.UUID(postmortem.resolution_id)
+                if postmortem.resolution_id is not None
+                else None
+            ),
             failure_class=postmortem.failure_class.value,
-            surprise=postmortem.surprise,
+            brier=postmortem.brier,
             rationale=postmortem.rationale,
             evidence_ids=[uuid.UUID(evidence_id) for evidence_id in postmortem.evidence_ids],
         )
@@ -728,7 +738,7 @@ def _from_db_candidate(row: models.ImprovementCandidate) -> ImprovementCandidate
     return ImprovementCandidate(
         id=str(row.id),
         postmortem_id=str(row.postmortem_id),
-        action=ImprovementAction(row.action),
+        kind=ImprovementAction(row.kind),
         status=CandidateStatus(row.status),
         rationale=row.rationale,
         requires_review=row.requires_review,
@@ -748,7 +758,7 @@ class ImprovementCandidateRepository:
         row = models.ImprovementCandidate(
             id=uuid.UUID(candidate.id),
             postmortem_id=uuid.UUID(candidate.postmortem_id),
-            action=candidate.action.value,
+            kind=candidate.kind.value,
             status=candidate.status.value,
             rationale=candidate.rationale,
             requires_review=candidate.requires_review,
