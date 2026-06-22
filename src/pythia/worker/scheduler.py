@@ -1,4 +1,4 @@
-"""APScheduler wiring for the market-crawl, venue-ingest, and evidence-ingest heartbeats."""
+"""APScheduler wiring for the crawl, venue-ingest, evidence-ingest and pipeline-run heartbeats."""
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -7,9 +7,11 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlmodel import Session
 
 from pythia.common import EmbeddingPort, Market, MarketSnapshot, Venue
+from pythia.config import Settings
 from pythia.ingestion import MarketCrawler
 from pythia.ingestion.evidence import EvidenceTransport
 from pythia.ingestion.venues import VenueClient
+from pythia.orchestration import run_open_markets
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
 from pythia.worker.venue_ingest import ingest_tick as venue_ingest_tick
 
@@ -35,6 +37,13 @@ def evidence_tick(
         evidence_ingest_tick(session, embedder, transports)
 
 
+def pipeline_tick(session_factory: SessionFactory, settings: Settings) -> None:
+    # The SSE broadcaster is in-process (API process); a worker run writes scores but cannot
+    # publish radar_changed — POST /api/run remains the on-demand + SSE path (§A.2, PYT-47).
+    with session_factory() as session:
+        run_open_markets(session, settings)
+
+
 def build_scheduler(
     crawler: MarketCrawler,
     sink: Sink,
@@ -44,6 +53,7 @@ def build_scheduler(
     venue_clients: list[tuple[Venue, VenueClient]] | None = None,
     embedder: EmbeddingPort | None = None,
     evidence_transports: list[EvidenceTransport] | None = None,
+    settings: Settings | None = None,
 ) -> BlockingScheduler:
     scheduler = BlockingScheduler()
     scheduler.add_job(
@@ -65,5 +75,12 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="evidence-ingest",
+        )
+    if session_factory is not None and settings is not None:
+        scheduler.add_job(
+            lambda: pipeline_tick(session_factory, settings),
+            "interval",
+            seconds=interval_seconds,
+            id="pipeline-run",
         )
     return scheduler

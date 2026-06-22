@@ -2,6 +2,8 @@
 
 import json
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -27,6 +29,7 @@ from pythia.db.repositories import (
 )
 from pythia.orchestration.runner import run_open_markets
 from pythia.rag import EvidenceStore, StubEmbeddingPort
+from pythia.worker.scheduler import pipeline_tick
 
 pytestmark = pytest.mark.integration
 
@@ -101,6 +104,18 @@ def test_run_open_markets_skips_markets_without_a_snapshot(session: Session) -> 
 
     assert summary.scored == 0
     assert published == []
+
+
+def test_pipeline_tick_scores_open_markets(session: Session) -> None:
+    _seed_open_market(session)
+
+    @contextmanager
+    def factory() -> Iterator[Session]:
+        yield session
+
+    pipeline_tick(factory, _settings())
+
+    assert len(session.exec(select(models.Score)).all()) >= 1
 
 
 class _CountingTransport:

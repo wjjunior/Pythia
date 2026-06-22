@@ -45,6 +45,7 @@ def main() -> None:
         venue_clients=venue_clients,
         embedder=embedder,
         evidence_transports=evidence_transports,
+        settings=settings,
     )
     _log.info(
         "worker_start",
