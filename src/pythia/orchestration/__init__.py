@@ -3,6 +3,7 @@ from pythia.orchestration.pipeline import (
     PipelineResult,
     PipelineRunStatus,
 )
+from pythia.orchestration.resolution import ResolutionService
 from pythia.orchestration.review import (
     NotScoredError,
     ReviewGate,
@@ -14,6 +15,7 @@ __all__ = [
     "Pipeline",
     "PipelineResult",
     "PipelineRunStatus",
+    "ResolutionService",
     "ReviewGate",
     "UnknownEstimateError",
 ]

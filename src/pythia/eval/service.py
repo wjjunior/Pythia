@@ -119,6 +119,29 @@ class CalibrationService:
             records.setdefault(categories[market_id], []).append(record)
         return records
 
+    def category_brier_deltas(self, category: str) -> list[float]:
+        """Chronological per-resolution `brier_market - brier_system` for a category (drift input).
+
+        Positive means the system beat the market on that resolution; a downward trend is drift.
+        """
+        resolutions = self._session.exec(
+            select(models.Resolution)
+            .where(col(models.Resolution.ambiguous).is_(False))
+            .order_by(col(models.Resolution.resolved_at), col(models.Resolution.id))
+        ).all()
+        ordered = [(row.market_id, row.outcome) for row in resolutions]
+        latest = _latest_estimate_per_market(self._session, [market_id for market_id, _ in ordered])
+        categories = _categories_of(self._session, list(latest))
+        prices = self._snapshot_prices([estimate.snapshot_id for estimate in latest.values()])
+        deltas: list[float] = []
+        for market_id, outcome in ordered:
+            estimate = latest.get(market_id)
+            if estimate is None or categories.get(market_id) != category:
+                continue
+            q = prices[estimate.snapshot_id]
+            deltas.append(brier(q, outcome) - brier(estimate.p_model, outcome))
+        return deltas
+
     def _resolved_outcomes(self) -> dict[uuid.UUID, int]:
         rows = self._session.exec(
             select(models.Resolution).where(col(models.Resolution.ambiguous).is_(False))
@@ -244,6 +267,7 @@ class PostmortemService:
         outcome: int,
         ambiguous: bool,
         asof: datetime,
+        resolution_id: str | None = None,
     ) -> Postmortem | None:
         if not is_surprising(
             estimate.p_model,
@@ -275,6 +299,7 @@ class PostmortemService:
                 market_id=estimate.market_id,
                 category=category,
                 estimate_id=estimate.id,
+                resolution_id=resolution_id,
                 failure_class=verdict.failure_class,
                 brier=brier(estimate.p_model, outcome),
                 rationale=verdict.rationale,

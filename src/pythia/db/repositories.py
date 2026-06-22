@@ -32,6 +32,7 @@ from pythia.common import (
     Venue,
     VenueQuote,
 )
+from pythia.common.ids import deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
 
@@ -318,6 +319,32 @@ class RecalibrationRepository:
 class ResolutionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def record(
+        self,
+        market_id: str,
+        outcome: int,
+        *,
+        at: datetime,
+        ambiguous: bool = False,
+        source: str | None = None,
+    ) -> str:
+        row = models.Resolution(
+            id=uuid.UUID(deterministic_id("resolution", market_id)),
+            market_id=uuid.UUID(market_id),
+            outcome=outcome,
+            resolved_at=at,
+            source=source,
+            ambiguous=ambiguous,
+        )
+        self._session.add(row)
+        market = self._session.get(models.Market, uuid.UUID(market_id))
+        if market is not None:
+            market.resolved = True
+            self._session.add(market)
+        self._session.commit()
+        self._session.refresh(row)
+        return str(row.id)
 
     def invalid_counts_by_category(self) -> dict[str, int]:
         rows = self._session.exec(
