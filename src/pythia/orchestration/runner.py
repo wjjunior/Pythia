@@ -12,8 +12,14 @@ from dataclasses import dataclass
 
 from sqlmodel import Session
 
-from pythia.agents import BudgetExceeded, BudgetGuard, CachingLLMPort, make_llm_port
-from pythia.common import LLMPort, MarketStatus
+from pythia.agents import (
+    BudgetExceeded,
+    BudgetGuard,
+    CachingLLMPort,
+    DiscoveryAgent,
+    make_llm_port,
+)
+from pythia.common import LLMPort, Market, MarketStatus
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import CostRepository, MarketRepository, SnapshotRepository
@@ -53,6 +59,25 @@ def _routing(settings: Settings) -> dict[str, str]:
     return {"estimation": selection, "critic": selection}
 
 
+def _shortlist(session: Session, settings: Settings, markets: list[Market]) -> list[Market]:
+    size = settings.discovery_shortlist_size
+    if size is None or not markets:
+        return markets
+    guard = BudgetGuard(
+        CostRepository(session),
+        run_cap=settings.cost_cap_per_run,
+        daily_cap=settings.cost_budget_daily,
+    )
+    llm = make_llm_port(settings, cost_sink=guard.record, budget_check=guard.check)
+    try:
+        shortlist = DiscoveryAgent(llm).shortlist(markets, size)
+    except BudgetExceeded:
+        _log.warning("discovery_budget_halt")
+        return markets[:size]
+    _log.info("discovery_shortlist", candidates=len(markets), shortlisted=len(shortlist))
+    return shortlist
+
+
 def run_open_markets(
     session: Session,
     settings: Settings,
@@ -61,6 +86,7 @@ def run_open_markets(
     llm_factory: LlmFactory | None = None,
 ) -> RunSummary:
     markets = MarketRepository(session).list(status=MarketStatus.OPEN)
+    markets = _shortlist(session, settings, markets)
     snapshots = SnapshotRepository(session)
     evidence = EvidenceStore(session, make_embedder(settings))
     build_llm = llm_factory if llm_factory is not None else _default_llm_factory(session, settings)

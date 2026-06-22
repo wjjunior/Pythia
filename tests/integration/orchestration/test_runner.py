@@ -238,3 +238,46 @@ def test_cache_prevents_rebilling_an_identical_estimate_on_the_live_path(session
     assert first is second
     assert transport.calls == 1
     assert CostRepository(session).total() == pytest.approx(0.02)
+
+
+def _seed_open_markets(session: Session, count: int) -> None:
+    for index in range(count):
+        market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pyt59-market-{index}"))
+        MarketRepository(session).upsert(
+            Market(
+                id=market_id,
+                external_id=f"pyt59-{index}",
+                question="q",
+                category="politics",
+                resolution_rule="r",
+            )
+        )
+        SnapshotRepository(session).append(
+            MarketSnapshot(
+                id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"pyt59-snap-{index}")),
+                market_id=market_id,
+                ts=ASOF,
+                yes_price=0.5,
+                spread=0.02,
+                volume=1.0,
+                liquidity=1.0,
+            )
+        )
+
+
+def _discovery_settings(size: int) -> Settings:
+    return Settings(
+        _env_file=None, database_url="postgresql+psycopg://x/y", discovery_shortlist_size=size
+    )
+
+
+def test_run_open_markets_should_shortlist_when_discovery_size_is_set(session: Session) -> None:
+    _seed_open_markets(session, 3)
+    summary = run_open_markets(session, _discovery_settings(2))
+    assert summary.markets == 2
+
+
+def test_run_open_markets_should_process_all_when_discovery_is_off(session: Session) -> None:
+    _seed_open_markets(session, 3)
+    summary = run_open_markets(session, _settings())
+    assert summary.markets == 3

@@ -62,6 +62,9 @@ class _CountingLLM:
             adjusted_confidence=0.5, objections=[], lookahead_leak=False, notes=None
         )
 
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        return []
+
 
 def test_caching_memoizes_an_identical_estimate_request() -> None:
     inner = _CountingLLM()

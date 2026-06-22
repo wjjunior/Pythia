@@ -21,6 +21,7 @@ from pythia.common import (
     EstimationContext,
     Evidence,
     LLMPort,
+    Market,
     MemberForecast,
 )
 from pythia.common.ids import deterministic_id
@@ -50,6 +51,10 @@ class _CritiquePayload(BaseModel):
     objections: list[str] = Field(default_factory=list)
     lookahead_leak: bool = False
     notes: str | None = None
+
+
+class _DiscoveryPayload(BaseModel):
+    shortlist: list[str] = Field(default_factory=list)
 
 
 class ChatTransport(Protocol):
@@ -106,6 +111,9 @@ class StubLLMPort:
             notes="deterministic stub critic",
         )
 
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        return sorted(market.id for market in markets)[:limit]
+
 
 def _strip_json_fence(content: str) -> str:
     content = content.strip()
@@ -160,6 +168,21 @@ def _critique_messages(est: Estimate, evidence: list[Evidence]) -> list[dict[str
             "role": "system",
             "content": "You are an adversarial critic hunting lookahead and weak sources.",
         },
+        {"role": "user", "content": user},
+    ]
+
+
+def _discovery_messages(markets: list[Market], limit: int) -> list[dict[str, str]]:
+    catalogue = "\n".join(
+        f"- {market.id}: {market.question} [{market.category}]" for market in markets
+    )
+    user = (
+        f"Open markets:\n{catalogue}\n\n"
+        f"Select up to {limit} market ids most worth researching now, most promising first. "
+        'Return JSON: {"shortlist": ["<market id>", ...]}.'
+    )
+    return [
+        {"role": "system", "content": "You shortlist prediction markets worth researching."},
         {"role": "user", "content": user},
     ]
 
@@ -333,6 +356,23 @@ class OpenRouterLLMPort:
             lookahead_leak=payload.lookahead_leak,
             notes=payload.notes,
         )
+
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        if not markets:
+            return []
+        response, model, latency_ms = self._complete(
+            "discovery", _discovery_messages(markets, limit)
+        )
+        self._record_call("discovery", "discover", model, response, latency_ms)
+        payload = _parse_payload(response, _DiscoveryPayload)
+        known = {market.id for market in markets}
+        seen: set[str] = set()
+        shortlist: list[str] = []
+        for market_id in payload.shortlist:
+            if market_id in known and market_id not in seen:
+                shortlist.append(market_id)
+                seen.add(market_id)
+        return shortlist[:limit]
 
 
 def make_llm_port(
