@@ -198,7 +198,7 @@ def test_ensemble_runs_distinct_family_members_and_aggregates_the_median() -> No
             "c/m3": _member_response(0.9),
         }
     )
-    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]}, strategy="ensemble")
     port = OpenRouterLLMPort(transport, router, cost_sink=costs.append, ensemble_size=3)
     estimate = port.estimate(_ctx())
     assert estimate.model_name == "ensemble"
@@ -215,7 +215,7 @@ def test_ensemble_drops_a_member_that_errors() -> None:
             "c/m3": _member_response(0.6),
         }
     )
-    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]}, strategy="ensemble")
     estimate = OpenRouterLLMPort(transport, router, ensemble_size=3).estimate(_ctx())
     assert {member.model for member in estimate.members} == {"a/m1", "c/m3"}
     assert estimate.p_model == pytest.approx(0.5)
@@ -229,7 +229,7 @@ def test_ensemble_logs_a_dropped_member() -> None:
             "c/m3": _member_response(0.6),
         }
     )
-    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]})
+    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"]}, strategy="ensemble")
     with capture_logs() as logs:
         OpenRouterLLMPort(transport, router, ensemble_size=3).estimate(_ctx())
     dropped = [entry for entry in logs if entry["event"] == "ensemble_member_dropped"]
@@ -242,6 +242,74 @@ def test_ensemble_size_one_keeps_the_single_model_path() -> None:
     estimate = OpenRouterLLMPort(transport, router, ensemble_size=1).estimate(_ctx())
     assert estimate.members == []
     assert estimate.model_name == "minimax/minimax-m3"
+
+
+def _conf_response(confidence: float, *, cost: float = 0.001) -> dict[str, Any]:
+    content = json.dumps(
+        {"p_model": 0.6, "confidence": confidence, "lower": 0.4, "upper": 0.6, "rationale": "r"}
+    )
+    return {
+        "model": "m",
+        "provider": "prov",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": cost},
+    }
+
+
+def _escalate_router() -> ModelRouter:
+    return ModelRouter(
+        slates={"estimation": ["cheap/m1", "mid/m2", "strong/m3"]}, strategy="escalate"
+    )
+
+
+def test_escalate_stops_at_the_first_confident_model() -> None:
+    transport = _ByModelTransport({"cheap/m1": _conf_response(0.8)})
+    estimate = OpenRouterLLMPort(transport, _escalate_router(), escalate_threshold=0.5).estimate(
+        _ctx()
+    )
+    assert estimate.model_name == "cheap/m1"
+    assert transport.calls == ["cheap/m1"]
+
+
+def test_escalate_promotes_until_a_model_is_confident() -> None:
+    transport = _ByModelTransport(
+        {
+            "cheap/m1": _conf_response(0.3),
+            "mid/m2": _conf_response(0.4),
+            "strong/m3": _conf_response(0.9),
+        }
+    )
+    estimate = OpenRouterLLMPort(transport, _escalate_router(), escalate_threshold=0.5).estimate(
+        _ctx()
+    )
+    assert estimate.model_name == "strong/m3"
+    assert transport.calls == ["cheap/m1", "mid/m2", "strong/m3"]
+
+
+def test_escalate_returns_the_last_model_when_none_are_confident() -> None:
+    transport = _ByModelTransport(
+        {
+            "cheap/m1": _conf_response(0.2),
+            "mid/m2": _conf_response(0.3),
+            "strong/m3": _conf_response(0.4),
+        }
+    )
+    estimate = OpenRouterLLMPort(transport, _escalate_router(), escalate_threshold=0.5).estimate(
+        _ctx()
+    )
+    assert estimate.model_name == "strong/m3"
+    assert transport.calls == ["cheap/m1", "mid/m2", "strong/m3"]
+
+
+def test_make_llm_port_supports_escalate_and_ensemble_strategies() -> None:
+    for strategy in ("escalate", "ensemble"):
+        settings = Settings(
+            _env_file=None,
+            database_url="postgresql+psycopg://x/y",
+            openrouter_api_key="sk-test",
+            model_routing_strategy=strategy,
+        )
+        assert isinstance(make_llm_port(settings), OpenRouterLLMPort)
 
 
 def test_openrouter_fails_over_to_the_next_model_on_error() -> None:

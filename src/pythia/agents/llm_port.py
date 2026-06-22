@@ -177,6 +177,7 @@ class OpenRouterLLMPort:
         correlation_id: str | None = None,
         ensemble_size: int = 1,
         aggregation_method: AggregationMethod = "median",
+        escalate_threshold: float = 0.5,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._transport = transport
@@ -186,6 +187,7 @@ class OpenRouterLLMPort:
         self._correlation_id = correlation_id
         self._ensemble_size = ensemble_size
         self._aggregation_method = aggregation_method
+        self._escalate_threshold = escalate_threshold
         self._clock = clock
 
     def _complete(
@@ -257,14 +259,31 @@ class OpenRouterLLMPort:
         )
 
     def estimate(self, ctx: EstimationContext) -> Estimate:
-        models = (
-            self._router.ensemble_candidates("estimation", self._ensemble_size)
-            if self._ensemble_size > 1
-            else []
-        )
+        if self._router.strategy == "ensemble":
+            return self._estimate_ensemble(ctx)
+        if self._router.strategy == "escalate":
+            return self._estimate_escalate(ctx)
+        return self._run_estimation(ctx)
+
+    def _estimate_ensemble(self, ctx: EstimationContext) -> Estimate:
+        models = self._router.ensemble_candidates("estimation", self._ensemble_size)
         if len(models) <= 1:
             return self._run_estimation(ctx)
         return self._aggregate_members(ctx, models)
+
+    def _estimate_escalate(self, ctx: EstimationContext) -> Estimate:
+        # Cheap model first; promote to the next slate candidate only while the estimate is
+        # under-confident (§5.1). The wider "sources disagree / size high" triggers need an
+        # estimate↔score feedback loop and are deferred (PYT-61).
+        models = self._router.candidates("estimation")
+        if not models:
+            return self._run_estimation(ctx)
+        estimate = self._run_estimation(ctx, [models[0]])
+        for model in models[1:]:
+            if estimate.confidence >= self._escalate_threshold:
+                return estimate
+            estimate = self._run_estimation(ctx, [model])
+        return estimate
 
     def _run_estimation(
         self, ctx: EstimationContext, candidates: list[str] | None = None
@@ -355,5 +374,6 @@ def make_llm_port(
             correlation_id=correlation_id,
             ensemble_size=settings.ensemble_size,
             aggregation_method=settings.aggregation_method,
+            escalate_threshold=settings.min_confidence,
         )
     return StubLLMPort()
