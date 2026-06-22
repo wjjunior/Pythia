@@ -10,6 +10,7 @@ from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import MarketRepository, SourceRepository
 from pythia.ingestion.evidence import EvidenceClient, EvidenceTransport
+from pythia.ingestion.market_crawler import LiveVenueAccessError
 from pythia.rag import EvidenceStore
 
 _log = get_logger(__name__)
@@ -46,9 +47,9 @@ def ingest_tick(
 ) -> int:
     """Fetch evidence articles for all open markets and persist via EvidenceStore.
 
-    Returns the number of article batches (per market x source) successfully written.
+    Returns the number of articles successfully persisted across all markets and sources.
     Idempotent: same ts + same content yields the same deterministic IDs — duplicate
-    inserts are caught and skipped.
+    inserts are caught and skipped. A LiveVenueAccessError (VPN gate, §8.6) propagates.
     """
     if not transports:
         return 0
@@ -70,6 +71,8 @@ def ingest_tick(
         for market in markets:
             try:
                 articles = client.articles(market.question)
+            except LiveVenueAccessError:
+                raise
             except Exception as exc:
                 _log.warning(
                     "evidence_fetch_failed",

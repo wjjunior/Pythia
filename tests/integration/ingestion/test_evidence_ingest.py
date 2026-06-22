@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from sqlmodel import Session
 
-from pythia.common import Market, Source
+from pythia.common import Market
 from pythia.db.repositories import MarketRepository, SourceRepository
 from pythia.ingestion.evidence import EvidenceTransport, FixtureEvidenceTransport, newsapi
 from pythia.rag import EvidenceStore, StubEmbeddingPort
