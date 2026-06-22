@@ -175,15 +175,19 @@ def test_single_best_vs_ensemble_is_a_ranked_harness_axis() -> None:
         "c/m3": _estimation_response(0.4, cost=0.01),
         "k/crit": _critique_response(cost=0.005),
     }
-    router = ModelRouter(slates={"estimation": ["a/m1", "b/m2", "c/m3"], "critic": ["k/crit"]})
+    slates = {"estimation": ["a/m1", "b/m2", "c/m3"], "critic": ["k/crit"]}
+    static_router = ModelRouter(slates=slates, strategy="static")
+    ensemble_router = ModelRouter(slates=slates, strategy="ensemble")
 
-    def build(size: int) -> Callable[[Callable[[Any], None]], OpenRouterLLMPort]:
+    def build(
+        router: ModelRouter, size: int
+    ) -> Callable[[Callable[[Any], None]], OpenRouterLLMPort]:
         return lambda sink: OpenRouterLLMPort(
             _ByModelTransport(responses), router, cost_sink=sink, ensemble_size=size
         )
 
-    single = HarnessConfig("single", llm_runner(build(1)))
-    ensemble = HarnessConfig("ensemble", llm_runner(build(3)))
+    single = HarnessConfig("single", llm_runner(build(static_router, 1)))
+    ensemble = HarnessConfig("ensemble", llm_runner(build(ensemble_router, 3)))
     report = run_harness(_DATASET, [single, ensemble])
 
     costs = {config.name: config.total_cost_usd for config in report.configs}

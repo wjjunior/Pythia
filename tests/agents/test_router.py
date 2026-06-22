@@ -36,9 +36,9 @@ def test_task_specific_slate_takes_precedence() -> None:
     assert router.route("estimation") == "base/model"
 
 
-def test_unimplemented_strategy_is_rejected() -> None:
-    with pytest.raises(NotImplementedError):
-        ModelRouter(strategy="ensemble")
+def test_router_accepts_every_routing_strategy() -> None:
+    for strategy in ("static", "escalate", "ensemble"):
+        assert ModelRouter(strategy=strategy).strategy == strategy
 
 
 def test_model_family_is_the_slug_prefix() -> None:

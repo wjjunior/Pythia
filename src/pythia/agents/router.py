@@ -34,7 +34,7 @@ def model_family(model: str) -> str:
     return model.split("/", 1)[0]
 
 
-_SUPPORTED_STRATEGIES = frozenset({"static"})
+_SUPPORTED_STRATEGIES = frozenset({"static", "escalate", "ensemble"})
 
 
 class ModelRouter:
