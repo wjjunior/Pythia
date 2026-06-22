@@ -7,8 +7,10 @@ import pytest
 from sqlmodel import Session
 
 from pythia.common import Side, TradeStatus
+from pythia.config import Settings
 from pythia.db import models
-from pythia.eval.service import CalibrationService
+from pythia.eval.gate import GateReason
+from pythia.eval.service import CalibrationService, gate_thresholds_from_settings
 
 pytestmark = pytest.mark.integration
 
@@ -117,6 +119,18 @@ def test_per_category_brier_with_n_excluding_ambiguous(session: Session) -> None
     assert by_cat["politics"].invalid_count == 1
     assert by_cat["politics"].invalid_rate == pytest.approx(1 / 3)
     assert by_cat["sports"].invalid_count == 0
+
+
+def test_gate_status_blocks_a_category_with_insufficient_evidence(session: Session) -> None:
+    _resolved_market(session, "p1", "politics", q=0.6, p_model=0.8, outcome=1)
+    session.commit()
+
+    thresholds = gate_thresholds_from_settings(Settings(_env_file=None, database_url="x"))
+    decisions = CalibrationService(session).gate_status(thresholds)
+
+    politics = next(decision for decision in decisions if decision.category == "politics")
+    assert politics.cleared is False
+    assert GateReason.INSUFFICIENT_N in politics.reasons  # n=1 << gate_min_n=50
 
 
 def test_blended_report_uses_the_venue_baseline(session: Session) -> None:

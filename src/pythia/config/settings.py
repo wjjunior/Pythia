@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     recalibration_min_n: int = 50
     dispute_risk_lookback: int = 90
 
+    # Calibration gate (§8.5) — a category clears only on measured calibration; invalid-rate cap
+    # reuses max_category_invalid_rate. Stays paper-gated until a category clears (prerequisite to
+    # real-money execution, which remains unimplemented).
+    gate_min_n: int = 50
+    gate_brier_margin: float = 0.01
+    gate_ev_tolerance: float = 0.05
+
     # Post-mortem & improvement loop (§5.5)
     postmortem_surprise_threshold: float = 0.6
     postmortem_min_confidence: float = 0.6
