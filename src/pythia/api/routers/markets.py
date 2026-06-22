@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from pythia.api.deps import SessionDep
 from pythia.api.schemas import MarketDetail
-from pythia.common import Market
+from pythia.common import Market, MarketStatus
 from pythia.db.repositories import (
     EstimateRepository,
     EvidenceRepository,
@@ -19,7 +19,7 @@ router = APIRouter(tags=["markets"])
 
 @router.get("/api/markets")
 def list_markets(
-    session: SessionDep, category: str | None = None, status: str | None = None
+    session: SessionDep, category: str | None = None, status: MarketStatus | None = None
 ) -> list[Market]:
     return MarketRepository(session).list(category=category, status=status)
 

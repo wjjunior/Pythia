@@ -22,6 +22,7 @@ from pythia.common import (
     ImprovementCandidate,
     Market,
     MarketSnapshot,
+    MarketStatus,
     MemberForecast,
     PaperTrade,
     Postmortem,
@@ -128,13 +129,15 @@ class MarketRepository:
         self._session.refresh(row)
         return _from_db_market(row)
 
-    def list(self, *, category: str | None = None, status: str | None = None) -> list[Market]:
+    def list(
+        self, *, category: str | None = None, status: MarketStatus | None = None
+    ) -> list[Market]:
         statement = select(models.Market)
         if category is not None:
             statement = statement.where(models.Market.category == category)
-        if status == "resolved":
+        if status is MarketStatus.RESOLVED:
             statement = statement.where(col(models.Market.resolved).is_(True))
-        elif status == "open":
+        elif status is MarketStatus.OPEN:
             statement = statement.where(col(models.Market.resolved).is_(False))
         rows = self._session.exec(statement.order_by(col(models.Market.created_at))).all()
         return [_from_db_market(row) for row in rows]
@@ -569,6 +572,15 @@ class CostRepository:
             col(models.CostEvent.model)
         )
         return {model: float(total) for model, total in self._session.exec(statement).all()}
+
+    def by_category(self) -> dict[str, float]:
+        statement = (
+            select(models.Market.category, func.sum(models.CostEvent.cost_usd))
+            .select_from(models.CostEvent)
+            .join(models.Market, col(models.CostEvent.market_id) == col(models.Market.id))
+            .group_by(col(models.Market.category))
+        )
+        return {category: float(total) for category, total in self._session.exec(statement).all()}
 
     def cost_per_scored_opportunity(self) -> float:
         scored = self._session.exec(select(func.count()).select_from(models.Score)).one()

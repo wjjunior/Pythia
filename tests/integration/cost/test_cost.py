@@ -48,6 +48,34 @@ def test_record_and_aggregate_costs(session: Session) -> None:
     assert repo.daily_total(datetime.now(UTC) + timedelta(days=1)) == pytest.approx(0.0)
 
 
+def test_by_category_groups_cost_through_the_market(session: Session) -> None:
+    politics = uuid.uuid5(uuid.NAMESPACE_URL, "pyt44-politics")
+    sports = uuid.uuid5(uuid.NAMESPACE_URL, "pyt44-sports")
+    session.add(
+        models.Market(
+            id=politics,
+            external_id="pyt44-p",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    session.add(
+        models.Market(
+            id=sports, external_id="pyt44-s", question="q", category="sports", resolution_rule="r"
+        )
+    )
+    session.commit()
+
+    repo = CostRepository(session)
+    repo.record(_cost(cost=0.02), market_id=str(politics))
+    repo.record(_cost(cost=0.03), market_id=str(politics))
+    repo.record(_cost(cost=0.05), market_id=str(sports))
+    repo.record(_cost(cost=0.99))
+
+    assert repo.by_category() == pytest.approx({"politics": 0.05, "sports": 0.05})
+
+
 def test_run_total_only_counts_the_runs_costs(session: Session) -> None:
     session.add(models.PipelineRun(id=uuid.UUID(RUN_ID), routing={}, status="running"))
     session.commit()

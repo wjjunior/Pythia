@@ -65,6 +65,7 @@ class CostResponse(BaseModel):
     cost_per_opportunity: float
     by_agent: dict[str, float]
     by_model: dict[str, float]
+    by_category: dict[str, float]
     by_day: dict[str, float]
 
 

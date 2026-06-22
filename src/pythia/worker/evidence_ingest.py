@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from pythia.common import EmbeddingPort, Source
+from pythia.common import EmbeddingPort, MarketStatus, Source
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import MarketRepository, SourceRepository
@@ -54,7 +54,7 @@ def ingest_tick(
     if not transports:
         return 0
     tick_ts = ts or datetime.now(UTC)
-    markets = MarketRepository(session).list(status="open")
+    markets = MarketRepository(session).list(status=MarketStatus.OPEN)
     store = EvidenceStore(session, embedder)
     sources = SourceRepository(session)
     total = 0

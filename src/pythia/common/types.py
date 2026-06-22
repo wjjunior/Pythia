@@ -19,6 +19,26 @@ class TradeStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class MarketStatus(StrEnum):
+    OPEN = "open"
+    RESOLVED = "resolved"
+
+
+class OpportunityStatus(StrEnum):
+    """The §A.4 opportunity lifecycle vocabulary (discovered → … → resolved)."""
+
+    DISCOVERED = "discovered"
+    RESEARCHED = "researched"
+    ESTIMATED = "estimated"
+    CRITIQUED = "critiqued"
+    SCORED = "scored"
+    VETOED = "vetoed"
+    REVIEW = "review"
+    REJECTED = "rejected"
+    PAPER_OPEN = "paper_open"
+    RESOLVED = "resolved"
+
+
 class AuditKind(StrEnum):
     ESTIMATE = "estimate"
     CRITIC_VERDICT = "critic_verdict"
