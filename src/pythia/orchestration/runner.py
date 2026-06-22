@@ -1,9 +1,10 @@
 """Composition root: run the estimation pipeline on open markets (§2.3, AC-6/AC-8).
 
 The only place outside tests that builds a `Pipeline`. It arms the cost guards from settings —
-`BudgetGuard` (per-run + daily kill switch) and the `(market, snapshot, evidence_hash)` re-bill
-cache — wires them into the live `LLMPort`, and runs the pipeline over every open market's latest
-snapshot. A score nudges the radar via `publish_radar`; a breached budget halts the batch.
+a per-market `BudgetGuard` (per-run cap + daily kill switch, tagging cost events with `market_id`)
+and the `(market, snapshot, evidence_hash)` re-bill cache wrapping `make_llm_port` — and runs the
+pipeline over every open market's latest snapshot. A score nudges the radar via `publish_radar`;
+a breached budget halts the batch.
 """
 
 from collections.abc import Callable
@@ -21,6 +22,9 @@ from pythia.rag import EvidenceStore, make_embedder
 
 _log = get_logger(__name__)
 
+# market_id -> the LLMPort used for that market's pipeline run.
+LlmFactory = Callable[[str], LLMPort]
+
 
 @dataclass(frozen=True, slots=True)
 class RunSummary:
@@ -29,13 +33,24 @@ class RunSummary:
     halted: bool
 
 
-def _build_guarded_llm(session: Session, settings: Settings) -> LLMPort:
-    guard = BudgetGuard(
-        CostRepository(session),
-        run_cap=settings.cost_cap_per_run,
-        daily_cap=settings.cost_budget_daily,
-    )
-    return CachingLLMPort(make_llm_port(settings, cost_sink=guard.record, budget_check=guard.check))
+def _default_llm_factory(session: Session, settings: Settings) -> LlmFactory:
+    def build(market_id: str) -> LLMPort:
+        guard = BudgetGuard(
+            CostRepository(session),
+            run_cap=settings.cost_cap_per_run,
+            daily_cap=settings.cost_budget_daily,
+            market_id=market_id,
+        )
+        return CachingLLMPort(
+            make_llm_port(settings, cost_sink=guard.record, budget_check=guard.check)
+        )
+
+    return build
+
+
+def _routing(settings: Settings) -> dict[str, str]:
+    selection = settings.model_routing_strategy if settings.llm_enabled else "stub"
+    return {"estimation": selection, "critic": selection}
 
 
 def run_open_markets(
@@ -43,25 +58,27 @@ def run_open_markets(
     settings: Settings,
     *,
     publish_radar: Callable[[str], None] | None = None,
-    llm: LLMPort | None = None,
+    llm_factory: LlmFactory | None = None,
 ) -> RunSummary:
     markets = MarketRepository(session).list(status=MarketStatus.OPEN)
     snapshots = SnapshotRepository(session)
-    routing = {"estimation": settings.llm_model or "stub", "critic": settings.llm_model or "stub"}
-    pipeline = Pipeline(
-        session=session,
-        llm=llm if llm is not None else _build_guarded_llm(session, settings),
-        evidence=EvidenceStore(session, make_embedder(settings)),
-        settings=settings,
-        routing=routing,
-    )
+    evidence = EvidenceStore(session, make_embedder(settings))
+    build_llm = llm_factory if llm_factory is not None else _default_llm_factory(session, settings)
+    routing = _routing(settings)
     scored = 0
     for market in markets:
-        history = snapshots.list_for_market(market.id)
-        if not history:
+        snapshot = snapshots.latest_for_market(market.id)
+        if snapshot is None:
             continue
+        pipeline = Pipeline(
+            session=session,
+            llm=build_llm(market.id),
+            evidence=evidence,
+            settings=settings,
+            routing=routing,
+        )
         try:
-            result = pipeline.run(market, history[-1])
+            result = pipeline.run(market, snapshot)
         except BudgetExceeded:
             _log.warning("pipeline_budget_halt", market_id=market.id)
             return RunSummary(markets=len(markets), scored=scored, halted=True)

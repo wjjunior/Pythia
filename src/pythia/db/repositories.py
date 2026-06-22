@@ -169,6 +169,14 @@ class SnapshotRepository:
         ).all()
         return [_from_db_snapshot(row) for row in rows]
 
+    def latest_for_market(self, market_id: str) -> MarketSnapshot | None:
+        row = self._session.exec(
+            select(models.MarketSnapshot)
+            .where(models.MarketSnapshot.market_id == uuid.UUID(market_id))
+            .order_by(col(models.MarketSnapshot.ts).desc())
+        ).first()
+        return _from_db_snapshot(row) if row is not None else None
+
 
 class SourceRepository:
     def __init__(self, session: Session) -> None:

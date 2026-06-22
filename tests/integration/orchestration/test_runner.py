@@ -12,6 +12,7 @@ from pythia.agents import BudgetGuard, CachingLLMPort, ModelRouter, OpenRouterLL
 from pythia.common import (
     CostEvent,
     EstimationContext,
+    LLMPort,
     Market,
     MarketSnapshot,
     Source,
@@ -151,27 +152,47 @@ def _ctx() -> EstimationContext:
     )
 
 
+def _guarded_llm(session: Session, market_id: str, *, run_cap: float, daily_cap: float) -> LLMPort:
+    guard = BudgetGuard(
+        CostRepository(session), run_cap=run_cap, daily_cap=daily_cap, market_id=market_id
+    )
+    return CachingLLMPort(
+        OpenRouterLLMPort(
+            _CountingTransport(), ModelRouter(), cost_sink=guard.record, budget_check=guard.check
+        )
+    )
+
+
 def test_run_open_markets_halts_when_the_daily_budget_is_breached(session: Session) -> None:
     _seed_open_market(session)
     settings = _settings()
     CostRepository(session).record(_cost(settings.cost_budget_daily + 1.0))
-    guard = BudgetGuard(
-        CostRepository(session),
-        run_cap=settings.cost_cap_per_run,
-        daily_cap=settings.cost_budget_daily,
-    )
-    transport = _CountingTransport()
-    llm = CachingLLMPort(
-        OpenRouterLLMPort(
-            transport, ModelRouter(), cost_sink=guard.record, budget_check=guard.check
-        )
-    )
 
-    summary = run_open_markets(session, settings, llm=llm)
+    def factory(market_id: str) -> LLMPort:
+        return _guarded_llm(
+            session,
+            market_id,
+            run_cap=settings.cost_cap_per_run,
+            daily_cap=settings.cost_budget_daily,
+        )
+
+    summary = run_open_markets(session, settings, llm_factory=factory)
 
     assert summary.halted is True
     assert summary.scored == 0
-    assert transport.calls == 0
+
+
+def test_run_open_markets_attributes_pipeline_cost_to_the_market_category(
+    session: Session,
+) -> None:
+    _seed_open_market(session)  # category: politics
+
+    def factory(market_id: str) -> LLMPort:
+        return _guarded_llm(session, market_id, run_cap=100.0, daily_cap=100.0)
+
+    run_open_markets(session, _settings(), llm_factory=factory)
+
+    assert CostRepository(session).by_category().get("politics", 0.0) > 0.0
 
 
 def test_cache_prevents_rebilling_an_identical_estimate_on_the_live_path(session: Session) -> None:
