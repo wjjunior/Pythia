@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
-from pythia.common import Venue
+from pythia.common import MarketStatus, Venue
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import MarketRepository, VenueQuoteRepository
@@ -61,7 +61,7 @@ def ingest_tick(
     if not clients:
         return 0
     tick_ts = ts or datetime.now(UTC)
-    markets = MarketRepository(session).list(status="open")
+    markets = MarketRepository(session).list(status=MarketStatus.OPEN)
     repo = VenueQuoteRepository(session)
     total = 0
     for venue, client in clients:

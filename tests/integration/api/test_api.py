@@ -122,6 +122,28 @@ def test_list_markets_filters_by_category(client: TestClient, session: Session) 
     assert client.get("/api/markets?category=sports").json() == []
 
 
+def test_list_markets_filters_by_status(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    resolved_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt44-resolved-market"))
+    MarketRepository(session).upsert(
+        Market(
+            id=resolved_id,
+            external_id="pyt44-resolved",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+            resolved=True,
+        )
+    )
+    session.commit()
+
+    open_ids = {m["id"] for m in client.get("/api/markets?status=open").json()}
+    resolved_ids = {m["id"] for m in client.get("/api/markets?status=resolved").json()}
+    assert open_ids == {MARKET_ID}
+    assert resolved_ids == {resolved_id}
+    assert client.get("/api/markets?status=bogus").status_code == 422
+
+
 def test_market_detail_includes_snapshot_estimate_and_evidence(
     client: TestClient, session: Session
 ) -> None:
@@ -235,7 +257,8 @@ def test_cost_reports_spend_breakdown(client: TestClient, session: Session) -> N
             input_tokens=10,
             output_tokens=5,
             cost_usd=0.04,
-        )
+        ),
+        market_id=MARKET_ID,
     )
     repo.record(
         CostEvent(
@@ -252,6 +275,7 @@ def test_cost_reports_spend_breakdown(client: TestClient, session: Session) -> N
     assert body["total"] == pytest.approx(0.10)
     assert body["by_agent"]["estimation"] == pytest.approx(0.04)
     assert body["by_model"]["m/y"] == pytest.approx(0.06)
+    assert body["by_category"]["politics"] == pytest.approx(0.04)
     assert body["cost_per_opportunity"] == pytest.approx(0.10)
     assert len(body["by_day"]) == 1
 

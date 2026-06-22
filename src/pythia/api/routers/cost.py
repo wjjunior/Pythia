@@ -1,4 +1,4 @@
-"""Cost panel (§A.1, §5.3): measured spend by agent / model / day and cost per opportunity."""
+"""Cost panel (§A.1, §5.3): spend by agent / model / category / day; cost per opportunity."""
 
 from fastapi import APIRouter
 
@@ -17,5 +17,6 @@ def cost(session: SessionDep) -> CostResponse:
         cost_per_opportunity=repo.cost_per_scored_opportunity(),
         by_agent=repo.by_agent(),
         by_model=repo.by_model(),
+        by_category=repo.by_category(),
         by_day=repo.by_day(),
     )

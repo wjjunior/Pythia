@@ -322,7 +322,7 @@ class CostEvent(SQLModel, table=True):
 
 class VenueQuote(SQLModel, table=True):
     __tablename__ = "venue_quotes"
-    __table_args__ = (Index("venue_quotes_market_time", "market_id", "ts"),)
+    __table_args__ = (Index("venue_quotes_market_ts", "market_id", "ts"),)
 
     id: uuid.UUID | None = _id()
     market_id: uuid.UUID = Field(
@@ -368,7 +368,13 @@ class Postmortem(SQLModel, table=True):
 
 class ImprovementCandidate(SQLModel, table=True):
     __tablename__ = "improvement_candidates"
-    __table_args__ = (Index("improvement_status", "status", "created_at"),)
+    __table_args__ = (
+        Index("improvement_status", "status", "created_at"),
+        CheckConstraint(
+            "status IN ('proposed','validating','adopted','rejected')",
+            name="improvement_candidates_status_check",
+        ),
+    )
 
     id: uuid.UUID | None = _id()
     postmortem_id: uuid.UUID = Field(
