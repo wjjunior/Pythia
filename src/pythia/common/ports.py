@@ -50,3 +50,15 @@ class PaperLedgerPort(Protocol):
 @runtime_checkable
 class AuditPort(Protocol):
     def append(self, event: AuditEvent) -> None: ...
+
+
+@runtime_checkable
+class ExecutionPort(Protocol):
+    """Real-money execution seam — deliberately UNIMPLEMENTED (§4.5, §3.2).
+
+    No adapter implements this until the calibration gate clears (Brier(system) < Brier(market),
+    stable over significant n). It exists so the gas / slippage / credentials conversation is forced
+    at this boundary instead of leaking into the deterministic core; the design ends at this gate.
+    """
+
+    def execute(self, trade: PaperTrade) -> PaperTrade: ...
