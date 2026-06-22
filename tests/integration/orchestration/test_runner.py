@@ -281,3 +281,29 @@ def test_run_open_markets_should_process_all_when_discovery_is_off(session: Sess
     _seed_open_markets(session, 3)
     summary = run_open_markets(session, _settings())
     assert summary.markets == 3
+
+
+def test_run_open_markets_should_ignore_a_non_positive_discovery_size(session: Session) -> None:
+    _seed_open_markets(session, 3)
+    summary = run_open_markets(session, _discovery_settings(0))
+    assert summary.markets == 3
+
+
+def test_run_open_markets_should_fall_back_when_discovery_budget_is_breached(
+    session: Session,
+) -> None:
+    _seed_open_markets(session, 3)
+    settings = _discovery_settings(2)
+    CostRepository(session).record(_cost(settings.cost_budget_daily + 1.0))
+    guard = BudgetGuard(
+        CostRepository(session),
+        run_cap=settings.cost_cap_per_run,
+        daily_cap=settings.cost_budget_daily,
+    )
+    discovery_llm = OpenRouterLLMPort(
+        _CountingTransport(), ModelRouter(), cost_sink=guard.record, budget_check=guard.check
+    )
+
+    summary = run_open_markets(session, settings, discovery_llm=discovery_llm)
+
+    assert summary.markets == 2

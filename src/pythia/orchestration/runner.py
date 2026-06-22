@@ -59,16 +59,25 @@ def _routing(settings: Settings) -> dict[str, str]:
     return {"estimation": selection, "critic": selection}
 
 
-def _shortlist(session: Session, settings: Settings, markets: list[Market]) -> list[Market]:
-    size = settings.discovery_shortlist_size
-    if size is None or not markets:
-        return markets
+def _discovery_llm(session: Session, settings: Settings) -> LLMPort:
     guard = BudgetGuard(
         CostRepository(session),
         run_cap=settings.cost_cap_per_run,
         daily_cap=settings.cost_budget_daily,
     )
-    llm = make_llm_port(settings, cost_sink=guard.record, budget_check=guard.check)
+    return make_llm_port(settings, cost_sink=guard.record, budget_check=guard.check)
+
+
+def _shortlist(
+    session: Session,
+    settings: Settings,
+    markets: list[Market],
+    discovery_llm: LLMPort | None = None,
+) -> list[Market]:
+    size = settings.discovery_shortlist_size
+    if size is None or size <= 0 or not markets:
+        return markets
+    llm = discovery_llm if discovery_llm is not None else _discovery_llm(session, settings)
     try:
         shortlist = DiscoveryAgent(llm).shortlist(markets, size)
     except BudgetExceeded:
@@ -84,9 +93,10 @@ def run_open_markets(
     *,
     publish_radar: Callable[[str], None] | None = None,
     llm_factory: LlmFactory | None = None,
+    discovery_llm: LLMPort | None = None,
 ) -> RunSummary:
     markets = MarketRepository(session).list(status=MarketStatus.OPEN)
-    markets = _shortlist(session, settings, markets)
+    markets = _shortlist(session, settings, markets, discovery_llm)
     snapshots = SnapshotRepository(session)
     evidence = EvidenceStore(session, make_embedder(settings))
     build_llm = llm_factory if llm_factory is not None else _default_llm_factory(session, settings)
