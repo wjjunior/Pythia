@@ -41,6 +41,7 @@ from pythia.eval.functions import (
     ev_predicted_vs_realized,
     reliability_bins,
 )
+from pythia.eval.gate import GateDecision, GateThresholds, evaluate_gate
 from pythia.eval.harness.models import Ablation
 from pythia.eval.improvement import adoption_decision, requires_review, suggested_action
 from pythia.eval.models import (
@@ -91,6 +92,15 @@ class CalibrationReport:
     ev: EvCalibration | None
 
 
+def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
+    return GateThresholds(
+        min_n=settings.gate_min_n,
+        brier_margin=settings.gate_brier_margin,
+        ev_tolerance=settings.gate_ev_tolerance,
+        max_invalid_rate=settings.max_category_invalid_rate,
+    )
+
+
 class CalibrationService:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -102,6 +112,12 @@ class CalibrationService:
     def blended_report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
         outcomes = self._resolved_outcomes()
         return self._assemble(self._blended_records(outcomes), outcomes, n_bins)
+
+    def gate_status(self, thresholds: GateThresholds) -> list[GateDecision]:
+        # The §8.5 gate per category; ev is system-wide today (per-category EV is a future
+        # refinement). A category clears only on measured calibration — never wires execution.
+        report = self.report()
+        return [evaluate_gate(category, report.ev, thresholds) for category in report.categories]
 
     def _assemble(
         self,
