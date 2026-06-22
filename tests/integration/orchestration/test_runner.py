@@ -210,6 +210,19 @@ def test_run_open_markets_attributes_pipeline_cost_to_the_market_category(
     assert CostRepository(session).by_category().get("politics", 0.0) > 0.0
 
 
+def test_run_open_markets_attributes_cost_to_the_pipeline_run(session: Session) -> None:
+    _seed_open_market(session)
+
+    def factory(market_id: str) -> LLMPort:
+        return _guarded_llm(session, market_id, run_cap=100.0, daily_cap=100.0)
+
+    run_open_markets(session, _settings(), llm_factory=factory)
+
+    runs = session.exec(select(models.PipelineRun)).all()
+    assert len(runs) == 1
+    assert CostRepository(session).run_total(str(runs[0].id)) > 0.0
+
+
 def test_cache_prevents_rebilling_an_identical_estimate_on_the_live_path(session: Session) -> None:
     guard = BudgetGuard(CostRepository(session), run_cap=100.0, daily_cap=100.0)
     transport = _CountingTransport()
