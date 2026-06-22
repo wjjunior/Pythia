@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import update
 from sqlalchemy.exc import DBAPIError, IntegrityError
-from sqlmodel import Session
+from sqlmodel import Session, col
 
 from pythia.common import CandidateStatus
 from pythia.db import models
@@ -129,7 +129,7 @@ def test_market_snapshots_reject_in_place_update(session: Session) -> None:
     with pytest.raises(DBAPIError):
         session.execute(
             update(models.MarketSnapshot)
-            .where(models.MarketSnapshot.id == snapshot_id)
+            .where(col(models.MarketSnapshot.id) == snapshot_id)
             .values(yes_price=0.99)
         )
     session.rollback()
@@ -142,7 +142,7 @@ def test_evidence_rejects_in_place_update(session: Session) -> None:
     with pytest.raises(DBAPIError):
         session.execute(
             update(models.Evidence)
-            .where(models.Evidence.id == evidence_id)
+            .where(col(models.Evidence.id) == evidence_id)
             .values(content="tampered")
         )
     session.rollback()
