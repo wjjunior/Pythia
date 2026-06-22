@@ -84,3 +84,36 @@ jobs:
 
       - name: Integration tests (real Postgres + pgvector)
         run: uv run pytest -m integration
+
+  dashboard:
+    name: dashboard (contract · build · test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked --dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Build (regenerate types from the FastAPI schema, typecheck, bundle)
+        working-directory: dashboard
+        run: npm run build
+
+      - name: Test
+        working-directory: dashboard
+        run: npm run test
