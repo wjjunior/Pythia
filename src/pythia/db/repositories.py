@@ -7,12 +7,14 @@ append-only (no update path); sources upsert by name. Contract ids are used as p
 import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from pythia.common import (
     AuditEvent,
+    AuditKind,
     CandidateStatus,
     CostEvent,
     Estimate,
@@ -36,6 +38,7 @@ from pythia.common import (
 from pythia.common.ids import deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
+from pythia.risk.models import RiskDecision, RiskReason
 
 
 def _to_db_market(market: Market) -> models.Market:
@@ -464,6 +467,15 @@ class PipelineRunRepository:
         self._session.commit()
 
 
+def _risk_decision_from_payload(payload: dict[str, Any]) -> RiskDecision:
+    return RiskDecision(
+        approved_size=float(payload["approved_size"]),
+        vetoed=bool(payload["vetoed"]),
+        reasons=tuple(RiskReason(reason) for reason in payload["reasons"]),
+        paper_only=bool(payload["paper_only"]),
+    )
+
+
 class AuditRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -494,6 +506,18 @@ class AuditRepository:
             )
             for row in rows
         ]
+
+    def latest_risk_decision(self, market_id: str, estimate_id: str) -> RiskDecision | None:
+        rows = self._session.exec(
+            select(models.AuditEvent)
+            .where(models.AuditEvent.market_id == uuid.UUID(market_id))
+            .where(models.AuditEvent.kind == AuditKind.RISK_DECISION)
+            .order_by(col(models.AuditEvent.ts).desc(), col(models.AuditEvent.id).desc())
+        ).all()
+        for row in rows:
+            if row.payload.get("estimate_id") == estimate_id:
+                return _risk_decision_from_payload(row.payload)
+        return None
 
 
 def _to_db_cost(

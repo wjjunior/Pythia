@@ -9,7 +9,13 @@ from pythia.api.deps import BroadcasterDep, SessionDep, SettingsDep
 from pythia.api.events import SseChannel
 from pythia.api.schemas import ReviewAction, ReviewRequest, ReviewResult
 from pythia.config.settings import ExecutionModeError
-from pythia.orchestration import NotScoredError, ReviewGate, UnknownEstimateError
+from pythia.orchestration import (
+    NotRiskEvaluatedError,
+    NotScoredError,
+    ReviewGate,
+    UnknownEstimateError,
+    VetoedOpportunityError,
+)
 from pythia.paper import PaperLedger
 
 router = APIRouter(tags=["review"])
@@ -42,6 +48,10 @@ def review(
         raise HTTPException(status_code=404, detail="estimate not found") from None
     except NotScoredError:
         raise HTTPException(status_code=409, detail="estimate is not scored") from None
+    except NotRiskEvaluatedError:
+        raise HTTPException(status_code=409, detail="estimate has no risk decision") from None
+    except VetoedOpportunityError:
+        raise HTTPException(status_code=409, detail="opportunity vetoed by the risk gate") from None
     except ExecutionModeError:
         raise HTTPException(status_code=409, detail="not in paper mode") from None
     broadcaster.publish(SseChannel.PAPER_CHANGED, trade.id)

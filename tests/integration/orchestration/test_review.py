@@ -6,7 +6,16 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session, select
 
-from pythia.common import AuditKind, Estimate, Market, MarketSnapshot, Score, Side, TradeStatus
+from pythia.common import (
+    AuditEvent,
+    AuditKind,
+    Estimate,
+    Market,
+    MarketSnapshot,
+    Score,
+    Side,
+    TradeStatus,
+)
 from pythia.config import Settings
 from pythia.config.settings import ExecutionModeError
 from pythia.db import models
@@ -17,8 +26,15 @@ from pythia.db.repositories import (
     ScoreRepository,
     SnapshotRepository,
 )
-from pythia.orchestration import NotScoredError, ReviewGate, UnknownEstimateError
+from pythia.orchestration import (
+    NotRiskEvaluatedError,
+    NotScoredError,
+    ReviewGate,
+    UnknownEstimateError,
+    VetoedOpportunityError,
+)
 from pythia.paper import PaperLedger, fill_price
+from pythia.risk.models import RiskDecision, RiskReason
 
 pytestmark = pytest.mark.integration
 
@@ -34,7 +50,11 @@ def _settings(*, mode: str = "paper") -> Settings:
     return Settings(_env_file=None, database_url="postgresql+psycopg://x/y", mode=mode)
 
 
-def _seed(session: Session, *, with_score: bool = True) -> None:
+def _ok_decision(approved_size: float = 1000.0) -> RiskDecision:
+    return RiskDecision(approved_size=approved_size, vetoed=False, reasons=(), paper_only=True)
+
+
+def _seed(session: Session, *, with_score: bool = True, risk: RiskDecision | None = None) -> None:
     MarketRepository(session).upsert(
         Market(
             id=MARKET_ID,
@@ -84,6 +104,20 @@ def _seed(session: Session, *, with_score: bool = True) -> None:
                 kelly_fraction=0.2,
             )
         )
+    if risk is not None:
+        AuditRepository(session).append(
+            AuditEvent(
+                kind=AuditKind.RISK_DECISION,
+                market_id=MARKET_ID,
+                payload={
+                    "estimate_id": ESTIMATE_ID,
+                    "approved_size": risk.approved_size,
+                    "vetoed": risk.vetoed,
+                    "paper_only": risk.paper_only,
+                    "reasons": [reason.value for reason in risk.reasons],
+                },
+            )
+        )
 
 
 def _gate(session: Session, *, mode: str = "paper") -> ReviewGate:
@@ -91,7 +125,7 @@ def _gate(session: Session, *, mode: str = "paper") -> ReviewGate:
 
 
 def test_approve_records_a_paper_trade_at_the_observed_price(session: Session) -> None:
-    _seed(session)
+    _seed(session, risk=_ok_decision())
     trade = _gate(session).approve(ESTIMATE_ID, side=Side.YES, size=100.0, at=AT, reviewer="alice")
 
     assert trade.status == TradeStatus.OPEN
@@ -116,6 +150,34 @@ def test_reject_is_terminal_and_audited_without_a_trade(session: Session) -> Non
         select(models.PaperTrade).where(models.PaperTrade.market_id == uuid.UUID(MARKET_ID))
     ).all()
     assert trades == []
+
+
+def test_approve_vetoed_opportunity_raises_and_opens_nothing(session: Session) -> None:
+    _seed(
+        session,
+        risk=RiskDecision(
+            approved_size=0.0, vetoed=True, reasons=(RiskReason.CAP_PER_CATEGORY,), paper_only=True
+        ),
+    )
+    with pytest.raises(VetoedOpportunityError):
+        _gate(session).approve(ESTIMATE_ID, side=Side.YES, size=100.0, at=AT)
+
+    trades = session.exec(
+        select(models.PaperTrade).where(models.PaperTrade.market_id == uuid.UUID(MARKET_ID))
+    ).all()
+    assert trades == []
+
+
+def test_approve_caps_size_at_the_risk_approved_size(session: Session) -> None:
+    _seed(session, risk=_ok_decision(approved_size=40.0))
+    trade = _gate(session).approve(ESTIMATE_ID, side=Side.YES, size=100.0, at=AT)
+    assert trade.size == pytest.approx(40.0)
+
+
+def test_approve_without_a_risk_decision_raises(session: Session) -> None:
+    _seed(session)
+    with pytest.raises(NotRiskEvaluatedError):
+        _gate(session).approve(ESTIMATE_ID, side=Side.YES, size=100.0, at=AT)
 
 
 def test_approve_outside_paper_mode_raises(session: Session) -> None:
