@@ -6,10 +6,10 @@ OpenRouter key, the stub runs the pipeline end-to-end.
 
 import time
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol, Self
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from pythia.agents.aggregation import aggregate
 from pythia.agents.cost import BudgetExceeded
@@ -23,6 +23,7 @@ from pythia.common import (
     LLMPort,
     Market,
     MemberForecast,
+    ResolutionProposal,
 )
 from pythia.common.ids import deterministic_id
 from pythia.common.logging import current_correlation_id, get_logger
@@ -55,6 +56,19 @@ class _CritiquePayload(BaseModel):
 
 class _DiscoveryPayload(BaseModel):
     shortlist: list[str] = Field(default_factory=list)
+
+
+class _ResolutionPayload(BaseModel):
+    outcome: Literal[0, 1] | None
+    ambiguous: bool
+    confidence: float = 0.5
+    rationale: str
+
+    @model_validator(mode="after")
+    def _outcome_matches_ambiguity(self) -> Self:
+        if (self.outcome is None) != self.ambiguous:
+            raise ValueError("outcome must be set iff the proposal is not ambiguous")
+        return self
 
 
 class ChatTransport(Protocol):
@@ -113,6 +127,17 @@ class StubLLMPort:
 
     def discover(self, markets: list[Market], limit: int) -> list[str]:
         return sorted(market.id for market in markets)[:limit]
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return ResolutionProposal(
+            market_id=market.id,
+            outcome=None,
+            ambiguous=True,
+            confidence=0.0,
+            rationale="no LLM configured — cannot grade a subjective outcome",
+            evidence_ids=[item.id for item in evidence],
+            model_name="stub",
+        )
 
 
 def _strip_json_fence(content: str) -> str:
@@ -183,6 +208,22 @@ def _discovery_messages(markets: list[Market], limit: int) -> list[dict[str, str
     )
     return [
         {"role": "system", "content": "You shortlist prediction markets worth researching."},
+        {"role": "user", "content": user},
+    ]
+
+
+def _resolution_messages(market: Market, evidence: list[Evidence]) -> list[dict[str, str]]:
+    evidence_text = "\n".join(f"- {item.content}" for item in evidence)
+    user = (
+        f"Market: {market.question}\n"
+        f"Resolution rule: {market.resolution_rule}\n"
+        f"Evidence (post-resolution reporting permitted):\n{evidence_text}\n\n"
+        "Grade the actual outcome. If it is genuinely ambiguous or resolved invalid (50/50), "
+        'set ambiguous true. Return JSON: {"outcome": 0|1|null, "ambiguous", "confidence", '
+        '"rationale"}.'
+    )
+    return [
+        {"role": "system", "content": "You grade resolved prediction markets from evidence."},
         {"role": "user", "content": user},
     ]
 
@@ -392,6 +433,22 @@ class OpenRouterLLMPort:
                 shortlist.append(market_id)
                 seen.add(market_id)
         return shortlist[:limit]
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        response, model, latency_ms = self._complete(
+            "resolution", _resolution_messages(market, evidence)
+        )
+        self._record_call("resolution", "grade", model, response, latency_ms)
+        payload = _parse_payload(response, _ResolutionPayload)
+        return ResolutionProposal(
+            market_id=market.id,
+            outcome=payload.outcome,
+            ambiguous=payload.ambiguous,
+            confidence=payload.confidence,
+            rationale=payload.rationale,
+            evidence_ids=[item.id for item in evidence],
+            model_name=model,
+        )
 
 
 def make_llm_port(

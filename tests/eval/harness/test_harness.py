@@ -16,6 +16,7 @@ from pythia.common import (
     Evidence,
     Market,
     MarketSnapshot,
+    ResolutionProposal,
 )
 from pythia.eval.harness import (
     CaseResult,
@@ -129,6 +130,9 @@ class _BrokenLLM:
         raise NotImplementedError
 
     def discover(self, markets: list[Market], limit: int) -> list[str]:
+        raise NotImplementedError
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
         raise NotImplementedError
 
 

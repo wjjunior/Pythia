@@ -589,6 +589,52 @@ def test_resolve_should_reject_invalid_outcome_with_422(
     assert response.status_code == 422
 
 
+def _seed_subjective_market(session: Session) -> str:
+    market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt60-subjective"))
+    MarketRepository(session).upsert(
+        Market(
+            id=market_id,
+            external_id="pyt60-subjective",
+            question="Did the senate pass the bill?",
+            category="politics",
+            resolution_rule="UMA optimistic oracle",
+            resolution_source="subjective_uma",
+        )
+    )
+    return market_id
+
+
+def test_propose_resolution_should_return_an_ambiguous_proposal_under_the_stub(
+    client: TestClient, session: Session
+) -> None:
+    market_id = _seed_subjective_market(session)
+
+    response = client.post(f"/api/markets/{market_id}/resolution/propose")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["market_id"] == market_id
+    assert body["ambiguous"] is True
+    assert body["outcome"] is None
+    assert body["model_name"] == "stub"
+
+
+def test_propose_resolution_unknown_market_should_return_404(client: TestClient) -> None:
+    missing = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt60-missing"))
+    response = client.post(f"/api/markets/{missing}/resolution/propose")
+    assert response.status_code == 404
+
+
+def test_propose_resolution_already_resolved_market_should_return_409(
+    client: TestClient, session: Session
+) -> None:
+    market_id = _seed_subjective_market(session)
+    assert client.post(f"/api/markets/{market_id}/resolve", json={"outcome": 1}).status_code == 200
+
+    response = client.post(f"/api/markets/{market_id}/resolution/propose")
+    assert response.status_code == 409
+
+
 def test_openapi_schema_is_emitted(client: TestClient) -> None:
     spec = client.get("/openapi.json").json()
     assert "/api/radar" in spec["paths"]

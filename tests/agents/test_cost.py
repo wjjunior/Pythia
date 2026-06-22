@@ -10,6 +10,7 @@ from pythia.common import (
     Evidence,
     Market,
     MarketSnapshot,
+    ResolutionProposal,
 )
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -64,6 +65,11 @@ class _CountingLLM:
 
     def discover(self, markets: list[Market], limit: int) -> list[str]:
         return []
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return ResolutionProposal(
+            market_id=market.id, ambiguous=True, rationale="fake", model_name="fake"
+        )
 
 
 def test_caching_memoizes_an_identical_estimate_request() -> None:

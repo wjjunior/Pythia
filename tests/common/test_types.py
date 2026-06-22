@@ -10,6 +10,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     MemberForecast,
+    ResolutionProposal,
     Side,
 )
 
@@ -107,3 +108,44 @@ def test_contracts_are_frozen() -> None:
     market = _market()
     with pytest.raises(ValidationError):
         market.resolved = True  # type: ignore[misc]
+
+
+def test_resolution_proposal_should_reject_confidence_above_one() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(
+            market_id="m1", outcome=1, confidence=1.5, rationale="x", model_name="stub"
+        )
+
+
+def test_resolution_proposal_should_reject_outcome_other_than_0_1_or_none() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(market_id="m1", outcome=2, rationale="x", model_name="stub")
+
+
+def test_resolution_proposal_should_accept_an_ambiguous_proposal_with_no_outcome() -> None:
+    proposal = ResolutionProposal(market_id="m1", ambiguous=True, rationale="x", model_name="stub")
+    assert proposal.outcome is None
+    assert proposal.ambiguous is True
+    assert proposal.evidence_ids == []
+
+
+def test_resolution_proposal_should_accept_a_graded_unambiguous_proposal() -> None:
+    proposal = ResolutionProposal(
+        market_id="m1", outcome=1, ambiguous=False, rationale="x", model_name="stub"
+    )
+    assert proposal.outcome == 1
+    assert proposal.ambiguous is False
+
+
+def test_resolution_proposal_should_reject_a_graded_outcome_marked_ambiguous() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(
+            market_id="m1", outcome=1, ambiguous=True, rationale="x", model_name="stub"
+        )
+
+
+def test_resolution_proposal_should_reject_no_outcome_when_not_ambiguous() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(
+            market_id="m1", outcome=None, ambiguous=False, rationale="x", model_name="stub"
+        )

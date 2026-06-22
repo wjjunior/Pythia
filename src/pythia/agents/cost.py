@@ -18,6 +18,7 @@ from pythia.common import (
     Evidence,
     LLMPort,
     Market,
+    ResolutionProposal,
 )
 from pythia.common.logging import current_correlation_id
 from pythia.db.repositories import CostRepository
@@ -106,3 +107,6 @@ class CachingLLMPort:
 
     def discover(self, markets: list[Market], limit: int) -> list[str]:
         return self._inner.discover(markets, limit)
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return self._inner.grade_resolution(market, evidence)

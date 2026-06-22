@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Prob = Annotated[float, Field(ge=0.0, le=1.0)]
 RecalibrationMethod = Literal["platt", "beta", "isotonic"]
@@ -166,6 +166,22 @@ class CriticVerdict(_Frozen):
     objections: list[str] = Field(default_factory=list)
     lookahead_leak: bool = False
     notes: str | None = None
+
+
+class ResolutionProposal(_Frozen):
+    market_id: str
+    outcome: Literal[0, 1] | None = None
+    ambiguous: bool = False
+    confidence: Prob = 0.0
+    rationale: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    model_name: str
+
+    @model_validator(mode="after")
+    def _outcome_matches_ambiguity(self) -> Self:
+        if (self.outcome is None) != self.ambiguous:
+            raise ValueError("outcome must be set iff the proposal is not ambiguous")
+        return self
 
 
 class AuditEvent(_Frozen):
