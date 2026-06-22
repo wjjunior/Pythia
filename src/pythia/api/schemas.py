@@ -3,6 +3,7 @@ shapes are defined here. These are the OpenAPI source of truth for the generated
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -113,6 +114,20 @@ class ReviewResult(BaseModel):
     estimate_id: str
     action: ReviewAction
     trade: PaperTrade | None = None
+
+
+class ResolutionRequest(BaseModel):
+    outcome: Literal[0, 1]
+    ambiguous: bool = False
+    source: str | None = None
+    at: datetime | None = None
+
+
+class ResolutionResult(BaseModel):
+    market_id: str
+    outcome: int
+    ambiguous: bool
+    postmortem_created: bool
 
 
 class HealthResponse(BaseModel):

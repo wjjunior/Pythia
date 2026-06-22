@@ -19,8 +19,11 @@ from pythia.common import (
     Estimate,
     Market,
     MarketSnapshot,
+    PaperTrade,
     Score,
+    Side,
     Source,
+    TradeStatus,
 )
 from pythia.config import Settings
 from pythia.db import models
@@ -462,6 +465,128 @@ def test_resolution_emits_calibration_changed_over_sse(
     events = client.get("/api/events?limit=1")
     assert "event: calibration_changed" in events.text
     assert "politics" in events.text
+
+
+def _open_trade_for(session: Session, *, market_id: str, estimate_id: str) -> None:
+    PaperLedger(session).open(
+        PaperTrade(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{estimate_id}-trade")),
+            market_id=market_id,
+            estimate_id=estimate_id,
+            side=Side.YES,
+            entry_price=0.5,
+            size=100.0,
+            status=TradeStatus.OPEN,
+            opened_at=TS,
+        )
+    )
+
+
+def test_resolve_market_should_record_audit_and_settle(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    _open_trade_for(session, market_id=MARKET_ID, estimate_id=ESTIMATE_ID)
+
+    response = client.post(f"/api/markets/{MARKET_ID}/resolve", json={"outcome": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["market_id"] == MARKET_ID
+    assert body["outcome"] == 1
+    assert body["ambiguous"] is False
+
+    market = MarketRepository(session).get(MARKET_ID)
+    assert market is not None and market.resolved is True
+    kinds = {event.kind for event in AuditRepository(session).list_for_market(MARKET_ID)}
+    assert AuditKind.RESOLUTION in kinds
+    trade = session.get(models.PaperTrade, uuid.uuid5(uuid.NAMESPACE_URL, f"{ESTIMATE_ID}-trade"))
+    assert trade is not None and trade.status == TradeStatus.RESOLVED and trade.pnl is not None
+
+
+def test_resolve_market_should_publish_calibration_changed_over_sse(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+
+    response = client.post(f"/api/markets/{MARKET_ID}/resolve", json={"outcome": 1})
+    assert response.status_code == 200
+
+    events = client.get("/api/events?limit=1")
+    assert "event: calibration_changed" in events.text
+    assert "politics" in events.text
+
+
+def test_resolve_market_should_flag_postmortem_created_on_a_surprise(
+    client: TestClient, session: Session
+) -> None:
+    market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt45-surprise"))
+    snapshot_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt45-surprise-snap"))
+    estimate_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt45-surprise-est"))
+    MarketRepository(session).upsert(
+        Market(
+            id=market_id,
+            external_id="pyt45-surprise",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=snapshot_id,
+            market_id=market_id,
+            ts=TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    EstimateRepository(session).add(
+        Estimate(
+            id=estimate_id,
+            market_id=market_id,
+            snapshot_id=snapshot_id,
+            p_model=0.95,
+            confidence=0.9,
+            lower=0.85,
+            upper=1.0,
+            rationale="r",
+            evidence_ids=[],
+            model_name="stub",
+        )
+    )
+
+    response = client.post(f"/api/markets/{market_id}/resolve", json={"outcome": 0})
+
+    assert response.status_code == 200
+    assert response.json()["postmortem_created"] is True
+
+
+def test_resolve_unknown_market_should_return_404(client: TestClient) -> None:
+    missing = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt45-missing"))
+    response = client.post(f"/api/markets/{missing}/resolve", json={"outcome": 1})
+    assert response.status_code == 404
+
+
+def test_resolve_already_resolved_market_should_return_409(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    first = client.post(f"/api/markets/{MARKET_ID}/resolve", json={"outcome": 1})
+    assert first.status_code == 200
+
+    second = client.post(f"/api/markets/{MARKET_ID}/resolve", json={"outcome": 1})
+    assert second.status_code == 409
+
+
+def test_resolve_should_reject_invalid_outcome_with_422(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    response = client.post(f"/api/markets/{MARKET_ID}/resolve", json={"outcome": 2})
+    assert response.status_code == 422
 
 
 def test_openapi_schema_is_emitted(client: TestClient) -> None:
