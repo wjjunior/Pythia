@@ -59,6 +59,13 @@ def test_position_size_never_exceeds_the_cap(
     assert 0.0 <= size <= cap
 
 
+@given(finite, finite, finite, finite, nonneg)
+def test_position_size_is_never_negative_even_on_adversarial_inputs(
+    bankroll: float, kelly_frac: float, kelly_mult: float, conf: float, cap: float
+) -> None:
+    assert position_size(bankroll, kelly_frac, kelly_mult, conf, cap) >= 0.0
+
+
 @given(nonneg, nonneg, nonneg, unit, unit, nonneg)
 def test_position_size_is_non_decreasing_in_bankroll(
     b1: float, b2: float, kelly_frac: float, kelly_mult: float, conf: float, cap: float

@@ -46,6 +46,36 @@ class _GeoBlockedTransport:
         raise LiveVenueAccessError("enable the VPN")
 
 
+class _StaticTransport:
+    def __init__(self, markets: list[dict[str, Any]]) -> None:
+        self._markets = markets
+
+    def fetch_markets(self) -> list[dict[str, Any]]:
+        return self._markets
+
+
+def test_poll_drops_a_market_with_mismatched_outcomes_and_prices() -> None:
+    malformed = {
+        **_RAW[0],
+        "outcomes": '["Maybe", "No", "Other"]',
+        "outcomePrices": '["0.4", "0.6"]',
+    }
+    crawler = MarketCrawler(_StaticTransport([malformed]), clock=lambda: TS, sleep=lambda _s: None)
+    assert crawler.poll() == []
+
+
+def test_poll_drops_mismatched_lengths_even_when_yes_appears_first() -> None:
+    # "yes" is first, so an early return would mask the length mismatch — the explicit
+    # length check must still reject it (a strict-zip alone would not).
+    malformed = {
+        **_RAW[0],
+        "outcomes": '["Yes", "No", "Other"]',
+        "outcomePrices": '["0.6", "0.4"]',
+    }
+    crawler = MarketCrawler(_StaticTransport([malformed]), clock=lambda: TS, sleep=lambda _s: None)
+    assert crawler.poll() == []
+
+
 def test_poll_normalises_markets_and_snapshots() -> None:
     pairs = _crawler().poll()
     assert len(pairs) == 5

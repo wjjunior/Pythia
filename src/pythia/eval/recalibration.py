@@ -13,7 +13,7 @@ from typing import Literal
 import numpy as np
 from scipy.optimize import minimize
 
-from pythia.config.settings import RecalibrationMethod
+from pythia.common import RecalibrationMethod
 from pythia.eval.functions import brier_score
 from pythia.eval.models import RecalibrationReport
 

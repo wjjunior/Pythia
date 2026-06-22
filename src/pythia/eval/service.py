@@ -20,13 +20,13 @@ from pythia.common import (
     FailureCase,
     ImprovementCandidate,
     Postmortem,
+    RecalibrationMethod,
     Side,
     TradeStatus,
 )
 from pythia.common.ids import deterministic_id
 from pythia.common.venue import blended_baseline, latest_prices_per_venue
 from pythia.config import Settings
-from pythia.config.settings import RecalibrationMethod
 from pythia.db import models
 from pythia.db.repositories import (
     ImprovementCandidateRepository,

@@ -218,7 +218,11 @@ class OpenRouterLLMPort:
     ) -> None:
         usage = response.get("usage", {})
         details = usage.get("prompt_tokens_details", {}) or {}
-        provider = str(response.get("provider", "openrouter"))
+        provider = response.get("provider")
+        if provider is None:
+            _log.warning("llm_provider_missing", model=model)
+            provider = "openrouter"
+        provider = str(provider)
         input_tokens = int(usage.get("prompt_tokens", 0))
         output_tokens = int(usage.get("completion_tokens", 0))
         cached_tokens = int(details.get("cached_tokens", 0))

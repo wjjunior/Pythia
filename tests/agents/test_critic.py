@@ -4,6 +4,8 @@ import json
 from typing import Any
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from pythia.agents import (
     CriticAgent,
@@ -59,6 +61,17 @@ def test_apply_verdict_zeroes_confidence_on_lookahead_leak() -> None:
     assert result.confidence == 0.0
     assert result.critic_notes is not None
     assert "leak" in result.critic_notes.lower()
+
+
+_unit = st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False)
+
+
+@given(_unit, _unit)
+def test_lookahead_leak_always_zeroes_confidence(est_conf: float, adjusted: float) -> None:
+    result = apply_verdict(
+        _estimate(confidence=est_conf), _verdict(adjusted=adjusted, lookahead_leak=True)
+    )
+    assert result.confidence == 0.0
 
 
 def test_apply_verdict_records_objections_in_notes() -> None:
