@@ -122,9 +122,30 @@ def test_resolution_proposal_should_reject_outcome_other_than_0_1_or_none() -> N
         ResolutionProposal(market_id="m1", outcome=2, rationale="x", model_name="stub")
 
 
-def test_resolution_proposal_should_default_to_unambiguous_with_no_outcome() -> None:
-    proposal = ResolutionProposal(market_id="m1", rationale="x", model_name="stub")
+def test_resolution_proposal_should_accept_an_ambiguous_proposal_with_no_outcome() -> None:
+    proposal = ResolutionProposal(market_id="m1", ambiguous=True, rationale="x", model_name="stub")
     assert proposal.outcome is None
-    assert proposal.ambiguous is False
-    assert proposal.confidence == 0.0
+    assert proposal.ambiguous is True
     assert proposal.evidence_ids == []
+
+
+def test_resolution_proposal_should_accept_a_graded_unambiguous_proposal() -> None:
+    proposal = ResolutionProposal(
+        market_id="m1", outcome=1, ambiguous=False, rationale="x", model_name="stub"
+    )
+    assert proposal.outcome == 1
+    assert proposal.ambiguous is False
+
+
+def test_resolution_proposal_should_reject_a_graded_outcome_marked_ambiguous() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(
+            market_id="m1", outcome=1, ambiguous=True, rationale="x", model_name="stub"
+        )
+
+
+def test_resolution_proposal_should_reject_no_outcome_when_not_ambiguous() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(
+            market_id="m1", outcome=None, ambiguous=False, rationale="x", model_name="stub"
+        )

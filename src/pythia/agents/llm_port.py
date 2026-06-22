@@ -6,10 +6,10 @@ OpenRouter key, the stub runs the pipeline end-to-end.
 
 import time
 from collections.abc import Callable
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, Self
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from pythia.agents.aggregation import aggregate
 from pythia.agents.cost import BudgetExceeded
@@ -59,10 +59,16 @@ class _DiscoveryPayload(BaseModel):
 
 
 class _ResolutionPayload(BaseModel):
-    outcome: Literal[0, 1] | None = None
-    ambiguous: bool = False
+    outcome: Literal[0, 1] | None
+    ambiguous: bool
     confidence: float = 0.5
     rationale: str
+
+    @model_validator(mode="after")
+    def _outcome_matches_ambiguity(self) -> Self:
+        if (self.outcome is None) != self.ambiguous:
+            raise ValueError("outcome must be set iff the proposal is not ambiguous")
+        return self
 
 
 class ChatTransport(Protocol):

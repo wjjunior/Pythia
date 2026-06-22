@@ -4,8 +4,11 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from pythia.agents import (
     DEFAULT_RESOLUTION_EVIDENCE_K,
+    LLMResponseError,
     ModelRouter,
     OpenRouterLLMPort,
     ResolutionAgent,
@@ -96,6 +99,24 @@ def test_openrouter_grade_resolution_should_flag_ambiguous_when_the_model_grades
     proposal = _openrouter(transport, []).grade_resolution(_market(), _evidence())
     assert proposal.ambiguous is True
     assert proposal.outcome is None
+
+
+def test_openrouter_grade_resolution_should_fail_fast_on_a_contradictory_grade() -> None:
+    transport = _FakeTransport(
+        _resolution_response(
+            {"outcome": None, "ambiguous": False, "confidence": 0.5, "rationale": "x"}
+        )
+    )
+    with pytest.raises(LLMResponseError):
+        _openrouter(transport, []).grade_resolution(_market(), _evidence())
+
+
+def test_openrouter_grade_resolution_should_fail_fast_when_outcome_is_missing() -> None:
+    transport = _FakeTransport(
+        _resolution_response({"ambiguous": False, "confidence": 0.5, "rationale": "x"})
+    )
+    with pytest.raises(LLMResponseError):
+        _openrouter(transport, []).grade_resolution(_market(), _evidence())
 
 
 class _RecordingEvidence:
