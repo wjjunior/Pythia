@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     model_routing: str | None = None
     model_routing_strategy: RoutingStrategy = "static"
     max_price_per_call: float | None = None
+    discovery_shortlist_size: int | None = None
 
     # Venues
     polymarket_api_base: str = "https://gamma-api.polymarket.com"

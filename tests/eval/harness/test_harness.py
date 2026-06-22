@@ -128,6 +128,9 @@ class _BrokenLLM:
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
         raise NotImplementedError
 
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        raise NotImplementedError
+
 
 def test_llm_runner_counts_estimation_failures_as_errors() -> None:
     config = HarnessConfig("broken", llm_runner(lambda sink: _BrokenLLM()))
