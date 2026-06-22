@@ -2,11 +2,12 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 Prob = Annotated[float, Field(ge=0.0, le=1.0)]
+RecalibrationMethod = Literal["platt", "beta", "isotonic"]
 
 
 class Side(StrEnum):

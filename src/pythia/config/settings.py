@@ -5,10 +5,11 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from pythia.common.types import RecalibrationMethod
+
 Mode = Literal["paper", "live"]
 RoutingStrategy = Literal["static", "escalate", "ensemble"]
 AggregationMethod = Literal["median", "weighted"]
-RecalibrationMethod = Literal["platt", "beta", "isotonic"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
 

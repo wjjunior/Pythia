@@ -38,4 +38,4 @@ def position_size(
     conf: float,
     cap_per_trade: float,
 ) -> float:
-    return min(bankroll * kelly_frac * kelly_mult * conf, cap_per_trade)
+    return max(0.0, min(bankroll * kelly_frac * kelly_mult * conf, cap_per_trade))

@@ -74,7 +74,11 @@ class BudgetGuard:
 
 
 class CachingLLMPort:
-    """Memoizes estimate by (market, snapshot, evidence_hash) so identical inputs never re-bill."""
+    """Memoize estimate by (market, snapshot, evidence_hash), scoped to this instance.
+
+    An identical request is not re-billed within one pipeline run; the in-memory cache is not
+    shared across runs (e.g. successive /api/run invocations).
+    """
 
     def __init__(self, inner: LLMPort) -> None:
         self._inner = inner
