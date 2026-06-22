@@ -20,6 +20,8 @@ from pythia.common import (
     MarketSnapshot,
     MemberForecast,
     Source,
+    Venue,
+    VenueQuote,
 )
 from pythia.common.logging import clear_correlation, configure_logging
 from pythia.config import Settings
@@ -33,6 +35,7 @@ from pythia.db.repositories import (
     ScoreRepository,
     SnapshotRepository,
     SourceRepository,
+    VenueQuoteRepository,
 )
 from pythia.eval.recalibration import CalibrationMap
 from pythia.orchestration import Pipeline, PipelineRunStatus
@@ -280,6 +283,25 @@ def test_pipeline_sizes_down_a_high_invalid_rate_category(session: Session) -> N
     assert result.score.p_resol == pytest.approx(0.3)
     assert result.decision.vetoed
     assert RiskReason.MAX_P_RESOL_SEVERITY in result.decision.reasons
+
+
+def test_pipeline_penalizes_p_corr_on_cross_venue_divergence(session: Session) -> None:
+    market, snapshot = _seed(session)  # politics, snapshot yes_price = 0.5
+    VenueQuoteRepository(session).add(
+        VenueQuote(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt38-vq")),
+            market_id=MARKET_ID,
+            venue=Venue.MANIFOLD,
+            external_ref="m1",
+            ts=ASOF - timedelta(hours=1),
+            yes_price=0.8,
+            match_confidence=0.9,
+        )
+    )
+    result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.score is not None
+    # divergence(0.5, [0.8]) = 0.3 → p_corr = 1 - 0.3 = 0.7
+    assert result.score.p_corr == pytest.approx(0.7)
 
 
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:
