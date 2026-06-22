@@ -126,11 +126,13 @@ class CalibrationService:
         latest = _latest_estimate_per_market(self._session, list(outcomes))
         categories = _categories_of(self._session, list(latest))
         snapshots = self._snapshots([estimate.snapshot_id for estimate in latest.values()])
-        venues = VenueQuoteRepository(self._session)
+        all_quotes = VenueQuoteRepository(self._session).retrieve_for_markets(
+            [str(mid) for mid in latest]
+        )
         records: dict[str, list[tuple[float, float, int]]] = {}
         for market_id, estimate in latest.items():
             q_market, ts = snapshots[estimate.snapshot_id]
-            quotes = venues.retrieve(str(market_id), asof=ts)
+            quotes = [q for q in all_quotes.get(str(market_id), []) if q.ts <= ts]
             q_blended = blended_baseline(q_market, latest_prices_per_venue(quotes))
             records.setdefault(categories[market_id], []).append(
                 (estimate.p_model, q_blended, outcomes[market_id])
