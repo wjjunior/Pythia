@@ -18,6 +18,7 @@ from pythia.api.routers import (
     portfolio,
     radar,
     review,
+    run,
     simulation,
 )
 
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
         simulation,
         cost,
         review,
+        run,
         events,
         health,
     )

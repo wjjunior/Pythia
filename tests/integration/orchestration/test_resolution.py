@@ -122,6 +122,18 @@ def test_record_audits_settles_and_post_mortems_a_surprise(session: Session) -> 
     assert len(PostmortemRepository(session).list_for_market(estimate.market_id)) == 1
 
 
+def test_record_publishes_calibration_changed_for_the_category(session: Session) -> None:
+    estimate = _seed(session, "calchange", p_model=0.7, confidence=0.7)
+    published: list[str] = []
+    service = ResolutionService(
+        session, _settings(), PaperLedger(session), on_calibration_changed=published.append
+    )
+
+    service.record(estimate.market_id, outcome=1, at=AT + timedelta(days=5))
+
+    assert published == ["politics"]
+
+
 def test_calibrated_loss_settles_but_writes_no_post_mortem(session: Session) -> None:
     estimate = _seed(session, "calibrated", p_model=0.7, confidence=0.7)
     _open_trade(session, estimate)

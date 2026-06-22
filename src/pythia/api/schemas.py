@@ -69,6 +69,12 @@ class CostResponse(BaseModel):
     by_day: dict[str, float]
 
 
+class RunResponse(BaseModel):
+    markets: int
+    scored: int
+    halted: bool
+
+
 class GrowthCurvePointView(BaseModel):
     kelly_mult: float
     log_growth_rate: float
