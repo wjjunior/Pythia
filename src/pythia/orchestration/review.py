@@ -26,6 +26,14 @@ class NotScoredError(RuntimeError):
     """Only a scored opportunity can be reviewed; the estimate has no score."""
 
 
+class NotRiskEvaluatedError(RuntimeError):
+    """No risk decision is recorded; the opportunity never passed the deterministic gate (AC-5)."""
+
+
+class VetoedOpportunityError(RuntimeError):
+    """The deterministic risk gate vetoed this opportunity; it cannot reach paper (AC-5)."""
+
+
 def _trade_id(estimate_id: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"paper-trade|{estimate_id}"))
 
@@ -54,6 +62,13 @@ class ReviewGate:
         if self._scores.get_by_estimate(estimate_id) is None:
             raise NotScoredError(estimate_id)
 
+        decision = self._audit.latest_risk_decision(estimate.market_id, estimate_id)
+        if decision is None:
+            raise NotRiskEvaluatedError(estimate_id)
+        if decision.vetoed:
+            raise VetoedOpportunityError(estimate_id)
+        approved_size = min(size, decision.approved_size)
+
         trade = self._ledger.open(
             PaperTrade(
                 id=_trade_id(estimate_id),
@@ -61,7 +76,7 @@ class ReviewGate:
                 estimate_id=estimate_id,
                 side=side,
                 entry_price=_PLACEHOLDER_ENTRY,
-                size=size,
+                size=approved_size,
                 status=TradeStatus.OPEN,
                 opened_at=at,
             )
@@ -74,7 +89,8 @@ class ReviewGate:
                     "estimate_id": estimate_id,
                     "reviewer": reviewer,
                     "side": side.value,
-                    "size": size,
+                    "requested_size": size,
+                    "size": approved_size,
                 },
             )
         )

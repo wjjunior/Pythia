@@ -12,10 +12,20 @@ from sqlmodel import Session
 from pythia.api.app import create_app
 from pythia.api.deps import get_session, settings_dependency
 from pythia.api.events import SseChannel
-from pythia.common import CostEvent, Estimate, Market, MarketSnapshot, Score, Source
+from pythia.common import (
+    AuditEvent,
+    AuditKind,
+    CostEvent,
+    Estimate,
+    Market,
+    MarketSnapshot,
+    Score,
+    Source,
+)
 from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
+    AuditRepository,
     CostRepository,
     EstimateRepository,
     MarketRepository,
@@ -115,6 +125,22 @@ def _seed_scored_market(session: Session, *, category: str = "politics") -> None
     )
 
 
+def _seed_risk_decision(session: Session, *, vetoed: bool, approved_size: float) -> None:
+    AuditRepository(session).append(
+        AuditEvent(
+            kind=AuditKind.RISK_DECISION,
+            market_id=MARKET_ID,
+            payload={
+                "estimate_id": ESTIMATE_ID,
+                "approved_size": approved_size,
+                "vetoed": vetoed,
+                "paper_only": True,
+                "reasons": [],
+            },
+        )
+    )
+
+
 def test_list_markets_filters_by_category(client: TestClient, session: Session) -> None:
     _seed_scored_market(session, category="politics")
     assert len(client.get("/api/markets").json()) == 1
@@ -177,6 +203,7 @@ def test_estimate_detail_includes_cited_evidence(client: TestClient, session: Se
 
 def test_paper_positions_reports_capital_state(client: TestClient, session: Session) -> None:
     _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=False, approved_size=1000.0)
     client.post(
         f"/api/review/{ESTIMATE_ID}",
         json={"action": "approve", "side": "YES", "size": 100.0, "reviewer": "alice"},
@@ -189,6 +216,7 @@ def test_paper_positions_reports_capital_state(client: TestClient, session: Sess
 
 def test_portfolio_reports_capital_and_exposure(client: TestClient, session: Session) -> None:
     _seed_scored_market(session, category="politics")
+    _seed_risk_decision(session, vetoed=False, approved_size=1000.0)
     client.post(
         f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
     )
@@ -282,12 +310,24 @@ def test_cost_reports_spend_breakdown(client: TestClient, session: Session) -> N
 
 def test_review_approve_opens_a_paper_trade(client: TestClient, session: Session) -> None:
     _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=False, approved_size=1000.0)
     response = client.post(
         f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
     )
     assert response.status_code == 200
     assert response.json()["action"] == "approve"
     assert response.json()["trade"]["status"] == "open"
+
+
+def test_review_approve_vetoed_opportunity_returns_409(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=True, approved_size=0.0)
+    response = client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
+    )
+    assert response.status_code == 409
 
 
 def test_review_reject_opens_nothing(client: TestClient, session: Session) -> None:
@@ -307,6 +347,7 @@ def test_review_rejects_non_positive_size(client: TestClient, session: Session) 
 
 def test_paper_positions_excludes_resolved_trades(client: TestClient, session: Session) -> None:
     _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=False, approved_size=1000.0)
     client.post(
         f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
     )
