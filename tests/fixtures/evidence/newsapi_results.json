@@ -1,0 +1,24 @@
+{
+  "status": "ok",
+  "totalResults": 2,
+  "articles": [
+    {
+      "source": {"id": "reuters", "name": "Reuters"},
+      "author": "Reuters Staff",
+      "title": "Candidate Alpha leads polls in 2026 governor race",
+      "description": "Alpha maintains a 7-point lead according to the latest polls ahead of the 2026 governor election.",
+      "url": "https://reuters.com/alpha-poll-2026",
+      "publishedAt": "2026-03-01T10:00:00Z",
+      "content": "Candidate Alpha leads polls in the 2026 governor race with a significant margin over opponents, according to a new survey released Monday."
+    },
+    {
+      "source": {"id": "apnews", "name": "AP News"},
+      "author": "AP Staff",
+      "title": "2026 governor race update: Alpha ahead in polls",
+      "description": "New polling data shows Alpha continuing to lead in the 2026 governor race with a 6-point margin.",
+      "url": "https://apnews.com/2026-governor-alpha",
+      "publishedAt": "2026-02-28T15:30:00Z",
+      "content": "Polling data released Tuesday confirms Alpha maintains a lead in the governor race, putting pressure on rivals."
+    }
+  ]
+}
