@@ -126,17 +126,18 @@ class CalibrationService:
         """
         resolutions = self._session.exec(
             select(models.Resolution)
+            .join(models.Market, col(models.Resolution.market_id) == col(models.Market.id))
             .where(col(models.Resolution.ambiguous).is_(False))
+            .where(col(models.Market.category) == category)
             .order_by(col(models.Resolution.resolved_at), col(models.Resolution.id))
         ).all()
         ordered = [(row.market_id, row.outcome) for row in resolutions]
         latest = _latest_estimate_per_market(self._session, [market_id for market_id, _ in ordered])
-        categories = _categories_of(self._session, list(latest))
         prices = self._snapshot_prices([estimate.snapshot_id for estimate in latest.values()])
         deltas: list[float] = []
         for market_id, outcome in ordered:
             estimate = latest.get(market_id)
-            if estimate is None or categories.get(market_id) != category:
+            if estimate is None:
                 continue
             q = prices[estimate.snapshot_id]
             deltas.append(brier(q, outcome) - brier(estimate.p_model, outcome))

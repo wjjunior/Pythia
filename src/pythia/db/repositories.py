@@ -329,8 +329,12 @@ class ResolutionRepository:
         ambiguous: bool = False,
         source: str | None = None,
     ) -> str:
+        row_id = uuid.UUID(deterministic_id("resolution", market_id))
+        existing = self._session.get(models.Resolution, row_id)
+        if existing is not None:
+            return str(existing.id)
         row = models.Resolution(
-            id=uuid.UUID(deterministic_id("resolution", market_id)),
+            id=row_id,
             market_id=uuid.UUID(market_id),
             outcome=outcome,
             resolved_at=at,

@@ -62,6 +62,7 @@ class ResolutionService:
             AuditEvent(
                 kind=AuditKind.RESOLUTION,
                 market_id=market_id,
+                ts=at,
                 payload={
                     "resolution_id": resolution_id,
                     "outcome": outcome,

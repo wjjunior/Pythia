@@ -156,4 +156,8 @@ def test_category_brier_deltas_are_ordered_for_drift(session: Session) -> None:
     service.record(second.market_id, outcome=1, at=AT + timedelta(days=2))
 
     deltas = CalibrationService(session).category_brier_deltas("politics")
-    assert len(deltas) == 2  # one per non-ambiguous resolution, in resolution order
+    assert len(deltas) == 2
+    # d1 resolved first: p_model=0.8, market=0.5, outcome=1 → brier_market-brier_system = 0.25-0.04
+    # d2 resolved second: p_model=0.2, market=0.5, outcome=1 → 0.25-0.64
+    assert deltas[0] == pytest.approx(0.25 - 0.04)
+    assert deltas[1] == pytest.approx(0.25 - 0.64)
