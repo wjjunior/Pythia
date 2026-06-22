@@ -53,6 +53,8 @@ const category = (delta: number): CategoryCalibration => ({
   brier_market: 0.2 + delta,
   delta,
   n: 10,
+  invalid_count: 0,
+  invalid_rate: 0,
 })
 
 describe("rankByOpportunity", () => {
