@@ -364,6 +364,10 @@ class ResolutionRepository:
         self._session.refresh(row)
         return str(row.id)
 
+    def exists(self, market_id: str) -> bool:
+        row_id = uuid.UUID(deterministic_id("resolution", market_id))
+        return self._session.get(models.Resolution, row_id) is not None
+
     def invalid_counts_by_category(self) -> dict[str, int]:
         rows = self._session.exec(
             select(models.Market.category, func.count())
