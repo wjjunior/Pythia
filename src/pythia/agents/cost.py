@@ -11,6 +11,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from pythia.common import CostEvent, CriticVerdict, Estimate, EstimationContext, Evidence, LLMPort
+from pythia.common.logging import current_correlation_id
 from pythia.db.repositories import CostRepository
 
 
@@ -52,9 +53,11 @@ class BudgetGuard:
         self._run_spent = 0.0
 
     def record(self, event: CostEvent) -> None:
+        # The pipeline binds the run id as the correlation (pipeline.py); fall back to it so cost
+        # events are attributable per run (AC-8) even when the guard predates the run (PYT-48).
         self._costs.record(
             event,
-            pipeline_run_id=self._run_id,
+            pipeline_run_id=self._run_id or current_correlation_id(),
             market_id=self._market_id,
             estimate_id=self._estimate_id,
         )
