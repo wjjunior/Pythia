@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     metaculus_api_base: str | None = None
     metaculus_api_key: str | None = None
     cross_venue_sources: str = ""
+    evidence_sources: str = ""
+    newsapi_key: str | None = None
     crawl_interval_seconds: int = 300
 
     # Paper bankroll, sizing & risk caps
@@ -101,6 +103,10 @@ class Settings(BaseSettings):
     @property
     def cross_venue_source_list(self) -> list[str]:
         return [s.strip() for s in self.cross_venue_sources.split(",") if s.strip()]
+
+    @property
+    def evidence_source_list(self) -> list[str]:
+        return [s.strip() for s in self.evidence_sources.split(",") if s.strip()]
 
     @property
     def llm_enabled(self) -> bool:

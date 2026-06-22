@@ -1,10 +1,12 @@
-"""Worker entrypoint: market crawl + cross-venue ingest on CRAWL_INTERVAL_SECONDS (§8.6)."""
+"""Worker entrypoint: market crawl + venue + evidence-ingest on CRAWL_INTERVAL_SECONDS (§8.6)."""
 
 from pythia.common import Market, MarketSnapshot
 from pythia.common.logging import configure_logging, get_logger
 from pythia.config import Settings, get_settings
 from pythia.db.session import session_scope
 from pythia.ingestion import HttpxTransport, MarketCrawler
+from pythia.rag.embeddings import make_embedder
+from pythia.worker.evidence_ingest import build_evidence_transports
 from pythia.worker.scheduler import build_scheduler
 from pythia.worker.venue_ingest import build_venue_clients
 
@@ -33,17 +35,22 @@ def main() -> None:
         return
     crawler = MarketCrawler(HttpxTransport(settings.polymarket_api_base))
     venue_clients = build_venue_clients(settings)
+    evidence_transports = build_evidence_transports(settings)
+    embedder = make_embedder(settings)
     scheduler = build_scheduler(
         crawler,
         _log_sink,
         settings.crawl_interval_seconds,
         session_factory=session_scope,
         venue_clients=venue_clients,
+        embedder=embedder,
+        evidence_transports=evidence_transports,
     )
     _log.info(
         "worker_start",
         interval_seconds=settings.crawl_interval_seconds,
         venue_count=len(venue_clients),
+        evidence_source_count=len(evidence_transports),
     )
     scheduler.start()
 
