@@ -4,7 +4,13 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from pythia.agents import ModelRouter, OpenRouterLLMPort, StubLLMPort
+from pythia.agents import (
+    DEFAULT_RESOLUTION_EVIDENCE_K,
+    ModelRouter,
+    OpenRouterLLMPort,
+    ResolutionAgent,
+    StubLLMPort,
+)
 from pythia.common import CostEvent, Evidence, Market, ResolutionProposal
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -90,3 +96,23 @@ def test_openrouter_grade_resolution_should_flag_ambiguous_when_the_model_grades
     proposal = _openrouter(transport, []).grade_resolution(_market(), _evidence())
     assert proposal.ambiguous is True
     assert proposal.outcome is None
+
+
+class _RecordingEvidence:
+    def __init__(self, evidence: list[Evidence]) -> None:
+        self.calls: list[tuple[str, datetime, int]] = []
+        self._evidence = evidence
+
+    def retrieve(self, market_id: str, asof: datetime, k: int) -> list[Evidence]:
+        self.calls.append((market_id, asof, k))
+        return self._evidence
+
+
+def test_resolution_agent_should_grade_evidence_retrieved_as_of_the_resolution_time() -> None:
+    store = _RecordingEvidence(_evidence())
+    agent = ResolutionAgent(StubLLMPort(), store)
+    at = datetime(2026, 6, 1, tzinfo=UTC)
+    proposal = agent.propose(_market(), at)
+    assert store.calls == [("m1", at, DEFAULT_RESOLUTION_EVIDENCE_K)]
+    assert proposal.evidence_ids == ["e1"]
+    assert proposal.ambiguous is True

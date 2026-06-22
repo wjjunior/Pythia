@@ -15,6 +15,7 @@ from pythia.agents.llm_port import (
     StubLLMPort,
     make_llm_port,
 )
+from pythia.agents.resolution import DEFAULT_RESOLUTION_EVIDENCE_K, ResolutionAgent
 from pythia.agents.router import (
     DEFAULT_SLATES,
     CriticDiversityError,
@@ -25,6 +26,7 @@ from pythia.agents.router import (
 
 __all__ = [
     "DEFAULT_EVIDENCE_K",
+    "DEFAULT_RESOLUTION_EVIDENCE_K",
     "DEFAULT_SLATES",
     "BudgetExceeded",
     "BudgetGuard",
@@ -38,6 +40,7 @@ __all__ = [
     "LLMResponseError",
     "ModelRouter",
     "OpenRouterLLMPort",
+    "ResolutionAgent",
     "StubLLMPort",
     "UnknownAgentError",
     "apply_verdict",
