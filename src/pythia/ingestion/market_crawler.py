@@ -84,6 +84,8 @@ def _parse_json_list(value: str) -> list[Any]:
 def _yes_price(raw: dict[str, Any]) -> float:
     outcomes = _parse_json_list(raw["outcomes"])
     prices = _parse_json_list(raw["outcomePrices"])
+    if len(outcomes) != len(prices):
+        raise ValueError(f"outcomes/prices length mismatch: {len(outcomes)} vs {len(prices)}")
     for outcome, price in zip(outcomes, prices, strict=True):
         if str(outcome).lower() == "yes":
             return float(price)
