@@ -10,6 +10,7 @@ from pythia.common import (
     Evidence,
     Market,
     MarketSnapshot,
+    ResolutionProposal,
 )
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -60,6 +61,11 @@ class _CountingLLM:
         self.critique_calls += 1
         return CriticVerdict(
             adjusted_confidence=0.5, objections=[], lookahead_leak=False, notes=None
+        )
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return ResolutionProposal(
+            market_id=market.id, ambiguous=True, rationale="fake", model_name="fake"
         )
 
 

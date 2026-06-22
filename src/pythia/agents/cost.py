@@ -10,7 +10,16 @@ import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from pythia.common import CostEvent, CriticVerdict, Estimate, EstimationContext, Evidence, LLMPort
+from pythia.common import (
+    CostEvent,
+    CriticVerdict,
+    Estimate,
+    EstimationContext,
+    Evidence,
+    LLMPort,
+    Market,
+    ResolutionProposal,
+)
 from pythia.common.logging import current_correlation_id
 from pythia.db.repositories import CostRepository
 
@@ -95,3 +104,6 @@ class CachingLLMPort:
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
         return self._inner.critique(est, evidence)
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return self._inner.grade_resolution(market, evidence)

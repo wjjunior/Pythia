@@ -16,6 +16,7 @@ from pythia.common.types import (
     Market,
     MarketSnapshot,
     PaperTrade,
+    ResolutionProposal,
 )
 
 
@@ -39,6 +40,7 @@ class EmbeddingPort(Protocol):
 class LLMPort(Protocol):
     def estimate(self, ctx: EstimationContext) -> Estimate: ...
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict: ...
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal: ...
 
 
 @runtime_checkable

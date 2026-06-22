@@ -6,7 +6,7 @@ OpenRouter key, the stub runs the pipeline end-to-end.
 
 import time
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
@@ -21,7 +21,9 @@ from pythia.common import (
     EstimationContext,
     Evidence,
     LLMPort,
+    Market,
     MemberForecast,
+    ResolutionProposal,
 )
 from pythia.common.ids import deterministic_id
 from pythia.common.logging import current_correlation_id, get_logger
@@ -50,6 +52,13 @@ class _CritiquePayload(BaseModel):
     objections: list[str] = Field(default_factory=list)
     lookahead_leak: bool = False
     notes: str | None = None
+
+
+class _ResolutionPayload(BaseModel):
+    outcome: Literal[0, 1] | None = None
+    ambiguous: bool = False
+    confidence: float = 0.5
+    rationale: str
 
 
 class ChatTransport(Protocol):
@@ -106,6 +115,17 @@ class StubLLMPort:
             notes="deterministic stub critic",
         )
 
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return ResolutionProposal(
+            market_id=market.id,
+            outcome=None,
+            ambiguous=True,
+            confidence=0.0,
+            rationale="no LLM configured — cannot grade a subjective outcome",
+            evidence_ids=[item.id for item in evidence],
+            model_name="stub",
+        )
+
 
 def _strip_json_fence(content: str) -> str:
     content = content.strip()
@@ -160,6 +180,22 @@ def _critique_messages(est: Estimate, evidence: list[Evidence]) -> list[dict[str
             "role": "system",
             "content": "You are an adversarial critic hunting lookahead and weak sources.",
         },
+        {"role": "user", "content": user},
+    ]
+
+
+def _resolution_messages(market: Market, evidence: list[Evidence]) -> list[dict[str, str]]:
+    evidence_text = "\n".join(f"- {item.content}" for item in evidence)
+    user = (
+        f"Market: {market.question}\n"
+        f"Resolution rule: {market.resolution_rule}\n"
+        f"Evidence (post-resolution reporting permitted):\n{evidence_text}\n\n"
+        "Grade the actual outcome. If it is genuinely ambiguous or resolved invalid (50/50), "
+        'set ambiguous true. Return JSON: {"outcome": 0|1|null, "ambiguous", "confidence", '
+        '"rationale"}.'
+    )
+    return [
+        {"role": "system", "content": "You grade resolved prediction markets from evidence."},
         {"role": "user", "content": user},
     ]
 
@@ -351,6 +387,22 @@ class OpenRouterLLMPort:
             objections=payload.objections,
             lookahead_leak=payload.lookahead_leak,
             notes=payload.notes,
+        )
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        response, model, latency_ms = self._complete(
+            "resolution", _resolution_messages(market, evidence)
+        )
+        self._record_call("resolution", "grade", model, response, latency_ms)
+        payload = _parse_payload(response, _ResolutionPayload)
+        return ResolutionProposal(
+            market_id=market.id,
+            outcome=payload.outcome,
+            ambiguous=payload.ambiguous,
+            confidence=payload.confidence,
+            rationale=payload.rationale,
+            evidence_ids=[item.id for item in evidence],
+            model_name=model,
         )
 
 

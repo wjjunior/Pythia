@@ -16,6 +16,7 @@ from pythia.common import (
     Evidence,
     Market,
     MarketSnapshot,
+    ResolutionProposal,
 )
 from pythia.eval.harness import (
     CaseResult,
@@ -126,6 +127,9 @@ class _BrokenLLM:
         raise RuntimeError("boom")
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
+        raise NotImplementedError
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
         raise NotImplementedError
 
 
