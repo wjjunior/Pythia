@@ -6,6 +6,7 @@ surprise or category drift (§5.5) and never touches scoring/risk — it accumul
 proposes; the harness and the human decide.
 """
 
+from collections.abc import Callable
 from datetime import datetime
 
 from sqlmodel import Session
@@ -36,6 +37,7 @@ class ResolutionService:
         ledger: PaperLedgerPort,
         *,
         attribution: AttributionPort | None = None,
+        on_calibration_changed: Callable[[str], None] | None = None,
     ) -> None:
         self._resolutions = ResolutionRepository(session)
         self._markets = MarketRepository(session)
@@ -45,6 +47,7 @@ class ResolutionService:
         self._ledger = ledger
         self._calibration = CalibrationService(session)
         self._postmortem = PostmortemService(session, settings, attribution=attribution)
+        self._on_calibration_changed = on_calibration_changed
 
     def record(
         self,
@@ -73,6 +76,9 @@ class ResolutionService:
         self._ledger.resolve(market_id, outcome, at)
 
         market = self._markets.get(market_id)
+        if market is not None and self._on_calibration_changed is not None:
+            self._on_calibration_changed(market.category)
+
         estimate = self._estimates.latest_for_market(market_id)
         if market is None or estimate is None:
             return None

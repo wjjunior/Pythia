@@ -33,7 +33,9 @@ from pythia.db.repositories import (
     SnapshotRepository,
     SourceRepository,
 )
+from pythia.orchestration import ResolutionService
 from pythia.paper import PaperLedger
+from pythia.rag import EvidenceStore, StubEmbeddingPort
 
 pytestmark = pytest.mark.integration
 
@@ -388,6 +390,78 @@ def test_sse_emits_a_published_event(app: FastAPI, client: TestClient) -> None:
     assert "text/event-stream" in response.headers["content-type"]
     assert "event: radar_changed" in response.text
     assert "market-xyz" in response.text
+
+
+def test_run_endpoint_scores_open_markets_and_emits_radar_changed(
+    client: TestClient, session: Session
+) -> None:
+    MarketRepository(session).upsert(
+        Market(
+            id=MARKET_ID,
+            external_id="pyt41-run",
+            question="Will it resolve YES?",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=SNAPSHOT_ID,
+            market_id=MARKET_ID,
+            ts=TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    SourceRepository(session).upsert(
+        Source(id=SOURCE_ID, name="reuters", kind="news", reliability=0.9)
+    )
+    EvidenceStore(session, StubEmbeddingPort()).add(
+        market_id=MARKET_ID,
+        source_id=SOURCE_ID,
+        observed_at=TS - timedelta(days=1),
+        content="Polls show the YES side leading.",
+    )
+
+    response = client.post("/api/run")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scored"] >= 1
+    assert body["halted"] is False
+
+    events = client.get("/api/events?limit=1")
+    assert "event: radar_changed" in events.text
+    assert MARKET_ID in events.text
+
+
+def test_resolution_emits_calibration_changed_over_sse(
+    app: FastAPI, client: TestClient, session: Session
+) -> None:
+    MarketRepository(session).upsert(
+        Market(
+            id=MARKET_ID,
+            external_id="pyt41-cal",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    broadcaster = app.state.broadcaster
+    settings = Settings(_env_file=None, database_url="postgresql+psycopg://x/y")
+    ResolutionService(
+        session,
+        settings,
+        PaperLedger(session),
+        on_calibration_changed=lambda category: broadcaster.publish(
+            SseChannel.CALIBRATION_CHANGED, category
+        ),
+    ).record(MARKET_ID, outcome=1, at=TS + timedelta(days=5))
+
+    events = client.get("/api/events?limit=1")
+    assert "event: calibration_changed" in events.text
+    assert "politics" in events.text
 
 
 def test_openapi_schema_is_emitted(client: TestClient) -> None:
