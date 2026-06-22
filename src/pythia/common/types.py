@@ -168,6 +168,16 @@ class CriticVerdict(_Frozen):
     notes: str | None = None
 
 
+class ResolutionProposal(_Frozen):
+    market_id: str
+    outcome: Literal[0, 1] | None = None
+    ambiguous: bool = False
+    confidence: Prob = 0.0
+    rationale: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    model_name: str
+
+
 class AuditEvent(_Frozen):
     kind: AuditKind
     # heterogeneous JSON ledger payload; shape varies by AuditKind

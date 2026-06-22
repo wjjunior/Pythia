@@ -10,6 +10,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     MemberForecast,
+    ResolutionProposal,
     Side,
 )
 
@@ -107,3 +108,23 @@ def test_contracts_are_frozen() -> None:
     market = _market()
     with pytest.raises(ValidationError):
         market.resolved = True  # type: ignore[misc]
+
+
+def test_resolution_proposal_should_reject_confidence_above_one() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(
+            market_id="m1", outcome=1, confidence=1.5, rationale="x", model_name="stub"
+        )
+
+
+def test_resolution_proposal_should_reject_outcome_other_than_0_1_or_none() -> None:
+    with pytest.raises(ValidationError):
+        ResolutionProposal(market_id="m1", outcome=2, rationale="x", model_name="stub")
+
+
+def test_resolution_proposal_should_default_to_unambiguous_with_no_outcome() -> None:
+    proposal = ResolutionProposal(market_id="m1", rationale="x", model_name="stub")
+    assert proposal.outcome is None
+    assert proposal.ambiguous is False
+    assert proposal.confidence == 0.0
+    assert proposal.evidence_ids == []
