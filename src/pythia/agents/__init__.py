@@ -5,6 +5,7 @@ from pythia.agents.cost import (
     evidence_hash,
 )
 from pythia.agents.critic import CriticAgent, apply_verdict
+from pythia.agents.discovery import DiscoveryAgent
 from pythia.agents.estimation import DEFAULT_EVIDENCE_K, EstimationAgent
 from pythia.agents.llm_port import (
     ChatTransport,
@@ -35,6 +36,7 @@ __all__ = [
     "CostSink",
     "CriticAgent",
     "CriticDiversityError",
+    "DiscoveryAgent",
     "EstimationAgent",
     "HttpxChatTransport",
     "LLMResponseError",

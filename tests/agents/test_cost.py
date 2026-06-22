@@ -63,6 +63,9 @@ class _CountingLLM:
             adjusted_confidence=0.5, objections=[], lookahead_leak=False, notes=None
         )
 
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        return []
+
     def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
         return ResolutionProposal(
             market_id=market.id, ambiguous=True, rationale="fake", model_name="fake"

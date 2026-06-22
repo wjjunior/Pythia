@@ -129,6 +129,9 @@ class _BrokenLLM:
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
         raise NotImplementedError
 
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        raise NotImplementedError
+
     def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
         raise NotImplementedError
 

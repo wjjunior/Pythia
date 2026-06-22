@@ -105,5 +105,8 @@ class CachingLLMPort:
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
         return self._inner.critique(est, evidence)
 
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        return self._inner.discover(markets, limit)
+
     def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
         return self._inner.grade_resolution(market, evidence)
