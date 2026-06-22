@@ -1,15 +1,19 @@
-"""Schema-level invariants on real Postgres (§4.7, PYT-44)."""
+"""Schema-level invariants on real Postgres (§4.7, PYT-44/PYT-46)."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
+from sqlalchemy import update
+from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlmodel import Session, col
 
 from pythia.common import CandidateStatus
 from pythia.db import models
 
 pytestmark = pytest.mark.integration
+
+_TS = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
 def _seed_postmortem(session: Session) -> uuid.UUID:
@@ -62,3 +66,85 @@ def test_improvement_candidate_status_accepts_every_candidate_status(session: Se
     for status in CandidateStatus:
         session.add(_candidate(postmortem_id, status=status.value))
         session.commit()
+
+
+def _seed_snapshot(session: Session) -> uuid.UUID:
+    market_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt46-snap-market")
+    session.add(
+        models.Market(
+            id=market_id,
+            external_id="pyt46-snap",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    session.commit()
+    snapshot_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt46-snapshot")
+    session.add(
+        models.MarketSnapshot(
+            id=snapshot_id,
+            market_id=market_id,
+            ts=_TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    session.commit()
+    return snapshot_id
+
+
+def _seed_evidence(session: Session) -> uuid.UUID:
+    market_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt46-ev-market")
+    source_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt46-ev-source")
+    session.add(
+        models.Market(
+            id=market_id,
+            external_id="pyt46-ev",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    session.add(models.Source(id=source_id, name="pyt46-reuters", kind="news", reliability=0.9))
+    session.commit()
+    evidence_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt46-evidence")
+    session.add(
+        models.Evidence(
+            id=evidence_id,
+            market_id=market_id,
+            source_id=source_id,
+            observed_at=_TS,
+            content="original",
+        )
+    )
+    session.commit()
+    return evidence_id
+
+
+def test_market_snapshots_reject_in_place_update(session: Session) -> None:
+    snapshot_id = _seed_snapshot(session)
+    with pytest.raises(DBAPIError):
+        session.execute(
+            update(models.MarketSnapshot)
+            .where(col(models.MarketSnapshot.id) == snapshot_id)
+            .values(yes_price=0.99)
+        )
+    session.rollback()
+    row = session.get(models.MarketSnapshot, snapshot_id)
+    assert row is not None and row.yes_price == 0.5
+
+
+def test_evidence_rejects_in_place_update(session: Session) -> None:
+    evidence_id = _seed_evidence(session)
+    with pytest.raises(DBAPIError):
+        session.execute(
+            update(models.Evidence)
+            .where(col(models.Evidence.id) == evidence_id)
+            .values(content="tampered")
+        )
+    session.rollback()
+    row = session.get(models.Evidence, evidence_id)
+    assert row is not None and row.content == "original"
