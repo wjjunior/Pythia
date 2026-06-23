@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     # Forecast aggregation & recalibration
     aggregation_method: AggregationMethod = "median"
     ensemble_size: int = 1
+    critic_max_attempts: int = 2
     recalibration_method: RecalibrationMethod = "platt"
     recalibration_min_n: int = 50
     dispute_risk_lookback: int = 90

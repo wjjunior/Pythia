@@ -299,6 +299,7 @@ class OpenRouterLLMPort:
         ensemble_size: int = 1,
         aggregation_method: AggregationMethod = "median",
         escalate_threshold: float = 0.5,
+        critic_max_attempts: int = 2,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._transport = transport
@@ -309,6 +310,7 @@ class OpenRouterLLMPort:
         self._ensemble_size = ensemble_size
         self._aggregation_method = aggregation_method
         self._escalate_threshold = escalate_threshold
+        self._critic_max_attempts = critic_max_attempts
         self._clock = clock
 
     def _complete(
@@ -335,6 +337,17 @@ class OpenRouterLLMPort:
                 continue
             return response, model, int((self._clock() - start) * 1000)
         raise errors[-1]
+
+    def _complete_one(
+        self, model: str, messages: list[dict[str, str]]
+    ) -> tuple[dict[str, Any], int]:
+        if self._budget_check is not None:
+            self._budget_check()
+        start = self._clock()
+        response = self._transport.complete(
+            model=model, messages=messages, max_price=self._router.max_price
+        )
+        return response, int((self._clock() - start) * 1000)
 
     def _record_call(
         self, agent: str, task: str, model: str, response: dict[str, Any], latency_ms: int
@@ -461,17 +474,31 @@ class OpenRouterLLMPort:
         candidates = self._router.diverse_candidates("critic", exclude_family_of=est.model_name)
         if not candidates:
             raise CriticDiversityError(est.model_name)
-        response, model, latency_ms = self._complete(
-            "critic", _critique_messages(est, evidence), candidates
-        )
-        self._record_call("critic", "critique", model, response, latency_ms)
-        payload = _parse_payload(response, _CritiquePayload)
-        adjusted = payload.adjusted_confidence
-        return CriticVerdict(
-            adjusted_confidence=adjusted if adjusted is not None else est.confidence,
-            objections=payload.objections,
-            lookahead_leak=payload.lookahead_leak,
-            notes=payload.notes,
+        messages = _critique_messages(est, evidence)
+        last_error: Exception | None = None
+        for model in candidates:
+            for _attempt in range(self._critic_max_attempts):
+                try:
+                    response, latency_ms = self._complete_one(model, messages)
+                except Exception as exc:  # transport failure: retry, then the next model
+                    last_error = exc
+                    continue
+                self._record_call("critic", "critique", model, response, latency_ms)
+                try:
+                    payload = _parse_payload(response, _CritiquePayload)
+                except LLMResponseError as exc:
+                    last_error = exc
+                    _log.warning("critic_unparseable", model=model, error=str(exc))
+                    continue
+                adjusted = payload.adjusted_confidence
+                return CriticVerdict(
+                    adjusted_confidence=adjusted if adjusted is not None else est.confidence,
+                    objections=payload.objections,
+                    lookahead_leak=payload.lookahead_leak,
+                    notes=payload.notes,
+                )
+        raise LLMResponseError(
+            f"critic unparseable across {len(candidates)} model(s): {last_error}"
         )
 
     def discover(self, markets: list[Market], limit: int) -> list[str]:
@@ -529,5 +556,6 @@ def make_llm_port(
             ensemble_size=settings.ensemble_size,
             aggregation_method=settings.aggregation_method,
             escalate_threshold=settings.min_confidence,
+            critic_max_attempts=settings.critic_max_attempts,
         )
     return StubLLMPort()
