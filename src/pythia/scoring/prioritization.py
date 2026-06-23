@@ -10,6 +10,8 @@ from datetime import datetime
 from pythia.common import Side
 
 _SECONDS_PER_DAY = 86400.0
+# A degenerate 0/1 price would give an infinite payout; clamp so the value stays JSON-finite.
+_MIN_ENTRY_PRICE = 1e-6
 
 
 def recommended_side(p_model: float, q: float) -> Side:
@@ -21,7 +23,7 @@ def entry_price(side: Side, q: float) -> float:
 
 
 def win_multiple(entry: float) -> float:
-    return 1.0 / entry if entry > 0.0 else float("inf")
+    return 1.0 / max(entry, _MIN_ENTRY_PRICE)
 
 
 def closes_in_days(close_time: datetime | None, asof: datetime) -> float | None:

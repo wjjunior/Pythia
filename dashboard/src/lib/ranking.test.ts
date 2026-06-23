@@ -45,6 +45,10 @@ const item = (opportunity: number, scoreOver: Partial<Score> = {}): RadarItem =>
     model_name: "stub",
   },
   score: score({ opportunity_score: opportunity, ...scoreOver }),
+  recommended_side: "YES",
+  entry_price: 0.5,
+  win_multiple: 2,
+  closes_in_days: null,
 })
 
 const category = (delta: number): CategoryCalibration => ({

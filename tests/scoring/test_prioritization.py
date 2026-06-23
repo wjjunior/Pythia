@@ -33,7 +33,13 @@ def test_entry_price_is_the_cost_of_the_bet_side() -> None:
 def test_win_multiple_is_the_payout_per_unit_cost() -> None:
     assert win_multiple(0.5) == 2.0
     assert win_multiple(0.25) == 4.0
-    assert win_multiple(1.0 / 1.4) == 1.4
+    assert win_multiple(1.0 / 1.4) == pytest.approx(1.4)
+
+
+def test_win_multiple_stays_finite_for_a_degenerate_price() -> None:
+    import math
+
+    assert math.isfinite(win_multiple(0.0))
 
 
 def test_closes_in_days_measures_from_asof() -> None:

@@ -451,6 +451,10 @@ def _days_to_close_key(metrics: RadarMetrics) -> float:
     return metrics.closes_in_days if metrics.closes_in_days is not None else float("inf")
 
 
+# Calibration-mode candidates are filtered/sorted in Python after the SQL window; bound the fetch.
+_RADAR_WINDOW_CAP = 500
+
+
 class ScoreRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -503,9 +507,10 @@ class ScoreRepository:
             return [_to_radar_row(score, est, market, q, asof) for score, est, market, q in rows]
         cutoff = asof + timedelta(days=max_days_to_close)
         windowed = self._session.exec(
-            query.where(col(models.Market.close_time).is_not(None)).where(
-                col(models.Market.close_time) <= cutoff
-            )
+            query.where(col(models.Market.close_time) >= asof)
+            .where(col(models.Market.close_time) <= cutoff)
+            .order_by(col(models.Market.close_time))
+            .limit(_RADAR_WINDOW_CAP)
         ).all()
         ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in windowed]
         if min_win_multiple is not None:

@@ -307,10 +307,18 @@ def test_radar_calibration_mode_filters_by_window_and_win_multiple(
         p_model=0.6,
         opp=0.5,
     )
+    _seed_calibration_market(  # already closed in the past — must not slip in ahead of near-term
+        session,
+        key="cal-past",
+        close_time=now - timedelta(days=5),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.5,
+    )
 
     body = client.get("/api/radar?max_days_to_close=7&min_win_multiple=1.4").json()
 
-    assert [r["market"]["id"] for r in body] == [b, a]  # soonest-close first; c and d filtered out
+    assert [r["market"]["id"] for r in body] == [b, a]  # soonest first; c, d, past all filtered out
 
 
 def test_radar_item_exposes_recommended_side_and_win_multiple(

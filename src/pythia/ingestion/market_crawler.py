@@ -213,7 +213,7 @@ class MarketCrawler:
         self._close_within_days = close_within_days
 
     def _end_date_max(self) -> str | None:
-        if self._close_within_days is None:
+        if self._close_within_days is None or self._close_within_days <= 0:
             return None
         return (self._clock() + timedelta(days=self._close_within_days)).isoformat()
 

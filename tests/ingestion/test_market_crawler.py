@@ -87,6 +87,12 @@ def test_poll_omits_the_close_window_by_default() -> None:
     assert transport.end_date_max is None
 
 
+def test_poll_omits_the_close_window_when_days_is_non_positive() -> None:
+    transport = _CapturingTransport()
+    MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None, close_within_days=0).poll()
+    assert transport.end_date_max is None
+
+
 def test_resolutions_ignore_the_close_window() -> None:
     transport = _CapturingTransport()
     crawler = MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None, close_within_days=7)
