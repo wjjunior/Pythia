@@ -479,6 +479,7 @@ class ScoreRepository:
         asof: datetime,
         max_days_to_close: int | None = None,
         min_win_multiple: float | None = None,
+        min_win_probability: float | None = None,
     ) -> list[tuple[Score, Estimate, Market, RadarMetrics]]:
         latest_per_market = (
             select(models.Score.id)
@@ -500,22 +501,33 @@ class ScoreRepository:
             )
             .where(col(models.Score.id).in_(latest_per_market))
         )
-        if max_days_to_close is None:
+        windowed = max_days_to_close is not None
+        if max_days_to_close is not None:
+            cutoff = asof + timedelta(days=max_days_to_close)
+            query = query.where(col(models.Market.close_time) >= asof).where(
+                col(models.Market.close_time) <= cutoff
+            )
+        # Fast path: no window and no payout/probability filters → order + limit in SQL.
+        if not windowed and min_win_multiple is None and min_win_probability is None:
             rows = self._session.exec(
                 query.order_by(col(models.Score.opportunity_score).desc()).limit(limit)
             ).all()
             return [_to_radar_row(score, est, market, q, asof) for score, est, market, q in rows]
-        cutoff = asof + timedelta(days=max_days_to_close)
-        windowed = self._session.exec(
-            query.where(col(models.Market.close_time) >= asof)
-            .where(col(models.Market.close_time) <= cutoff)
-            .order_by(col(models.Market.close_time))
-            .limit(_RADAR_WINDOW_CAP)
-        ).all()
-        ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in windowed]
+        # Otherwise the win-multiple/probability filters compute per row, so fetch a bounded set
+        # (soonest-close when windowed, else best-score), filter in Python, then sort and limit.
+        order = (
+            col(models.Market.close_time)
+            if windowed
+            else col(models.Score.opportunity_score).desc()
+        )
+        fetched = self._session.exec(query.order_by(order).limit(_RADAR_WINDOW_CAP)).all()
+        ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in fetched]
         if min_win_multiple is not None:
             ranked = [row for row in ranked if row[3].win_multiple >= min_win_multiple]
-        ranked.sort(key=lambda row: (_days_to_close_key(row[3]), -row[0].opportunity_score))
+        if min_win_probability is not None:
+            ranked = [row for row in ranked if row[3].win_probability >= min_win_probability]
+        if windowed:
+            ranked.sort(key=lambda row: (_days_to_close_key(row[3]), -row[0].opportunity_score))
         return ranked[:limit]
 
 

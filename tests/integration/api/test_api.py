@@ -321,6 +321,61 @@ def test_radar_calibration_mode_filters_by_window_and_win_multiple(
     assert [r["market"]["id"] for r in body] == [b, a]  # soonest first; c, d, past all filtered out
 
 
+def test_radar_calibration_mode_filters_by_win_probability(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    good = _seed_calibration_market(  # recommended YES, win prob 0.7, pays 2x
+        session,
+        key="cal-prob-good",
+        close_time=now + timedelta(days=2),
+        yes_price=0.5,
+        p_model=0.7,
+        opp=0.05,
+    )
+    _seed_calibration_market(  # Belarus-type: YES pays 2000x but the model gives it 1% -> dropped
+        session,
+        key="cal-prob-longshot",
+        close_time=now + timedelta(days=1),
+        yes_price=0.0005,
+        p_model=0.01,
+        opp=0.5,
+    )
+
+    body = client.get(
+        "/api/radar?max_days_to_close=7&min_win_multiple=1.4&min_win_probability=0.5"
+    ).json()
+
+    assert [r["market"]["id"] for r in body] == [good]  # the longshot is excluded despite 2000x
+    assert body[0]["win_probability"] == pytest.approx(0.7)
+
+
+def test_radar_applies_win_filters_without_a_close_window(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    good = _seed_calibration_market(
+        session,
+        key="nw-good",
+        close_time=now + timedelta(days=2),
+        yes_price=0.5,
+        p_model=0.7,
+        opp=0.05,
+    )
+    _seed_calibration_market(  # higher opp would rank first, but win prob 0.01 is filtered out
+        session,
+        key="nw-longshot",
+        close_time=now + timedelta(days=1),
+        yes_price=0.0005,
+        p_model=0.01,
+        opp=0.9,
+    )
+
+    body = client.get("/api/radar?min_win_probability=0.5").json()  # no max_days_to_close
+
+    assert [r["market"]["id"] for r in body] == [good]
+
+
 def test_radar_item_exposes_recommended_side_and_win_multiple(
     client: TestClient, session: Session
 ) -> None:
@@ -329,6 +384,7 @@ def test_radar_item_exposes_recommended_side_and_win_multiple(
     assert item["recommended_side"] == "YES"
     assert item["entry_price"] == pytest.approx(0.5)
     assert item["win_multiple"] == pytest.approx(2.0)
+    assert item["win_probability"] == pytest.approx(0.7)
     assert "closes_in_days" in item
 
 

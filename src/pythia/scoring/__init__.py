@@ -19,6 +19,7 @@ from pythia.scoring.prioritization import (
     radar_metrics,
     recommended_side,
     win_multiple,
+    win_probability,
 )
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "recommended_side",
     "resolution_penalty",
     "win_multiple",
+    "win_probability",
 ]

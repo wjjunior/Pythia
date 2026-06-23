@@ -13,10 +13,23 @@ from pythia.scoring.prioritization import (
     radar_metrics,
     recommended_side,
     win_multiple,
+    win_probability,
 )
 
 _PROB = st.floats(min_value=0.01, max_value=0.99)
 _ASOF = datetime(2026, 6, 23, tzinfo=UTC)
+
+
+def test_win_probability_is_the_model_probability_of_the_bet_side() -> None:
+    assert win_probability(Side.YES, 0.7) == 0.7
+    assert win_probability(Side.NO, 0.7) == pytest.approx(0.3)
+
+
+def test_radar_metrics_carries_win_probability_of_the_recommended_side() -> None:
+    # p_model 0.01, q 0.0005 -> recommended YES (edge), but the model gives it only 1% (a longshot)
+    metrics = radar_metrics(p_model=0.01, q=0.0005, close_time=None, asof=_ASOF)
+    assert metrics.recommended_side is Side.YES
+    assert metrics.win_probability == pytest.approx(0.01)
 
 
 def test_recommended_side_follows_the_edge_sign() -> None:

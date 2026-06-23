@@ -26,6 +26,10 @@ def win_multiple(entry: float) -> float:
     return 1.0 / max(entry, _MIN_ENTRY_PRICE)
 
 
+def win_probability(side: Side, p_model: float) -> float:
+    return p_model if side is Side.YES else 1.0 - p_model
+
+
 def closes_in_days(close_time: datetime | None, asof: datetime) -> float | None:
     if close_time is None:
         return None
@@ -37,6 +41,7 @@ class RadarMetrics:
     recommended_side: Side
     entry_price: float
     win_multiple: float
+    win_probability: float
     closes_in_days: float | None
 
 
@@ -49,5 +54,6 @@ def radar_metrics(
         recommended_side=side,
         entry_price=entry,
         win_multiple=win_multiple(entry),
+        win_probability=win_probability(side, p_model),
         closes_in_days=closes_in_days(close_time, asof),
     )
