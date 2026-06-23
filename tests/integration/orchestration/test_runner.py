@@ -322,3 +322,26 @@ def test_run_open_markets_should_fall_back_when_discovery_budget_is_breached(
     summary = run_open_markets(session, settings, discovery_llm=discovery_llm)
 
     assert summary.markets == 2
+
+
+class _MalformedDiscoveryTransport:
+    def complete(
+        self, *, model: str, messages: list[dict[str, str]], max_price: float | None
+    ) -> dict[str, Any]:
+        return {
+            "model": model,
+            "provider": "p",
+            "choices": [{"message": {"content": '{"shortlist": ["da75'}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
+        }
+
+
+def test_run_open_markets_should_fall_back_when_discovery_json_is_malformed(
+    session: Session,
+) -> None:
+    _seed_open_markets(session, 3)
+    discovery_llm = OpenRouterLLMPort(_MalformedDiscoveryTransport(), ModelRouter())
+
+    summary = run_open_markets(session, _discovery_settings(2), discovery_llm=discovery_llm)
+
+    assert summary.markets == 2
