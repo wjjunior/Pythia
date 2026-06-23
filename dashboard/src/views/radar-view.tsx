@@ -14,7 +14,11 @@ import {
 } from "@/components/ui/table"
 import { useRadar } from "@/hooks/use-api"
 import { daysToClose, multiple, num, pct, signedNum } from "@/lib/format"
-import { CALIBRATION_MAX_DAYS_TO_CLOSE, CALIBRATION_MIN_WIN_MULTIPLE } from "@/lib/ranking"
+import {
+  CALIBRATION_MAX_DAYS_TO_CLOSE,
+  CALIBRATION_MIN_WIN_MULTIPLE,
+  CALIBRATION_MIN_WIN_PROBABILITY,
+} from "@/lib/ranking"
 
 export function RadarView() {
   const navigate = useNavigate()
@@ -24,7 +28,7 @@ export function RadarView() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Opportunity radar"
-        description={`Calibration queue: closing within ${CALIBRATION_MAX_DAYS_TO_CLOSE}d with a win payout ≥ ${CALIBRATION_MIN_WIN_MULTIPLE}×, soonest first — to accrue calibration data quickly.`}
+        description={`Calibration queue: closing within ${CALIBRATION_MAX_DAYS_TO_CLOSE}d, the model-favoured side paying ≥ ${CALIBRATION_MIN_WIN_MULTIPLE}× with a win probability ≥ ${CALIBRATION_MIN_WIN_PROBABILITY * 100}%, soonest first.`}
       />
       <QueryState query={radar}>
         {(items) => {
@@ -43,6 +47,7 @@ export function RadarView() {
                     <TableHead className="text-right">p_model</TableHead>
                     <TableHead className="text-right">entry</TableHead>
                     <TableHead className="text-right">win</TableHead>
+                    <TableHead className="text-right">win prob</TableHead>
                     <TableHead className="text-right">net edge</TableHead>
                     <TableHead className="text-right">score</TableHead>
                   </TableRow>
@@ -76,6 +81,9 @@ export function RadarView() {
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
                         {multiple(item.win_multiple)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {pct(item.win_probability)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {signedNum(item.score.edge_net)}

@@ -479,6 +479,7 @@ class ScoreRepository:
         asof: datetime,
         max_days_to_close: int | None = None,
         min_win_multiple: float | None = None,
+        min_win_probability: float | None = None,
     ) -> list[tuple[Score, Estimate, Market, RadarMetrics]]:
         latest_per_market = (
             select(models.Score.id)
@@ -515,6 +516,8 @@ class ScoreRepository:
         ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in windowed]
         if min_win_multiple is not None:
             ranked = [row for row in ranked if row[3].win_multiple >= min_win_multiple]
+        if min_win_probability is not None:
+            ranked = [row for row in ranked if row[3].win_probability >= min_win_probability]
         ranked.sort(key=lambda row: (_days_to_close_key(row[3]), -row[0].opportunity_score))
         return ranked[:limit]
 

@@ -25,6 +25,7 @@ class RadarItem(BaseModel):
     recommended_side: Side
     entry_price: float
     win_multiple: float
+    win_probability: float
     closes_in_days: float | None
 
 
