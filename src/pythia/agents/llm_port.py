@@ -158,12 +158,27 @@ def _message_content(response: dict[str, Any]) -> str:
     return _strip_json_fence(str(content))
 
 
+def _extract_json_object(content: str) -> str | None:
+    start = content.find("{")
+    end = content.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    return content[start : end + 1]
+
+
 def _parse_payload[T: BaseModel](response: dict[str, Any], schema: type[T]) -> T:
     content = _message_content(response)
-    try:
-        return schema.model_validate_json(content)
-    except ValidationError as exc:
-        raise LLMResponseError(f"invalid {schema.__name__} from LLM: {exc}") from exc
+    candidates = [content]
+    extracted = _extract_json_object(content)
+    if extracted is not None and extracted != content:
+        candidates.append(extracted)
+    last_error: ValidationError | None = None
+    for candidate in candidates:
+        try:
+            return schema.model_validate_json(candidate)
+        except ValidationError as exc:
+            last_error = exc
+    raise LLMResponseError(f"invalid {schema.__name__} from LLM: {last_error}") from last_error
 
 
 def _estimation_messages(ctx: EstimationContext) -> list[dict[str, str]]:

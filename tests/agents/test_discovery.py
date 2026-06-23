@@ -73,3 +73,18 @@ def test_discovery_agent_should_map_ids_to_markets_preserving_order() -> None:
     agent = DiscoveryAgent(_openrouter(_FakeTransport([_discovery_response(["m2", "m1"])])))
     shortlist = agent.shortlist(_markets(), 5)
     assert [market.id for market in shortlist] == ["m2", "m1"]
+
+
+def test_openrouter_discover_should_extract_json_from_a_prose_wrapped_response() -> None:
+    content = (
+        "Prediction markets, by their nature, demand judgment. Here is the shortlist:\n"
+        + json.dumps({"shortlist": ["m2", "m1"]})
+        + "\n```"
+    )
+    response: dict[str, Any] = {
+        "model": "disc/model",
+        "provider": "prov",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.0003},
+    }
+    assert _openrouter(_FakeTransport([response])).discover(_markets(), 5) == ["m2", "m1"]
