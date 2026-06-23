@@ -34,7 +34,7 @@ def test_build_scheduler_registers_the_crawl_job() -> None:
     assert jobs[0].id == "market-crawl"
 
 
-def test_build_scheduler_registers_the_pipeline_job_with_settings() -> None:
+def test_build_scheduler_registers_pipeline_and_resolution_jobs_with_settings() -> None:
     scheduler = build_scheduler(
         _crawler(),
         lambda _pairs: None,
@@ -43,4 +43,4 @@ def test_build_scheduler_registers_the_pipeline_job_with_settings() -> None:
         settings=_settings(),
     )
     ids = {job.id for job in scheduler.get_jobs()}
-    assert ids == {"market-crawl", "pipeline-run"}
+    assert ids == {"market-crawl", "pipeline-run", "resolution-ingest"}

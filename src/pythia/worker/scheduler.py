@@ -13,6 +13,7 @@ from pythia.ingestion.evidence import EvidenceTransport
 from pythia.ingestion.venues import VenueClient
 from pythia.orchestration import run_open_markets
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
+from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
 from pythia.worker.venue_ingest import ingest_tick as venue_ingest_tick
 
 Sink = Callable[[list[tuple[Market, MarketSnapshot]]], None]
@@ -42,6 +43,13 @@ def pipeline_tick(session_factory: SessionFactory, settings: Settings) -> None:
     # publish radar_changed — POST /api/run remains the on-demand + SSE path (§A.2, PYT-47).
     with session_factory() as session:
         run_open_markets(session, settings)
+
+
+def resolution_tick(
+    session_factory: SessionFactory, settings: Settings, crawler: MarketCrawler
+) -> None:
+    with session_factory() as session:
+        resolution_ingest_tick(session, settings, crawler)
 
 
 def build_scheduler(
@@ -82,5 +90,11 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="pipeline-run",
+        )
+        scheduler.add_job(
+            lambda: resolution_tick(session_factory, settings, crawler),
+            "interval",
+            seconds=interval_seconds,
+            id="resolution-ingest",
         )
     return scheduler

@@ -15,6 +15,7 @@ from pythia.ingestion import (
     MarketNotFoundError,
     TransientTransportError,
 )
+from pythia.ingestion.market_crawler import resolved_outcome
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "polymarket" / "gamma_markets.json"
 TS = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
@@ -30,7 +31,7 @@ class _FlakyTransport:
         self.calls = 0
         self._fail_times = fail_times
 
-    def fetch_markets(self) -> list[dict[str, Any]]:
+    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
         self.calls += 1
         if self.calls <= self._fail_times:
             raise TransientTransportError("temporary")
@@ -41,7 +42,7 @@ class _GeoBlockedTransport:
     def __init__(self) -> None:
         self.calls = 0
 
-    def fetch_markets(self) -> list[dict[str, Any]]:
+    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
         self.calls += 1
         raise LiveVenueAccessError("enable the VPN")
 
@@ -50,7 +51,7 @@ class _StaticTransport:
     def __init__(self, markets: list[dict[str, Any]]) -> None:
         self._markets = markets
 
-    def fetch_markets(self) -> list[dict[str, Any]]:
+    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
         return self._markets
 
 
@@ -151,3 +152,36 @@ def test_market_id_is_stable_across_polls() -> None:
 def test_snapshot_raises_clear_error_for_unknown_market() -> None:
     with pytest.raises(MarketNotFoundError):
         _crawler().snapshot("0xdoesnotexist")
+
+
+def test_resolved_outcome_reads_a_clean_binary_winner() -> None:
+    yes_won = {"outcomes": '["Yes", "No"]', "outcomePrices": '["1", "0"]'}
+    no_won = {"outcomes": '["Yes", "No"]', "outcomePrices": '["0", "1"]'}
+    assert resolved_outcome(yes_won) == 1
+    assert resolved_outcome(no_won) == 0
+
+
+def test_resolved_outcome_is_none_when_not_cleanly_resolved() -> None:
+    tied = {"outcomes": '["Yes", "No"]', "outcomePrices": '["0.5", "0.5"]'}
+    mismatched = {"outcomes": '["Yes", "No", "Maybe"]', "outcomePrices": '["1", "0"]'}
+    assert resolved_outcome(tied) is None
+    assert resolved_outcome(mismatched) is None
+
+
+def test_resolutions_returns_outcomes_for_resolved_markets() -> None:
+    resolved_raw = {
+        **_RAW[0],
+        "conditionId": "0xdone",
+        "closed": True,
+        "outcomes": '["Yes", "No"]',
+        "outcomePrices": '["1", "0"]',
+        "endDate": "2026-06-18T19:00:00Z",
+    }
+    crawler = MarketCrawler(
+        _StaticTransport([resolved_raw]), clock=lambda: TS, sleep=lambda _s: None
+    )
+    results = crawler.resolutions()
+    assert len(results) == 1
+    assert results[0].external_id == "0xdone"
+    assert results[0].outcome == 1
+    assert results[0].resolved_at == datetime(2026, 6, 18, 19, 0, tzinfo=UTC)
