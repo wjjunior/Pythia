@@ -395,6 +395,13 @@ def test_sse_emits_a_published_event(app: FastAPI, client: TestClient) -> None:
     assert "market-xyz" in response.text
 
 
+def test_sse_flushes_an_initial_comment_so_the_connection_opens(client: TestClient) -> None:
+    response = client.get("/api/events?limit=0")
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+    assert response.text.startswith(":")
+
+
 def test_run_endpoint_scores_open_markets_and_emits_radar_changed(
     client: TestClient, session: Session
 ) -> None:
