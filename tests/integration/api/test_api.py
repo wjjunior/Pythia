@@ -465,6 +465,51 @@ def test_radar_orders_by_soonest_resolution_not_trading_close(
     assert [r["market"]["id"] for r in body] == [sooner, later]  # soonest resolution first
 
 
+def test_radar_excludes_a_confident_override_of_a_near_certain_market(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    keep = _seed_calibration_market(
+        session,
+        key="dis-keep",
+        close_time=now + timedelta(days=5),
+        yes_price=0.5,
+        p_model=0.6,
+        opp=0.05,
+    )
+    override = _seed_calibration_market(  # YES at 85% vs a market priced at 0.05% — excluded
+        session,
+        key="dis-override",
+        close_time=now + timedelta(days=5),
+        yes_price=0.0005,
+        p_model=0.85,
+        opp=0.5,
+    )
+
+    ids = [r["market"]["id"] for r in client.get("/api/radar?limit=10").json()]
+
+    assert keep in ids
+    assert override not in ids  # de-ranking was not enough; the row is dropped outright
+
+
+def test_radar_keeps_a_longshot_the_model_also_rates_low(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    longshot = _seed_calibration_market(  # model agrees the 0.05% market is a longshot — kept
+        session,
+        key="dis-agree",
+        close_time=now + timedelta(days=5),
+        yes_price=0.0005,
+        p_model=0.02,
+        opp=0.01,
+    )
+
+    ids = [r["market"]["id"] for r in client.get("/api/radar?limit=10").json()]
+
+    assert longshot in ids
+
+
 def test_radar_item_exposes_recommended_side_and_win_multiple(
     client: TestClient, session: Session
 ) -> None:

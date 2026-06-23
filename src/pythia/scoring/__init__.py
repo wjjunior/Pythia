@@ -5,8 +5,10 @@ from pythia.scoring.assembly import (
     resolution_penalty,
 )
 from pythia.scoring.functions import (
+    MARKET_DISAGREEMENT_FLOOR,
     confidence,
     edge,
+    is_extreme_market_disagreement,
     kelly_fraction,
     market_disagreement_penalty,
     net_edge,
@@ -24,6 +26,7 @@ from pythia.scoring.prioritization import (
 )
 
 __all__ = [
+    "MARKET_DISAGREEMENT_FLOOR",
     "RadarMetrics",
     "ResolutionSourceType",
     "build_score",
@@ -32,6 +35,7 @@ __all__ = [
     "confidence",
     "edge",
     "entry_price",
+    "is_extreme_market_disagreement",
     "kelly_fraction",
     "market_disagreement_penalty",
     "net_edge",
