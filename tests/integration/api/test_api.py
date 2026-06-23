@@ -130,6 +130,80 @@ def _seed_scored_market(session: Session, *, category: str = "politics") -> None
     )
 
 
+def _seed_market_scored_twice(session: Session) -> None:
+    MarketRepository(session).upsert(
+        Market(
+            id=MARKET_ID,
+            external_id="pyt72",
+            question="Will it resolve YES?",
+            category="politics",
+            resolution_rule="rule",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=SNAPSHOT_ID,
+            market_id=MARKET_ID,
+            ts=TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    session.commit()
+    older = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt72-estimate-old"))
+    newer = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt72-estimate-new"))
+    for estimate_id, p_model in ((older, 0.9), (newer, 0.3)):
+        EstimateRepository(session).add(
+            Estimate(
+                id=estimate_id,
+                market_id=MARKET_ID,
+                snapshot_id=SNAPSHOT_ID,
+                p_model=p_model,
+                confidence=0.8,
+                lower=0.2,
+                upper=0.95,
+                rationale="r",
+                evidence_ids=[],
+                model_name="stub",
+            )
+        )
+    # The older estimate carries the HIGHER opportunity_score, so ranking alone would surface it;
+    # only latest-per-market dedup keeps the newer (lower-scored) row.
+    session.add(
+        models.Score(
+            estimate_id=uuid.UUID(older),
+            edge=0.4,
+            edge_net=0.39,
+            ev_unit=0.39,
+            p_resol=0.6,
+            p_liq=1.0,
+            p_time=1.0,
+            p_corr=1.0,
+            opportunity_score=0.09,
+            kelly_fraction=0.3,
+            created_at=TS,
+        )
+    )
+    session.add(
+        models.Score(
+            estimate_id=uuid.UUID(newer),
+            edge=0.1,
+            edge_net=0.09,
+            ev_unit=0.09,
+            p_resol=0.6,
+            p_liq=1.0,
+            p_time=1.0,
+            p_corr=1.0,
+            opportunity_score=0.02,
+            kelly_fraction=0.1,
+            created_at=TS + timedelta(hours=1),
+        )
+    )
+    session.commit()
+
+
 def _seed_risk_decision(session: Session, *, vetoed: bool, approved_size: float) -> None:
     AuditRepository(session).append(
         AuditEvent(
@@ -197,6 +271,74 @@ def test_radar_ranks_opportunities(client: TestClient, session: Session) -> None
     assert len(body) == 1
     assert body[0]["score"]["opportunity_score"] == pytest.approx(0.0912)
     assert body[0]["market"]["id"] == MARKET_ID
+
+
+def test_radar_shows_only_the_latest_score_per_market(client: TestClient, session: Session) -> None:
+    _seed_market_scored_twice(session)
+    rows = [r for r in client.get("/api/radar?limit=10").json() if r["market"]["id"] == MARKET_ID]
+    assert len(rows) == 1
+    assert rows[0]["score"]["opportunity_score"] == pytest.approx(0.02)
+    assert rows[0]["estimate"]["p_model"] == pytest.approx(0.3)
+
+
+def test_radar_preserves_ranking_across_markets_after_dedup(
+    client: TestClient, session: Session
+) -> None:
+    _seed_market_scored_twice(session)
+    other_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt72-other"))
+    other_snapshot = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt72-other-snapshot"))
+    other_estimate = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt72-other-estimate"))
+    MarketRepository(session).upsert(
+        Market(
+            id=other_id,
+            external_id="pyt72-other",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=other_snapshot,
+            market_id=other_id,
+            ts=TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    session.commit()
+    EstimateRepository(session).add(
+        Estimate(
+            id=other_estimate,
+            market_id=other_id,
+            snapshot_id=other_snapshot,
+            p_model=0.7,
+            confidence=0.8,
+            lower=0.6,
+            upper=0.8,
+            rationale="r",
+            evidence_ids=[],
+            model_name="stub",
+        )
+    )
+    ScoreRepository(session).add(
+        Score(
+            estimate_id=other_estimate,
+            edge=0.2,
+            edge_net=0.19,
+            ev_unit=0.19,
+            p_resol=0.6,
+            p_liq=1.0,
+            p_time=1.0,
+            p_corr=1.0,
+            opportunity_score=0.05,
+            kelly_fraction=0.2,
+        )
+    )
+    ids = [r["market"]["id"] for r in client.get("/api/radar?limit=10").json()]
+    assert ids == [other_id, MARKET_ID]
 
 
 def test_estimate_detail_includes_cited_evidence(client: TestClient, session: Session) -> None:

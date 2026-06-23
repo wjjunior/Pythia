@@ -442,10 +442,21 @@ class ScoreRepository:
         return _from_db_score(row) if row is not None else None
 
     def radar(self, limit: int) -> list[tuple[Score, Estimate, Market]]:
+        latest_per_market = (
+            select(models.Score.id)
+            .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
+            .distinct(col(models.Estimate.market_id))
+            .order_by(
+                col(models.Estimate.market_id),
+                col(models.Score.created_at).desc(),
+                col(models.Score.id).desc(),
+            )
+        )
         rows = self._session.exec(
             select(models.Score, models.Estimate, models.Market)
             .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
             .join(models.Market, col(models.Estimate.market_id) == col(models.Market.id))
+            .where(col(models.Score.id).in_(latest_per_market))
             .order_by(col(models.Score.opportunity_score).desc())
             .limit(limit)
         ).all()
