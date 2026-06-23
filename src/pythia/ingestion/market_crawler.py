@@ -9,6 +9,7 @@ import json
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -34,7 +35,7 @@ class MarketNotFoundError(LookupError):
 
 
 class MarketTransport(Protocol):
-    def fetch_markets(self) -> list[dict[str, Any]]: ...
+    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]: ...
 
 
 class FixtureTransport:
@@ -43,7 +44,7 @@ class FixtureTransport:
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def fetch_markets(self) -> list[dict[str, Any]]:
+    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
         data: list[dict[str, Any]] = json.loads(self._path.read_text())
         return data
 
@@ -56,9 +57,12 @@ class HttpxTransport:
         self._limit = limit
         self._timeout = timeout
 
-    def fetch_markets(self) -> list[dict[str, Any]]:
+    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
         url = f"{self._base_url}/markets"
-        params: dict[str, str | int] = {"limit": self._limit, "closed": "false"}
+        params: dict[str, str | int] = {
+            "limit": self._limit,
+            "closed": "true" if closed else "false",
+        }
         try:
             response = httpx.get(url, params=params, timeout=self._timeout)
             response.raise_for_status()
@@ -90,6 +94,39 @@ def _yes_price(raw: dict[str, Any]) -> float:
         if str(outcome).lower() == "yes":
             return float(price)
     return float(raw["lastTradePrice"])
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedMarket:
+    external_id: str
+    outcome: int | None  # None = not cleanly resolved (ambiguous → excluded from Brier)
+    resolved_at: datetime
+
+
+def resolved_outcome(raw: dict[str, Any]) -> int | None:
+    outcomes = _parse_json_list(raw["outcomes"])
+    prices = _parse_json_list(raw["outcomePrices"])
+    if len(outcomes) != len(prices):
+        return None
+    for outcome, price in zip(outcomes, prices, strict=True):
+        if str(outcome).lower() == "yes":
+            yes_price = float(price)
+            if yes_price == 1.0:
+                return 1
+            if yes_price == 0.0:
+                return 0
+            return None
+    return None
+
+
+def _resolved_at(raw: dict[str, Any], fallback: datetime) -> datetime:
+    end = raw.get("endDate")
+    if end:
+        try:
+            return datetime.fromisoformat(end)
+        except ValueError:
+            pass
+    return fallback
 
 
 def to_market(raw: dict[str, Any], market_id: str) -> Market:
@@ -146,11 +183,11 @@ class MarketCrawler:
         self._retries = retries
         self._backoff_base = backoff_base
 
-    def _fetch(self) -> list[dict[str, Any]]:
+    def _fetch(self, *, closed: bool = False) -> list[dict[str, Any]]:
         last: TransientTransportError | None = None
         for attempt in range(self._retries):
             try:
-                return self._transport.fetch_markets()
+                return self._transport.fetch_markets(closed=closed)
             except LiveVenueAccessError:
                 raise
             except TransientTransportError as exc:
@@ -190,3 +227,19 @@ class MarketCrawler:
                 continue
             pairs.append((market, snapshot))
         return pairs
+
+    def resolutions(self) -> list[ResolvedMarket]:
+        now = self._clock()
+        resolved: list[ResolvedMarket] = []
+        for raw in self._fetch(closed=True):
+            try:
+                resolved.append(
+                    ResolvedMarket(
+                        external_id=raw["conditionId"],
+                        outcome=resolved_outcome(raw),
+                        resolved_at=_resolved_at(raw, now),
+                    )
+                )
+            except (KeyError, ValueError, TypeError) as exc:
+                _log.warning("malformed_resolution_dropped", error=str(exc))
+        return resolved
