@@ -14,6 +14,7 @@ Pythia answers one question before any capital is risked: **is this system more 
 The whole stack runs end-to-end with **no secrets**: a deterministic LLM stub stands in for the model, market data replays from recorded fixtures, and the pure scoring/risk/eval core is reproducible from stored evidence.
 
 - **Architecture & rationale:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (condensed) and the Notion **System Design — Pythia** (source of truth).
+- **Running for real (live data, paper mode):** [`OPERATIONS.md`](OPERATIONS.md).
 - **How to contribute:** [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - **Day-to-day conventions:** [`CLAUDE.md`](CLAUDE.md).
 
