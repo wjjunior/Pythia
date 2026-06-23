@@ -299,7 +299,7 @@ class OpenRouterLLMPort:
         ensemble_size: int = 1,
         aggregation_method: AggregationMethod = "median",
         escalate_threshold: float = 0.5,
-        critic_max_attempts: int = 2,
+        model_max_attempts: int = 2,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._transport = transport
@@ -310,33 +310,44 @@ class OpenRouterLLMPort:
         self._ensemble_size = ensemble_size
         self._aggregation_method = aggregation_method
         self._escalate_threshold = escalate_threshold
-        self._critic_max_attempts = critic_max_attempts
+        self._model_max_attempts = model_max_attempts
         self._clock = clock
 
-    def _complete(
+    def _complete_and_parse[T: BaseModel](
         self,
         agent: str,
+        task: str,
         messages: list[dict[str, str]],
-        candidates: list[str] | None = None,
-    ) -> tuple[dict[str, Any], str, int]:
-        if self._budget_check is not None:
-            self._budget_check()
+        candidates: list[str] | None,
+        schema: type[T],
+    ) -> tuple[T, str]:
+        # The slate is a fallback chain (§5.1): try each model and parse its response. A transport
+        # error fails over to the next model (don't hammer a down provider); unparseable JSON is
+        # retried on the same model up to model_max_attempts before moving on.
         if candidates is None:
-            candidates = self._router.candidates(agent)
+            candidates = self._router.candidates(agent, task)
         if not candidates:
             raise ValueError(f"no model candidates configured for agent {agent!r}")
-        errors: list[Exception] = []
+        attempts = max(1, self._model_max_attempts)
+        last_error: Exception | None = None
         for model in candidates:
-            start = self._clock()
-            try:
-                response = self._transport.complete(
-                    model=model, messages=messages, max_price=self._router.max_price
-                )
-            except Exception as exc:  # failover to the next candidate model
-                errors.append(exc)
-                continue
-            return response, model, int((self._clock() - start) * 1000)
-        raise errors[-1]
+            for _attempt in range(attempts):
+                try:
+                    response, latency_ms = self._complete_one(model, messages)
+                except BudgetExceeded:
+                    raise
+                except Exception as exc:  # transport failure: fail over to the next model
+                    last_error = exc
+                    break
+                self._record_call(agent, task, model, response, latency_ms)
+                try:
+                    return _parse_payload(response, schema), model
+                except LLMResponseError as exc:  # bad JSON: retry this model, then the next
+                    last_error = exc
+                    _log.warning("llm_unparseable", agent=agent, model=model, error=str(exc))
+        raise LLMResponseError(
+            f"{schema.__name__} failed across {len(candidates)} model(s): {last_error}"
+        )
 
     def _complete_one(
         self, model: str, messages: list[dict[str, str]]
@@ -422,11 +433,9 @@ class OpenRouterLLMPort:
     def _run_estimation(
         self, ctx: EstimationContext, candidates: list[str] | None = None
     ) -> Estimate:
-        response, model, latency_ms = self._complete(
-            "estimation", _estimation_messages(ctx), candidates
+        payload, model = self._complete_and_parse(
+            "estimation", "estimate", _estimation_messages(ctx), candidates, _EstimationPayload
         )
-        self._record_call("estimation", "estimate", model, response, latency_ms)
-        payload = _parse_payload(response, _EstimationPayload)
         return Estimate(
             id=deterministic_id("estimate", ctx.snapshot.id, model),
             market_id=ctx.market.id,
@@ -474,41 +483,23 @@ class OpenRouterLLMPort:
         candidates = self._router.diverse_candidates("critic", exclude_family_of=est.model_name)
         if not candidates:
             raise CriticDiversityError(est.model_name)
-        messages = _critique_messages(est, evidence)
-        last_error: Exception | None = None
-        for model in candidates:
-            for _attempt in range(self._critic_max_attempts):
-                try:
-                    response, latency_ms = self._complete_one(model, messages)
-                except Exception as exc:  # transport failure: retry, then the next model
-                    last_error = exc
-                    continue
-                self._record_call("critic", "critique", model, response, latency_ms)
-                try:
-                    payload = _parse_payload(response, _CritiquePayload)
-                except LLMResponseError as exc:
-                    last_error = exc
-                    _log.warning("critic_unparseable", model=model, error=str(exc))
-                    continue
-                adjusted = payload.adjusted_confidence
-                return CriticVerdict(
-                    adjusted_confidence=adjusted if adjusted is not None else est.confidence,
-                    objections=payload.objections,
-                    lookahead_leak=payload.lookahead_leak,
-                    notes=payload.notes,
-                )
-        raise LLMResponseError(
-            f"critic unparseable across {len(candidates)} model(s): {last_error}"
+        payload, _model = self._complete_and_parse(
+            "critic", "critique", _critique_messages(est, evidence), candidates, _CritiquePayload
+        )
+        adjusted = payload.adjusted_confidence
+        return CriticVerdict(
+            adjusted_confidence=adjusted if adjusted is not None else est.confidence,
+            objections=payload.objections,
+            lookahead_leak=payload.lookahead_leak,
+            notes=payload.notes,
         )
 
     def discover(self, markets: list[Market], limit: int) -> list[str]:
         if not markets:
             return []
-        response, model, latency_ms = self._complete(
-            "discovery", _discovery_messages(markets, limit)
+        payload, _model = self._complete_and_parse(
+            "discovery", "discover", _discovery_messages(markets, limit), None, _DiscoveryPayload
         )
-        self._record_call("discovery", "discover", model, response, latency_ms)
-        payload = _parse_payload(response, _DiscoveryPayload)
         known = {market.id for market in markets}
         seen: set[str] = set()
         shortlist: list[str] = []
@@ -519,11 +510,9 @@ class OpenRouterLLMPort:
         return shortlist[:limit]
 
     def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
-        response, model, latency_ms = self._complete(
-            "resolution", _resolution_messages(market, evidence)
+        payload, model = self._complete_and_parse(
+            "resolution", "grade", _resolution_messages(market, evidence), None, _ResolutionPayload
         )
-        self._record_call("resolution", "grade", model, response, latency_ms)
-        payload = _parse_payload(response, _ResolutionPayload)
         return ResolutionProposal(
             market_id=market.id,
             outcome=payload.outcome,
@@ -556,6 +545,6 @@ def make_llm_port(
             ensemble_size=settings.ensemble_size,
             aggregation_method=settings.aggregation_method,
             escalate_threshold=settings.min_confidence,
-            critic_max_attempts=settings.critic_max_attempts,
+            model_max_attempts=settings.model_max_attempts,
         )
     return StubLLMPort()

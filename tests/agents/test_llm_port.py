@@ -417,11 +417,48 @@ def test_critique_retries_then_falls_back_to_another_model_on_malformed_json() -
 
 
 def test_critique_raises_when_every_model_returns_malformed_json() -> None:
-    transport = _FakeTransport([_malformed_critique_response() for _ in range(6)])
+    router = ModelRouter(slates={"critic": ["a/m1", "b/m2"]})  # 2 models x 2 attempts = 4 calls
+    transport = _FakeTransport([_malformed_critique_response() for _ in range(4)])
     estimate = StubLLMPort().estimate(_ctx())
 
     with pytest.raises(LLMResponseError):
-        OpenRouterLLMPort(transport, ModelRouter()).critique(estimate, [])
+        OpenRouterLLMPort(transport, router).critique(estimate, [])
+
+
+def _malformed_response() -> dict[str, Any]:
+    return {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": '{"truncated'}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
+    }
+
+
+def test_estimate_falls_over_to_the_next_model_on_malformed_json() -> None:
+    router = ModelRouter(slates={"estimation": ["a/first", "b/second"]})
+    transport = _FakeTransport([_malformed_response(), _malformed_response(), _estimate_response()])
+
+    estimate = OpenRouterLLMPort(transport, router).estimate(_ctx())
+
+    assert estimate.model_name == "b/second"  # model 0 retried, then failed over to model 1
+    assert [c["model"] for c in transport.calls] == ["a/first", "a/first", "b/second"]
+
+
+def test_discover_falls_over_to_the_next_model_on_malformed_json() -> None:
+    router = ModelRouter(slates={"discovery": ["a/first", "b/second"]})
+    market = Market(id="mkt-1", external_id="x", question="q", category="c", resolution_rule="r")
+    valid = {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": '{"shortlist": ["mkt-1"]}'}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
+    }
+    transport = _FakeTransport([_malformed_response(), _malformed_response(), valid])
+
+    result = OpenRouterLLMPort(transport, router).discover([market], 5)
+
+    assert result == ["mkt-1"]
+    assert [c["model"] for c in transport.calls] == ["a/first", "a/first", "b/second"]
 
 
 def test_critique_normalises_string_boolean_and_null_notes() -> None:
