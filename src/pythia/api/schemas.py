@@ -27,6 +27,7 @@ class RadarItem(BaseModel):
     win_multiple: float
     win_probability: float
     closes_in_days: float | None
+    resolves_in_days: float | None
 
 
 class EstimateDetail(BaseModel):

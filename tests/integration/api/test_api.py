@@ -212,6 +212,8 @@ def _seed_calibration_market(
     yes_price: float,
     p_model: float,
     opp: float,
+    resolves_at: datetime | None = None,
+    resolved: bool = False,
 ) -> str:
     market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, key))
     snapshot_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}-snap"))
@@ -224,6 +226,8 @@ def _seed_calibration_market(
             category="politics",
             resolution_rule="r",
             close_time=close_time,
+            resolves_at=resolves_at,
+            resolved=resolved,
         )
     )
     SnapshotRepository(session).append(
@@ -316,7 +320,7 @@ def test_radar_calibration_mode_filters_by_window_and_win_multiple(
         opp=0.5,
     )
 
-    body = client.get("/api/radar?max_days_to_close=7&min_win_multiple=1.4").json()
+    body = client.get("/api/radar?max_days_to_resolve=7&min_win_multiple=1.4").json()
 
     assert [r["market"]["id"] for r in body] == [b, a]  # soonest first; c, d, past all filtered out
 
@@ -343,7 +347,7 @@ def test_radar_calibration_mode_filters_by_win_probability(
     )
 
     body = client.get(
-        "/api/radar?max_days_to_close=7&min_win_multiple=1.4&min_win_probability=0.5"
+        "/api/radar?max_days_to_resolve=7&min_win_multiple=1.4&min_win_probability=0.5"
     ).json()
 
     assert [r["market"]["id"] for r in body] == [good]  # the longshot is excluded despite 2000x
@@ -376,6 +380,90 @@ def test_radar_applies_win_filters_without_a_close_window(
     assert [r["market"]["id"] for r in body] == [good]
 
 
+def test_radar_excludes_a_market_that_resolves_far_beyond_the_window(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    near = _seed_calibration_market(
+        session,
+        key="res-near",
+        close_time=now + timedelta(days=5),
+        resolves_at=now + timedelta(days=5),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.05,
+    )
+    _seed_calibration_market(  # OpenAI IPO case: trades close in 5d but resolution is ~6 months out
+        session,
+        key="res-far",
+        close_time=now + timedelta(days=5),
+        resolves_at=now + timedelta(days=191),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.5,
+    )
+
+    body = client.get("/api/radar?max_days_to_resolve=7").json()
+
+    assert [r["market"]["id"] for r in body] == [near]  # far-resolution market excluded
+
+
+def test_radar_excludes_a_market_whose_trading_has_already_closed(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    enterable = _seed_calibration_market(
+        session,
+        key="enter-open",
+        close_time=now + timedelta(days=3),
+        resolves_at=now + timedelta(days=3),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.05,
+    )
+    _seed_calibration_market(  # resolves in 2d but trading closed yesterday — no way to enter
+        session,
+        key="enter-closed",
+        close_time=now - timedelta(days=1),
+        resolves_at=now + timedelta(days=2),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.5,
+    )
+
+    body = client.get("/api/radar?max_days_to_resolve=7").json()
+
+    assert [r["market"]["id"] for r in body] == [enterable]  # closed-trading market excluded
+
+
+def test_radar_orders_by_soonest_resolution_not_trading_close(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    later = _seed_calibration_market(  # closes first (1d) but resolves later (6d)
+        session,
+        key="ord-later",
+        close_time=now + timedelta(days=1),
+        resolves_at=now + timedelta(days=6),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.05,
+    )
+    sooner = _seed_calibration_market(  # closes later (4d) but resolves first (2d)
+        session,
+        key="ord-sooner",
+        close_time=now + timedelta(days=4),
+        resolves_at=now + timedelta(days=2),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.05,
+    )
+
+    body = client.get("/api/radar?max_days_to_resolve=7").json()
+
+    assert [r["market"]["id"] for r in body] == [sooner, later]  # soonest resolution first
+
+
 def test_radar_item_exposes_recommended_side_and_win_multiple(
     client: TestClient, session: Session
 ) -> None:
@@ -386,6 +474,7 @@ def test_radar_item_exposes_recommended_side_and_win_multiple(
     assert item["win_multiple"] == pytest.approx(2.0)
     assert item["win_probability"] == pytest.approx(0.7)
     assert "closes_in_days" in item
+    assert "resolves_in_days" in item
 
 
 def _seed_risk_decision(session: Session, *, vetoed: bool, approved_size: float) -> None:

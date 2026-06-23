@@ -18,14 +18,14 @@ _MAX_RADAR_LIMIT = 200
 def radar(
     session: SessionDep,
     limit: Annotated[int, Query(ge=1, le=_MAX_RADAR_LIMIT)] = 20,
-    max_days_to_close: Annotated[int | None, Query(ge=1)] = None,
+    max_days_to_resolve: Annotated[int | None, Query(ge=1)] = None,
     min_win_multiple: Annotated[float | None, Query(ge=1.0)] = None,
     min_win_probability: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
 ) -> list[RadarItem]:
     rows = ScoreRepository(session).radar(
         limit,
         asof=datetime.now(UTC),
-        max_days_to_close=max_days_to_close,
+        max_days_to_resolve=max_days_to_resolve,
         min_win_multiple=min_win_multiple,
         min_win_probability=min_win_probability,
     )
@@ -39,6 +39,7 @@ def radar(
             win_multiple=metrics.win_multiple,
             win_probability=metrics.win_probability,
             closes_in_days=metrics.closes_in_days,
+            resolves_in_days=metrics.resolves_in_days,
         )
         for score, estimate, market, metrics in rows
     ]

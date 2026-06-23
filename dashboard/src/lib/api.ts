@@ -57,7 +57,7 @@ const get = <T>(path: string, params?: Params): Promise<T> => request<T>(withPar
 export const api = {
   radar: (
     params: {
-      maxDaysToClose?: number
+      maxDaysToResolve?: number
       minWinMultiple?: number
       minWinProbability?: number
       limit?: number
@@ -65,7 +65,7 @@ export const api = {
   ) =>
     get<RadarItem[]>("/radar", {
       limit: params.limit ?? 50,
-      max_days_to_close: params.maxDaysToClose,
+      max_days_to_resolve: params.maxDaysToResolve,
       min_win_multiple: params.minWinMultiple,
       min_win_probability: params.minWinProbability,
     }),
