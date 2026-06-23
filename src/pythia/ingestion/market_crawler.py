@@ -62,6 +62,7 @@ class HttpxTransport:
         params: dict[str, str | int] = {
             "limit": self._limit,
             "closed": "true" if closed else "false",
+            "include_tag": "true",
         }
         try:
             response = httpx.get(url, params=params, timeout=self._timeout)
@@ -129,13 +130,31 @@ def _resolved_at(raw: dict[str, Any], fallback: datetime) -> datetime:
     return fallback
 
 
+def _series_title(raw: dict[str, Any]) -> str | None:
+    events = raw.get("events") or []
+    series = events[0].get("series") or [] if events else []
+    title = (series[0].get("title") or "").strip() if series else ""
+    return title or None
+
+
+def derive_category(raw: dict[str, Any]) -> str:
+    explicit = (raw.get("category") or "").strip()
+    if explicit:
+        return explicit
+    for tag in raw.get("tags") or []:
+        label = (tag.get("label") or "").strip()
+        if label:
+            return label
+    return _series_title(raw) or "uncategorized"
+
+
 def to_market(raw: dict[str, Any], market_id: str) -> Market:
     close = raw.get("endDate")
     return Market(
         id=market_id,
         external_id=raw["conditionId"],
         question=raw["question"],
-        category=raw.get("category") or "uncategorized",
+        category=derive_category(raw),
         resolution_rule=raw.get("description", ""),
         resolution_source=raw.get("resolutionSource") or None,
         close_time=datetime.fromisoformat(close) if close else None,

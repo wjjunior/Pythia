@@ -1,0 +1,239 @@
+[
+  {
+    "conditionId": "0x1fad72fae204143ff1c3035e99e7c0f65ea8d5cd9bd1070987bd1a3316f772be",
+    "question": "New Rihanna Album before GTA VI?",
+    "description": "This market will resolve to \"Yes\" if Rihanna officially releases a new album before Grand Theft Auto VI is officially released in the US. Otherwise, this market will resolve to \"No\".\n\nIf neither occurs by July 31, 2026, 11:59 PM ET, this market will resolve to 50-50.\n\nFor the purposes of this market, \"release\" refers to the game becoming publicly available for purchase or download in the US. Early access, beta versions, other forms of pre-release availability, or leaks will not count as an official release. If the release is only for certain consoles (e.g. Xbox Series X/S) it will count.\n\nThe resolution source for the release of GTA VI is official information from Rockstar Games or its parent company, Take-Two Interactive.\n\nOfficially released means that a newly released album is officially available for download or streaming (not including live events) by the resolution date.\n\nRe-releases, deluxe editions, compilations, or greatest hits albums will not count, unless they contain at least 50% tracks that have never been officially released in any format prior to the album's release.\n\nThe resolution source for the album release will be any official streaming or download site, e.g. Apple Music or Spotify.",
+    "resolutionSource": "",
+    "endDate": "2026-07-31T12:00:00Z",
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.52\", \"0.48\"]",
+    "lastTradePrice": 0.53,
+    "spread": 0.02,
+    "volumeNum": 834729.1750370077,
+    "liquidityNum": 16686.3475,
+    "tags": [
+      {
+        "id": "2",
+        "label": "Politics",
+        "slug": "politics"
+      },
+      {
+        "id": "596",
+        "label": "Culture",
+        "slug": "pop-culture"
+      },
+      {
+        "id": "100215",
+        "label": "All",
+        "slug": "all"
+      },
+      {
+        "id": "102109",
+        "label": "GTA VI",
+        "slug": "gta-vi"
+      }
+    ],
+    "events": [
+      {
+        "id": "23784",
+        "ticker": "what-will-happen-before-gta-vi",
+        "title": "What will happen before GTA VI?"
+      }
+    ]
+  },
+  {
+    "conditionId": "0xf398b0e5016eeaee9b0885ed84012b6dc91269ac10d3b59d60722859c2e30b2f",
+    "question": "Will Harvey Weinstein be sentenced to no prison time?",
+    "description": "This market will resolve according to the prison sentence, if any, imposed on Harvey Weinstein as part of his ongoing New York retrial (People of the State of New York v. Harvey Weinstein) by July 31, 2026, 11:59 PM ET.\n\nThis market will resolve immediately based on the first sentence rendered in this case, regardless of any appeals. If Weinstein is found not guilty, there is a mistrial, or if the first sentencing does not include any jail or prison time, this market will resolve to \"No Prison Time.\"\n\nIf no sentencing takes place by July 31, 2026, 11:59 PM ET, this market will also resolve to \"No Prison Time.\"\n\nIf the sentence falls exactly between two brackets, then this market will resolve to the higher range bracket.\n\nFor the purposes of this market, it does not matter whether the sentence is concurrent or consecutive to any existing sentence Weinstein is already serving. The market will resolve based on the total prison sentence imposed in this case.\n\nThe primary resolution source for this market will be official information from the New York court system or other involved U.S. government sources; however, a consensus of credible reporting may also be used.",
+    "resolutionSource": "",
+    "endDate": "2025-12-31T12:00:00Z",
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.8595\", \"0.1405\"]",
+    "lastTradePrice": 0.839,
+    "spread": 0.005,
+    "volumeNum": 377423.12271800183,
+    "liquidityNum": 3202.63757,
+    "tags": [
+      {
+        "id": "53",
+        "label": "Movies",
+        "slug": "movies"
+      },
+      {
+        "id": "596",
+        "label": "Culture",
+        "slug": "pop-culture"
+      },
+      {
+        "id": "1628",
+        "label": "Courts",
+        "slug": "courts"
+      }
+    ],
+    "events": [
+      {
+        "id": "24383",
+        "ticker": "harvey-weinstein-prison-time",
+        "title": "Harvey Weinstein prison time?"
+      }
+    ]
+  },
+  {
+    "conditionId": "0xe459d1b598da754c9fd5fc155b6efe3a144aa80abbc7d041fce7d35d903d3c8e",
+    "question": "Will MegaETH perform an airdrop by June 30? ",
+    "description": "This market will resolve to \"Yes\" if MegaETH launches a token and performs an airdrop by June 30, 2026, 11:59 PM ET. Otherwise, this market will resolve to \"No\".\n\nFor the purposes of this market \"locked\" tokens or non-swappable tokens will not suffice to resolve this market to \"Yes\". Airdrops of NFTs will not qualify.\n\nThe primary resolution source for this market is on-chain information and official information from MegaETH, however a consensus of credible reporting will also be used.",
+    "resolutionSource": "",
+    "endDate": "2026-07-01T04:00:00Z",
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0055\", \"0.9945\"]",
+    "lastTradePrice": 0.01,
+    "spread": 0.001,
+    "volumeNum": 1599061.7076269933,
+    "liquidityNum": 13235.07898,
+    "tags": [
+      {
+        "id": "21",
+        "label": "Crypto",
+        "slug": "crypto"
+      },
+      {
+        "id": "136",
+        "label": "Airdrops",
+        "slug": "airdrops"
+      },
+      {
+        "id": "102332",
+        "label": "MegaETH",
+        "slug": "megaeth"
+      },
+      {
+        "id": "102368",
+        "label": "Pre-Market",
+        "slug": "pre-market"
+      }
+    ],
+    "events": [
+      {
+        "id": "29005",
+        "ticker": "megaeth-airdrop-by",
+        "title": "MegaETH airdrop by...?"
+      }
+    ]
+  },
+  {
+    "conditionId": "0x7976b8dbacf9077eb1453a62bcefd6ab2df199acd28aad276ff0d920d6992892",
+    "question": "Will Spain win the 2026 FIFA World Cup?",
+    "description": "This market will resolve according to the national team that wins the 2026 FIFA World Cup.\n\nIf at any point it becomes impossible for this team to win the FIFA World Cup based on the rules of FIFA (e.g., they are eliminated in the knockout stage), this market will resolve immediately to \u201cNo\u201d.\n\nIf the 2026 FIFA World Cup is permanently canceled or has not been completed by October 13, 2026, 11:59 PM this market will resolve to \u201cOther\u201d.\n\nThe primary resolution source will be official information from FIFA, however, a consensus of credible reporting may also be used.",
+    "resolutionSource": "",
+    "endDate": "2026-07-20T00:00:00Z",
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.1385\", \"0.8615\"]",
+    "lastTradePrice": 0.139,
+    "spread": 0.001,
+    "volumeNum": 60531706.33034425,
+    "liquidityNum": 8355851.32746,
+    "tags": [
+      {
+        "id": "1",
+        "label": "Sports",
+        "slug": "sports"
+      },
+      {
+        "id": "100350",
+        "label": "Soccer",
+        "slug": "soccer"
+      },
+      {
+        "id": "102232",
+        "label": "FIFA World Cup",
+        "slug": "fifa-world-cup"
+      },
+      {
+        "id": "102350",
+        "label": "2026 FIFA World Cup",
+        "slug": "2026-fifa-world-cup"
+      },
+      {
+        "id": "102169",
+        "label": "Hide From New",
+        "slug": "hide-from-new"
+      },
+      {
+        "id": "105315",
+        "label": "Tournament Futures",
+        "slug": "wc-tournament-futures"
+      }
+    ],
+    "events": [
+      {
+        "id": "30615",
+        "ticker": "world-cup-winner",
+        "title": "World Cup Winner "
+      }
+    ]
+  },
+  {
+    "conditionId": "0xa467b14d51f01b957109d9cbb1d6c124fab2a089d52ed8f471d23c2812e743b7",
+    "question": "Xi Jinping out before 2027?",
+    "description": "This market will resolve to \"Yes\" if China's General Secretary of the Communist Party, Xi Jinping, is removed from power for any length of time between July 3, 2025, and December 31, 2026, 11:59 PM ET. Otherwise, this market will resolve to \"No\".\n\nCCP General Secretary Xi Jinping will be considered removed from power if he announces his resignation from his role as General Secretary, or is otherwise dismissed, detained, disqualified, or otherwise loses his position or is prevented from fulfilling his duties as General Secretary within this market's timeframe.\n\nThe primary resolution source for this market will be a consensus of credible reporting.",
+    "resolutionSource": "",
+    "endDate": "2026-12-31T00:00:00Z",
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0635\", \"0.9365\"]",
+    "lastTradePrice": 0.064,
+    "spread": 0.001,
+    "volumeNum": 10455830.849322889,
+    "liquidityNum": 244055.5948,
+    "tags": [
+      {
+        "id": "366",
+        "label": "world affairs",
+        "slug": "world-affairs"
+      },
+      {
+        "id": "100265",
+        "label": "Geopolitics",
+        "slug": "geopolitics"
+      },
+      {
+        "id": "101970",
+        "label": "World",
+        "slug": "world"
+      },
+      {
+        "id": "102458",
+        "label": "Earn 4%",
+        "slug": "earn-4"
+      },
+      {
+        "id": "101253",
+        "label": "Macro Geopolitics",
+        "slug": "macro-geopolitics"
+      },
+      {
+        "id": "103715",
+        "label": "HFC",
+        "slug": "hfc"
+      }
+    ],
+    "events": [
+      {
+        "id": "30828",
+        "ticker": "xi-jinping-out-before-2027",
+        "title": "Xi Jinping out before 2027?",
+        "series": [
+          {
+            "id": "10150",
+            "title": "Xi Jinping out",
+            "slug": "xi-jinping-out"
+          }
+        ]
+      }
+    ]
+  }
+]
