@@ -10,15 +10,40 @@ from pythia.config.settings import RoutingStrategy
 
 # Real, currently-available OpenRouter slugs (resolved from the live /models list, §5.1).
 DEFAULT_SLATES: Mapping[str, list[str]] = {
-    "discovery": ["google/gemini-2.5-flash-lite", "deepseek/deepseek-v4-flash"],
+    # Cheap, fast models — discovery only ranks ids, so JSON reliability matters most.
+    "discovery": [
+        "google/gemini-2.5-flash-lite",
+        "deepseek/deepseek-v4-flash",
+        "openai/gpt-4.1-nano",
+        "meta-llama/llama-3.3-70b-instruct",
+        "qwen/qwen3-30b-a3b-instruct-2507",
+    ],
     "research": ["deepseek/deepseek-v4-flash", "google/gemini-3-flash-preview"],
+    # Capable models that emit a clean probability/interval JSON, across providers.
     "estimation": [
         "google/gemini-3-flash-preview",
         "deepseek/deepseek-v4-flash",
         "google/gemini-2.5-flash-lite",
+        "openai/gpt-5-mini",
+        "qwen/qwen3-235b-a22b-thinking-2507",
+        "minimax/minimax-m3",
     ],
-    "critic": ["anthropic/claude-3-haiku", "openai/gpt-oss-20b", "z-ai/glm-4.7-flash"],
-    "resolution": ["deepseek/deepseek-v4-flash", "z-ai/glm-4.7-flash"],
+    # Distinct families so the critic-diversity rule always has a non-estimator-family option.
+    "critic": [
+        "anthropic/claude-3-haiku",
+        "openai/gpt-oss-20b",
+        "z-ai/glm-4.7-flash",
+        "meta-llama/llama-3.3-70b-instruct",
+        "qwen/qwen3-30b-a3b-instruct-2507",
+        "mistralai/mistral-small-3.2-24b-instruct",
+    ],
+    "resolution": [
+        "deepseek/deepseek-v4-flash",
+        "z-ai/glm-4.7-flash",
+        "openai/gpt-5-mini",
+        "google/gemini-3-flash-preview",
+        "anthropic/claude-haiku-4.5",
+    ],
 }
 
 
