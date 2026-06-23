@@ -13,6 +13,14 @@ export const usdCompact = (x: number): string =>
 
 export const num = (x: number, digits = 3): string => x.toFixed(digits)
 
+export const multiple = (x: number, digits = 2): string => `${x.toFixed(digits)}×`
+
+export const daysToClose = (days: number | null): string => {
+  if (days === null) return "—"
+  if (days < 1) return "<1d"
+  return `${Math.floor(days)}d`
+}
+
 export const signedNum = (x: number, digits = 3): string => `${x >= 0 ? "+" : ""}${x.toFixed(digits)}`
 
 export const isoDate = (iso: string): string => new Date(iso).toISOString().slice(0, 10)

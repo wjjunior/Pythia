@@ -1,21 +1,15 @@
 // Pure derived state for the views. Business logic lives here, never in components (§ coding rule 8).
-import type { CategoryCalibration, RadarItem, Score, Side } from "./types"
+import type { CategoryCalibration } from "./types"
 
 export const EXPOSURE_WARN = 0.6
 export const EXPOSURE_HIGH = 0.9
 
+// Calibration queue: surface near-term, high-payout markets so resolutions arrive fast (PYT-75/76).
+export const CALIBRATION_MAX_DAYS_TO_CLOSE = 7
+export const CALIBRATION_MIN_WIN_MULTIPLE = 1.4
+
 export type CalibrationVerdict = "system" | "market" | "tie"
 export type ExposureSeverity = "ok" | "warn" | "high"
-
-// Radar AC: ranked by opportunity_score, highest first. Does not mutate the input.
-export const rankByOpportunity = (items: RadarItem[]): RadarItem[] =>
-  [...items].sort((a, b) => b.score.opportunity_score - a.score.opportunity_score)
-
-// edge = p_model − q (signed): a positive edge backs YES, a negative edge backs NO.
-export const impliedSide = (score: Score): Side => (score.edge >= 0 ? "YES" : "NO")
-
-// q is not carried on the radar item, but q = p_model − edge.
-export const marketPrice = (item: RadarItem): number => item.estimate.p_model - item.score.edge
 
 // delta = brier_market − brier_system: positive ⇒ the system is better calibrated than the market.
 export const calibrationVerdict = (category: CategoryCalibration): CalibrationVerdict => {

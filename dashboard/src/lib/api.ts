@@ -55,7 +55,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const get = <T>(path: string, params?: Params): Promise<T> => request<T>(withParams(path, params))
 
 export const api = {
-  radar: (limit = 50) => get<RadarItem[]>("/radar", { limit }),
+  radar: (params: { maxDaysToClose?: number; minWinMultiple?: number; limit?: number } = {}) =>
+    get<RadarItem[]>("/radar", {
+      limit: params.limit ?? 50,
+      max_days_to_close: params.maxDaysToClose,
+      min_win_multiple: params.minWinMultiple,
+    }),
   markets: (category?: string) => get<Market[]>("/markets", { category }),
   market: (id: string) => get<MarketDetail>(`/markets/${id}`),
   estimate: (id: string) => get<EstimateDetail>(`/estimates/${id}`),

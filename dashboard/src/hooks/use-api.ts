@@ -2,10 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
 import { qk } from "@/lib/query-keys"
+import { CALIBRATION_MAX_DAYS_TO_CLOSE, CALIBRATION_MIN_WIN_MULTIPLE } from "@/lib/ranking"
 import type { ReviewRequest } from "@/lib/types"
 
-export const useRadar = (limit = 50) =>
-  useQuery({ queryKey: qk.radar, queryFn: () => api.radar(limit) })
+export const useRadar = () =>
+  useQuery({
+    queryKey: qk.radar,
+    queryFn: () =>
+      api.radar({
+        maxDaysToClose: CALIBRATION_MAX_DAYS_TO_CLOSE,
+        minWinMultiple: CALIBRATION_MIN_WIN_MULTIPLE,
+      }),
+  })
 
 export const useMarket = (id: string) =>
   useQuery({ queryKey: qk.market(id), queryFn: () => api.market(id), enabled: Boolean(id) })
