@@ -32,6 +32,10 @@ from pythia.config.settings import AggregationMethod
 
 CostSink = Callable[[CostEvent], None]
 
+# Every agent call returns JSON; ask OpenRouter to force valid JSON at the source. Models that
+# do not honour it fall through to the defensive parsing in _parse_payload (PYT-66/PYT-67).
+_JSON_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
+
 _log = get_logger(__name__)
 
 
@@ -123,7 +127,12 @@ class HttpxChatTransport:
     def complete(
         self, *, model: str, messages: list[dict[str, str]], max_price: float | None
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"model": model, "messages": messages, "usage": {"include": True}}
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "usage": {"include": True},
+            "response_format": _JSON_RESPONSE_FORMAT,
+        }
         if max_price is not None:
             body["provider"] = {"max_price": {"completion": max_price}}
         response = self._client.post("/chat/completions", json=body)
