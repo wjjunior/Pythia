@@ -13,8 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useRadar } from "@/hooks/use-api"
-import { num, pct, signedNum } from "@/lib/format"
-import { impliedSide, marketPrice, rankByOpportunity } from "@/lib/ranking"
+import { daysToClose, multiple, num, pct, signedNum } from "@/lib/format"
+import { CALIBRATION_MAX_DAYS_TO_CLOSE, CALIBRATION_MIN_WIN_MULTIPLE } from "@/lib/ranking"
 
 export function RadarView() {
   const navigate = useNavigate()
@@ -24,13 +24,12 @@ export function RadarView() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Opportunity radar"
-        description="Ranked by opportunity_score. The model estimates; deterministic math sizes and decides."
+        description={`Calibration queue: closing within ${CALIBRATION_MAX_DAYS_TO_CLOSE}d with a win payout ≥ ${CALIBRATION_MIN_WIN_MULTIPLE}×, soonest first — to accrue calibration data quickly.`}
       />
       <QueryState query={radar}>
         {(items) => {
-          const ranked = rankByOpportunity(items)
-          if (ranked.length === 0) {
-            return <EmptyState message="No scored opportunities yet." />
+          if (items.length === 0) {
+            return <EmptyState message="No near-term opportunities yet." />
           }
           return (
             <Card>
@@ -40,49 +39,52 @@ export function RadarView() {
                     <TableHead>Market</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Side</TableHead>
+                    <TableHead className="text-right">closes in</TableHead>
                     <TableHead className="text-right">p_model</TableHead>
-                    <TableHead className="text-right">market q</TableHead>
+                    <TableHead className="text-right">entry</TableHead>
+                    <TableHead className="text-right">win</TableHead>
                     <TableHead className="text-right">net edge</TableHead>
-                    <TableHead className="text-right">Kelly</TableHead>
                     <TableHead className="text-right">score</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ranked.map((item) => {
-                    const side = impliedSide(item.score)
-                    return (
-                      <TableRow
-                        key={item.market.id}
-                        className="cursor-pointer"
-                        onClick={() => navigate(`/markets/${item.market.id}`)}
-                      >
-                        <TableCell className="max-w-sm truncate font-medium">
-                          {item.market.question}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="muted">{item.market.category}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={side === "YES" ? "positive" : "negative"}>{side}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {pct(item.estimate.p_model)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {pct(marketPrice(item))}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {signedNum(item.score.edge_net)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {pct(item.score.kelly_fraction)}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums">
-                          {num(item.score.opportunity_score, 4)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
+                  {items.map((item) => (
+                    <TableRow
+                      key={item.market.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/markets/${item.market.id}`)}
+                    >
+                      <TableCell className="max-w-sm truncate font-medium">
+                        {item.market.question}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="muted">{item.market.category}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={item.recommended_side === "YES" ? "positive" : "negative"}>
+                          {item.recommended_side}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {daysToClose(item.closes_in_days)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {pct(item.estimate.p_model)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {pct(item.entry_price)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {multiple(item.win_multiple)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {signedNum(item.score.edge_net)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {num(item.score.opportunity_score, 4)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </Card>

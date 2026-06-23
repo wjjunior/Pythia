@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest"
 
-import { isoDate, isoDateTime, pct, signedNum, signedPct, usd } from "./format"
+import {
+  daysToClose,
+  isoDate,
+  isoDateTime,
+  multiple,
+  pct,
+  signedNum,
+  signedPct,
+  usd,
+} from "./format"
 
 describe("format", () => {
   it("scales fractions to percent", () => {
@@ -25,5 +34,16 @@ describe("format", () => {
   it("renders dates in UTC", () => {
     expect(isoDate("2026-03-01T12:00:00Z")).toBe("2026-03-01")
     expect(isoDateTime("2026-03-01T12:30:00Z")).toBe("2026-03-01 12:30")
+  })
+
+  it("renders payout multiples", () => {
+    expect(multiple(2.5)).toBe("2.50×")
+    expect(multiple(1.4)).toBe("1.40×")
+  })
+
+  it("renders days-to-close, flooring and guarding null/sub-day", () => {
+    expect(daysToClose(3.7)).toBe("3d")
+    expect(daysToClose(0.5)).toBe("<1d")
+    expect(daysToClose(null)).toBe("—")
   })
 })
