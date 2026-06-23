@@ -155,6 +155,15 @@ def test_to_market_leaves_resolution_date_empty_without_uma_end_date() -> None:
     assert market.resolves_at is None
 
 
+def test_to_market_normalises_a_date_only_resolution_to_utc() -> None:
+    # umaEndDateIso can be a date-only string; it must still yield a tz-aware datetime, or radar
+    # day-deltas and SQL comparisons against a UTC asof raise on naive/aware mismatch.
+    raw = {**_RAW[0], "umaEndDateIso": "2026-12-31"}
+    market = to_market(raw, "00000000-0000-0000-0000-000000000001")
+    assert market.resolves_at == datetime(2026, 12, 31, 0, 0, tzinfo=UTC)
+    assert market.resolves_at is not None and market.resolves_at.tzinfo is not None
+
+
 def test_crawler_conforms_to_market_data_port() -> None:
     port: MarketDataPort = _crawler()
     markets = port.list_markets()

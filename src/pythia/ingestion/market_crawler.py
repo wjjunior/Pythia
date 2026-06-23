@@ -156,19 +156,30 @@ def derive_category(raw: dict[str, Any]) -> str:
     return _series_title(raw) or "uncategorized"
 
 
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    # Gamma dates may arrive date-only (naive); normalize to UTC so day-deltas and SQL comparisons
+    # against a UTC asof never mix naive and aware datetimes.
+    if not value:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(value))
+    except ValueError:
+        return None
+
+
 def _uma_resolves_at(raw: dict[str, Any]) -> datetime | None:
     for key in ("umaEndDate", "umaEndDateIso"):
-        value = raw.get(key)
-        if value:
-            try:
-                return datetime.fromisoformat(value)
-            except ValueError:
-                continue
+        parsed = _parse_datetime(raw.get(key))
+        if parsed is not None:
+            return parsed
     return None
 
 
 def to_market(raw: dict[str, Any], market_id: str) -> Market:
-    close = raw.get("endDate")
     return Market(
         id=market_id,
         external_id=raw["conditionId"],
@@ -176,7 +187,7 @@ def to_market(raw: dict[str, Any], market_id: str) -> Market:
         category=derive_category(raw),
         resolution_rule=raw.get("description", ""),
         resolution_source=raw.get("resolutionSource") or None,
-        close_time=datetime.fromisoformat(close) if close else None,
+        close_time=_parse_datetime(raw.get("endDate")),
         resolves_at=_uma_resolves_at(raw),
         resolved=bool(raw.get("closed", False)),
     )
