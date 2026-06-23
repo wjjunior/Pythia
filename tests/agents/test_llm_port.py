@@ -5,10 +5,12 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import pytest
 from structlog.testing import capture_logs
 
 from pythia.agents import (
+    HttpxChatTransport,
     LLMResponseError,
     ModelRouter,
     OpenRouterLLMPort,
@@ -81,6 +83,22 @@ def test_make_llm_port_without_key_is_the_stub() -> None:
 
 def test_make_llm_port_with_key_is_openrouter() -> None:
     assert isinstance(make_llm_port(_settings(key="sk-test")), OpenRouterLLMPort)
+
+
+def test_httpx_transport_requests_json_object_response_format() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}], "usage": {}})
+
+    transport = HttpxChatTransport("k", "https://example.test")
+    transport._client = httpx.Client(
+        base_url="https://example.test", transport=httpx.MockTransport(handler)
+    )
+    transport.complete(model="m", messages=[{"role": "user", "content": "x"}], max_price=None)
+
+    assert seen["body"]["response_format"] == {"type": "json_object"}
 
 
 class _FakeTransport:
