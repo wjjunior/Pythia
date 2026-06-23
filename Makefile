@@ -65,7 +65,7 @@ test: ## Run the pure unit/property suite (no Docker, no secrets)
 test-integration: ## Run the integration suite (testcontainers; needs Docker)
 	uv run pytest -m integration
 
-verify: ## Lint + format-check + typecheck + unit test (the CI gate)
+verify: ## Lint + format-check + typecheck + unit test (the lint · type · test CI job)
 	uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest
 
 # Install the dashboard deps only when the manifests change so re-runs stay fast.

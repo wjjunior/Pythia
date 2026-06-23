@@ -2,7 +2,7 @@
 
 A calibration-first research and paper-trading engine for Polymarket prediction markets, with auditable AI probability estimation and a deterministic risk layer.
 
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.13+](https://img.shields.io/badge/Python-3.13+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![Claude Opus 4.8](https://img.shields.io/badge/Claude-Opus%204.8-D97757?style=flat&logo=anthropic&logoColor=white)](https://www.anthropic.com/claude)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-CLI-D97757?style=flat&logo=anthropic&logoColor=white)](https://claude.com/claude-code)
 [![Context7 MCP](https://img.shields.io/badge/Context7-MCP%20server-6C63FF?style=flat&logo=readthedocs&logoColor=white)](https://context7.com/)
@@ -56,7 +56,7 @@ One **PostgreSQL + pgvector** is the relational system of record, the vector evi
 
 ## Running locally
 
-**Prerequisites:** Python ≥ 3.12 (pinned in `.python-version`), [uv](https://docs.astral.sh/uv/), Docker (Postgres + pgvector, and the testcontainers integration suite), and Node ≥ 20 + npm (only to build/run the dashboard). Run `make help` for every command.
+**Prerequisites:** Python ≥ 3.13 (pinned in `.python-version`), [uv](https://docs.astral.sh/uv/), Docker (Postgres + pgvector, and the testcontainers integration suite), and Node ≥ 20 + npm (only to build/run the dashboard). Run `make help` for every command.
 
 ```bash
 make install      # create the uv venv and install all deps (incl. dev)
@@ -92,7 +92,7 @@ make format            # ruff format (use `format` to fix; CI checks formatting)
 make typecheck         # mypy, strict
 make test              # pure unit/property suite — no Docker, no secrets, ~seconds
 make test-integration  # integration suite — real Postgres + pgvector via testcontainers
-make verify            # lint + format-check + typecheck + test (the CI gate)
+make verify            # lint + format-check + typecheck + test (the lint · type · test CI job)
 ```
 
 The pure core proves the `§4.6` invariants as **property** tests (Hypothesis): score bounds, confidence-as-AND, Kelly safety, Brier bounds, point-in-time `retrieve`, risk caps dominating, no silent bets. Integration tests run against a real Postgres+pgvector via testcontainers and prove immutability and idempotency. CI additionally builds the dashboard so a breaking Pydantic change fails the generated-types contract. Install the local hooks with `make hooks` (ruff + mypy on each commit).
