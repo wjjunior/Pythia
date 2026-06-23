@@ -393,6 +393,37 @@ def _critique_response(lookahead: object = False, notes: object = "ok") -> dict[
     }
 
 
+def _malformed_critique_response() -> dict[str, Any]:
+    return {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": '{"adjusted_confidence": 0.3, "objections": [}'}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
+    }
+
+
+def test_critique_retries_then_falls_back_to_another_model_on_malformed_json() -> None:
+    transport = _FakeTransport(
+        [_malformed_critique_response(), _malformed_critique_response(), _critique_response()]
+    )
+    estimate = StubLLMPort().estimate(_ctx())
+
+    verdict = OpenRouterLLMPort(transport, ModelRouter()).critique(estimate, [])
+
+    assert verdict.objections == ["weak source"]
+    assert len(transport.calls) == 3
+    assert transport.calls[0]["model"] == transport.calls[1]["model"]
+    assert transport.calls[2]["model"] != transport.calls[0]["model"]
+
+
+def test_critique_raises_when_every_model_returns_malformed_json() -> None:
+    transport = _FakeTransport([_malformed_critique_response() for _ in range(6)])
+    estimate = StubLLMPort().estimate(_ctx())
+
+    with pytest.raises(LLMResponseError):
+        OpenRouterLLMPort(transport, ModelRouter()).critique(estimate, [])
+
+
 def test_critique_normalises_string_boolean_and_null_notes() -> None:
     transport = _FakeTransport([_critique_response(lookahead="false", notes=None)])
     estimate = StubLLMPort().estimate(_ctx())
