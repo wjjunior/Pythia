@@ -383,6 +383,28 @@ def test_critique_normalises_string_boolean_and_null_notes() -> None:
     assert verdict.notes is None
 
 
+def test_critique_degrades_messy_field_types_to_safe_defaults() -> None:
+    content = json.dumps(
+        {
+            "adjusted_confidence": "not a number",
+            "objections": "a single objection returned as a string",
+            "lookahead_leak": "The information provided is insufficient to judge a leak.",
+            "notes": "ok",
+        }
+    )
+    response: dict[str, Any] = {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
+    }
+    estimate = StubLLMPort().estimate(_ctx())
+    verdict = OpenRouterLLMPort(_FakeTransport([response]), ModelRouter()).critique(estimate, [])
+    assert verdict.lookahead_leak is False
+    assert verdict.objections == ["a single objection returned as a string"]
+    assert verdict.adjusted_confidence == estimate.confidence
+
+
 def test_estimate_with_empty_slate_raises_a_clear_error() -> None:
     port = OpenRouterLLMPort(_FakeTransport([]), ModelRouter(slates={"estimation": []}))
     with pytest.raises(ValueError):

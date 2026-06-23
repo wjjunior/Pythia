@@ -9,7 +9,7 @@ from collections.abc import Callable
 from typing import Any, Literal, Protocol, Self
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from pythia.agents.aggregation import aggregate
 from pythia.agents.cost import BudgetExceeded
@@ -52,6 +52,39 @@ class _CritiquePayload(BaseModel):
     objections: list[str] = Field(default_factory=list)
     lookahead_leak: bool = False
     notes: str | None = None
+
+    @field_validator("lookahead_leak", mode="before")
+    @classmethod
+    def _coerce_lookahead_leak(cls, value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        return isinstance(value, str) and value.strip().lower() in {"true", "yes", "1"}
+
+    @field_validator("adjusted_confidence", mode="before")
+    @classmethod
+    def _coerce_adjusted_confidence(cls, value: object) -> float | None:
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int | float):
+            return float(value)
+        try:
+            return float(str(value).strip())
+        except ValueError:
+            return None
+
+    @field_validator("objections", mode="before")
+    @classmethod
+    def _coerce_objections(cls, value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+        return []
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _coerce_notes(cls, value: object) -> str | None:
+        return None if value is None else str(value)
 
 
 class _DiscoveryPayload(BaseModel):
