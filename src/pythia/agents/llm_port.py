@@ -325,12 +325,13 @@ class OpenRouterLLMPort:
         # error fails over to the next model (don't hammer a down provider); unparseable JSON is
         # retried on the same model up to model_max_attempts before moving on.
         if candidates is None:
-            candidates = self._router.candidates(agent)
+            candidates = self._router.candidates(agent, task)
         if not candidates:
             raise ValueError(f"no model candidates configured for agent {agent!r}")
+        attempts = max(1, self._model_max_attempts)
         last_error: Exception | None = None
         for model in candidates:
-            for _attempt in range(self._model_max_attempts):
+            for _attempt in range(attempts):
                 try:
                     response, latency_ms = self._complete_one(model, messages)
                 except BudgetExceeded:
@@ -345,7 +346,7 @@ class OpenRouterLLMPort:
                     last_error = exc
                     _log.warning("llm_unparseable", agent=agent, model=model, error=str(exc))
         raise LLMResponseError(
-            f"{schema.__name__} unparseable across {len(candidates)} model(s): {last_error}"
+            f"{schema.__name__} failed across {len(candidates)} model(s): {last_error}"
         )
 
     def _complete_one(
