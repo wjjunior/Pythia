@@ -6,10 +6,22 @@ from pythia.scoring import (
     confidence,
     edge,
     kelly_fraction,
+    market_disagreement_penalty,
     net_edge,
     opportunity_score,
     position_size,
 )
+
+
+def test_market_disagreement_penalty_is_neutral_in_the_mid_range() -> None:
+    assert market_disagreement_penalty(0.9, 0.5) == 1.0
+    assert market_disagreement_penalty(0.1, 0.4) == 1.0
+
+
+def test_market_disagreement_penalty_distrusts_overriding_an_extreme_market() -> None:
+    assert market_disagreement_penalty(0.85, 0.0005) == pytest.approx(0.1505)  # heavy distrust
+    assert market_disagreement_penalty(0.03, 0.02) == pytest.approx(0.99)  # model agrees → mild
+    assert market_disagreement_penalty(0.2, 0.98) == pytest.approx(0.22)  # high extreme, disagrees
 
 
 def test_edge_is_signed_difference() -> None:

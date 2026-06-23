@@ -164,6 +164,27 @@ class _ConfidentLLM:
         )
 
 
+class _OverconfidentLLM:
+    def estimate(self, ctx: EstimationContext) -> Estimate:
+        return Estimate(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"overconfident-{ctx.snapshot.id}")),
+            market_id=ctx.market.id,
+            snapshot_id=ctx.snapshot.id,
+            p_model=0.85,
+            confidence=0.9,
+            lower=0.7,
+            upper=0.95,
+            rationale="overconfident",
+            evidence_ids=[item.id for item in ctx.evidence],
+            model_name="fake/overconfident",
+        )
+
+    def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
+        return CriticVerdict(
+            adjusted_confidence=0.9, objections=[], lookahead_leak=False, notes="ok"
+        )
+
+
 class _EnsembleLLM:
     def estimate(self, ctx: EstimationContext) -> Estimate:
         return Estimate(
@@ -221,6 +242,47 @@ def test_pipeline_scores_persists_and_audits_every_step(session: Session) -> Non
         AuditKind.SCORE,
         AuditKind.RISK_DECISION,
     }
+
+
+def _seed_priced(session: Session, *, key: str, yes_price: float) -> tuple[Market, MarketSnapshot]:
+    market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pyt81-{key}"))
+    market = MarketRepository(session).upsert(
+        Market(
+            id=market_id,
+            external_id=f"pyt81-{key}",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    snapshot = SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"pyt81-{key}-snap")),
+            market_id=market_id,
+            ts=ASOF,
+            yes_price=yes_price,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    return market, snapshot
+
+
+def test_pipeline_distrusts_a_confident_estimate_against_an_extreme_market(
+    session: Session,
+) -> None:
+    mid_market, mid_snapshot = _seed_priced(session, key="mid", yes_price=0.5)
+    extreme_market, extreme_snapshot = _seed_priced(session, key="extreme", yes_price=0.02)
+
+    mid = _pipeline(session, _OverconfidentLLM()).run(mid_market, mid_snapshot)
+    extreme = _pipeline(session, _OverconfidentLLM()).run(extreme_market, extreme_snapshot)
+
+    assert mid.score is not None and extreme.score is not None
+    # The confident estimate (p_model 0.85) has a far bigger raw edge on the 2¢ market...
+    assert extreme.score.edge_net > mid.score.edge_net
+    # ...but the disagreement penalty cuts its confidence, so it scores LOWER, not higher.
+    assert extreme.score.opportunity_score < mid.score.opportunity_score
 
 
 def test_one_correlation_id_reconstructs_the_run_lifecycle(

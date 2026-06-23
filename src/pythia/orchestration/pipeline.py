@@ -53,6 +53,7 @@ from pythia.risk import (
 from pythia.scoring import (
     build_score,
     classify_resolution_source,
+    market_disagreement_penalty,
     position_size,
     resolution_penalty,
 )
@@ -179,6 +180,7 @@ class Pipeline:
         graded_p_resol, resolution_gated = self._resolution_risk(market, snapshot)
         p_corr = self._venue_p_corr(market, snapshot)
         scored, category_calibrated = self._recalibrated(market.category, critiqued)
+        scored = self._distrust_market_disagreement(scored, snapshot)
         score = self._score(scored, snapshot, graded_p_resol, p_corr)
         self._scores.add(score)
         _log.info(
@@ -204,7 +206,7 @@ class Pipeline:
 
         decision = self._evaluate_risk(
             market,
-            critiqued,
+            scored,
             score,
             evidence,
             capital.available_capital,
@@ -272,6 +274,20 @@ class Pipeline:
         if n_fit < self._settings.recalibration_min_n:
             return estimate, False
         return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
+
+    def _distrust_market_disagreement(
+        self, estimate: Estimate, snapshot: MarketSnapshot
+    ) -> Estimate:
+        penalty = market_disagreement_penalty(estimate.p_model, snapshot.yes_price)
+        if penalty >= 1.0:
+            return estimate
+        _log.info(
+            "market_disagreement_distrust",
+            p_model=estimate.p_model,
+            yes_price=snapshot.yes_price,
+            penalty=penalty,
+        )
+        return estimate.model_copy(update={"confidence": estimate.confidence * penalty})
 
     def _score(
         self, estimate: Estimate, snapshot: MarketSnapshot, p_resol: float, p_corr: float

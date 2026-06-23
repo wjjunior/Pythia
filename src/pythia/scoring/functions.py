@@ -16,6 +16,18 @@ def confidence(calib_category: float, source_agreement: float, source_quality: f
     return calib_category * source_agreement * source_quality
 
 
+_EXTREME_PRICE_LO = 0.05
+_EXTREME_PRICE_HI = 0.95
+
+
+def market_disagreement_penalty(p_model: float, q: float) -> float:
+    # At an extreme price the market is near-certain; overriding it with no basis is the model's
+    # "convincingly wrong" failure. Cut confidence by how far the estimate departs from the market.
+    if _EXTREME_PRICE_LO < q < _EXTREME_PRICE_HI:
+        return 1.0
+    return 1.0 - abs(p_model - q)
+
+
 def opportunity_score(
     ev_unit: float,
     conf: float,
