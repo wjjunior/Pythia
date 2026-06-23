@@ -17,6 +17,7 @@ from pythia.agents import (
     BudgetGuard,
     CachingLLMPort,
     DiscoveryAgent,
+    LLMResponseError,
     make_llm_port,
 )
 from pythia.common import LLMPort, Market, MarketStatus
@@ -87,6 +88,9 @@ def _shortlist(
         shortlist = DiscoveryAgent(llm).shortlist(markets, size)
     except BudgetExceeded:
         _log.warning("discovery_budget_halt")
+        return markets[:size]
+    except LLMResponseError as exc:
+        _log.warning("discovery_failed", error=str(exc))
         return markets[:size]
     _log.info("discovery_shortlist", candidates=len(markets), shortlisted=len(shortlist))
     return shortlist
