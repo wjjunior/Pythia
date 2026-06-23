@@ -88,6 +88,21 @@ def test_run_open_markets_scores_and_publishes_radar(session: Session) -> None:
     assert len(session.exec(select(models.Score)).all()) == 1
 
 
+def test_run_open_markets_does_not_re_estimate_an_already_estimated_snapshot(
+    session: Session,
+) -> None:
+    _seed_open_market(session)
+    run_open_markets(session, _settings())
+    runs = len(session.exec(select(models.PipelineRun)).all())
+    estimates = len(session.exec(select(models.Estimate)).all())
+    assert runs == 1 and estimates == 1
+
+    run_open_markets(session, _settings())
+
+    assert len(session.exec(select(models.PipelineRun)).all()) == runs
+    assert len(session.exec(select(models.Estimate)).all()) == estimates
+
+
 def test_run_open_markets_skips_markets_without_a_snapshot(session: Session) -> None:
     MarketRepository(session).upsert(
         Market(

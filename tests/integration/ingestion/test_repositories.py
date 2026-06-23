@@ -1,6 +1,8 @@
 """Integration tests: immutability, idempotency and the source registry (real Postgres)."""
 
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 import pytest
@@ -14,6 +16,7 @@ from pythia.db.repositories import (
     SourceRepository,
     persist_crawl,
 )
+from pythia.worker.scheduler import make_persist_sink
 
 pytestmark = pytest.mark.integration
 
@@ -76,3 +79,16 @@ def test_persist_crawl_upserts_market_and_appends_snapshots(session: Session) ->
     persist_crawl(session, [(_market(), _snapshot(datetime(2026, 6, 18, 12, 10, tzinfo=UTC), 0.6))])
     assert len(session.exec(select(models.Market)).all()) == 1
     assert len(SnapshotRepository(session).list_for_market(_MARKET_ID)) == 2
+
+
+def test_make_persist_sink_writes_the_crawl_to_the_database(session: Session) -> None:
+    @contextmanager
+    def factory() -> Iterator[Session]:
+        yield session
+
+    make_persist_sink(factory)(
+        [(_market(), _snapshot(datetime(2026, 6, 18, 12, 0, tzinfo=UTC), 0.5))]
+    )
+
+    assert len(session.exec(select(models.Market)).all()) == 1
+    assert len(SnapshotRepository(session).list_for_market(_MARKET_ID)) == 1

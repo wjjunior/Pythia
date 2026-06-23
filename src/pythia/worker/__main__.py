@@ -1,20 +1,15 @@
 """Worker entrypoint: market crawl + venue + evidence-ingest on CRAWL_INTERVAL_SECONDS (§8.6)."""
 
-from pythia.common import Market, MarketSnapshot
 from pythia.common.logging import configure_logging, get_logger
 from pythia.config import Settings, get_settings
 from pythia.db.session import session_scope
 from pythia.ingestion import HttpxTransport, MarketCrawler
 from pythia.rag.embeddings import make_embedder
 from pythia.worker.evidence_ingest import build_evidence_transports
-from pythia.worker.scheduler import build_scheduler
+from pythia.worker.scheduler import build_scheduler, make_persist_sink
 from pythia.worker.venue_ingest import build_venue_clients
 
 _log = get_logger(__name__)
-
-
-def _log_sink(pairs: list[tuple[Market, MarketSnapshot]]) -> None:
-    _log.info("market_crawl_tick", snapshots=len(pairs))
 
 
 def _configure(settings: Settings) -> None:
@@ -39,7 +34,7 @@ def main() -> None:
     embedder = make_embedder(settings)
     scheduler = build_scheduler(
         crawler,
-        _log_sink,
+        make_persist_sink(session_scope),
         settings.crawl_interval_seconds,
         session_factory=session_scope,
         venue_clients=venue_clients,

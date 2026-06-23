@@ -7,7 +7,9 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlmodel import Session
 
 from pythia.common import EmbeddingPort, Market, MarketSnapshot, Venue
+from pythia.common.logging import get_logger
 from pythia.config import Settings
+from pythia.db.repositories import persist_crawl
 from pythia.ingestion import MarketCrawler
 from pythia.ingestion.evidence import EvidenceTransport
 from pythia.ingestion.venues import VenueClient
@@ -16,12 +18,23 @@ from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
 from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
 from pythia.worker.venue_ingest import ingest_tick as venue_ingest_tick
 
+_log = get_logger(__name__)
+
 Sink = Callable[[list[tuple[Market, MarketSnapshot]]], None]
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 
 
 def tick(crawler: MarketCrawler, sink: Sink) -> None:
     sink(crawler.poll())
+
+
+def make_persist_sink(session_factory: SessionFactory) -> Sink:
+    def sink(pairs: list[tuple[Market, MarketSnapshot]]) -> None:
+        with session_factory() as session:
+            persist_crawl(session, pairs)
+        _log.info("market_crawl_tick", snapshots=len(pairs))
+
+    return sink
 
 
 def venue_tick(session_factory: SessionFactory, clients: list[tuple[Venue, VenueClient]]) -> None:

@@ -22,7 +22,12 @@ from pythia.agents import (
 from pythia.common import LLMPort, Market, MarketStatus
 from pythia.common.logging import get_logger
 from pythia.config import Settings
-from pythia.db.repositories import CostRepository, MarketRepository, SnapshotRepository
+from pythia.db.repositories import (
+    CostRepository,
+    EstimateRepository,
+    MarketRepository,
+    SnapshotRepository,
+)
 from pythia.orchestration.pipeline import Pipeline
 from pythia.rag import EvidenceStore, make_embedder
 
@@ -98,13 +103,14 @@ def run_open_markets(
     markets = MarketRepository(session).list(status=MarketStatus.OPEN)
     markets = _shortlist(session, settings, markets, discovery_llm)
     snapshots = SnapshotRepository(session)
+    estimates = EstimateRepository(session)
     evidence = EvidenceStore(session, make_embedder(settings))
     build_llm = llm_factory if llm_factory is not None else _default_llm_factory(session, settings)
     routing = _routing(settings)
     scored = 0
     for market in markets:
         snapshot = snapshots.latest_for_market(market.id)
-        if snapshot is None:
+        if snapshot is None or estimates.exists_for_snapshot(snapshot.id):
             continue
         pipeline = Pipeline(
             session=session,
