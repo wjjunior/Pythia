@@ -22,6 +22,10 @@ class RadarItem(BaseModel):
     market: Market
     estimate: Estimate
     score: Score
+    recommended_side: Side
+    entry_price: float
+    win_multiple: float
+    closes_in_days: float | None
 
 
 class EstimateDetail(BaseModel):

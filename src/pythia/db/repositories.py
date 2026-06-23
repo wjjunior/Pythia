@@ -6,7 +6,7 @@ append-only (no update path); sources upsert by name. Contract ids are used as p
 
 import uuid
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func
@@ -39,6 +39,7 @@ from pythia.common.ids import deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
+from pythia.scoring import RadarMetrics, radar_metrics
 
 
 def _to_db_market(market: Market) -> models.Market:
@@ -432,6 +433,24 @@ def _from_db_score(row: models.Score) -> Score:
     )
 
 
+def _to_radar_row(
+    score: models.Score,
+    estimate: models.Estimate,
+    market: models.Market,
+    yes_price: float,
+    asof: datetime,
+) -> tuple[Score, Estimate, Market, RadarMetrics]:
+    domain_market = _from_db_market(market)
+    metrics = radar_metrics(
+        p_model=estimate.p_model, q=yes_price, close_time=domain_market.close_time, asof=asof
+    )
+    return _from_db_score(score), _from_db_estimate(estimate), domain_market, metrics
+
+
+def _days_to_close_key(metrics: RadarMetrics) -> float:
+    return metrics.closes_in_days if metrics.closes_in_days is not None else float("inf")
+
+
 class ScoreRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -449,7 +468,14 @@ class ScoreRepository:
         ).one_or_none()
         return _from_db_score(row) if row is not None else None
 
-    def radar(self, limit: int) -> list[tuple[Score, Estimate, Market]]:
+    def radar(
+        self,
+        limit: int,
+        *,
+        asof: datetime,
+        max_days_to_close: int | None = None,
+        min_win_multiple: float | None = None,
+    ) -> list[tuple[Score, Estimate, Market, RadarMetrics]]:
         latest_per_market = (
             select(models.Score.id)
             .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
@@ -460,18 +486,32 @@ class ScoreRepository:
                 col(models.Score.id).desc(),
             )
         )
-        rows = self._session.exec(
-            select(models.Score, models.Estimate, models.Market)
+        query = (
+            select(models.Score, models.Estimate, models.Market, models.MarketSnapshot.yes_price)
             .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
             .join(models.Market, col(models.Estimate.market_id) == col(models.Market.id))
+            .join(
+                models.MarketSnapshot,
+                col(models.Estimate.snapshot_id) == col(models.MarketSnapshot.id),
+            )
             .where(col(models.Score.id).in_(latest_per_market))
-            .order_by(col(models.Score.opportunity_score).desc())
-            .limit(limit)
+        )
+        if max_days_to_close is None:
+            rows = self._session.exec(
+                query.order_by(col(models.Score.opportunity_score).desc()).limit(limit)
+            ).all()
+            return [_to_radar_row(score, est, market, q, asof) for score, est, market, q in rows]
+        cutoff = asof + timedelta(days=max_days_to_close)
+        windowed = self._session.exec(
+            query.where(col(models.Market.close_time).is_not(None)).where(
+                col(models.Market.close_time) <= cutoff
+            )
         ).all()
-        return [
-            (_from_db_score(score), _from_db_estimate(estimate), _from_db_market(market))
-            for score, estimate, market in rows
-        ]
+        ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in windowed]
+        if min_win_multiple is not None:
+            ranked = [row for row in ranked if row[3].win_multiple >= min_win_multiple]
+        ranked.sort(key=lambda row: (_days_to_close_key(row[3]), -row[0].opportunity_score))
+        return ranked[:limit]
 
 
 class PipelineRunRepository:

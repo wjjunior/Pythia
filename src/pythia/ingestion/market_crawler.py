@@ -10,7 +10,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -35,7 +35,9 @@ class MarketNotFoundError(LookupError):
 
 
 class MarketTransport(Protocol):
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]: ...
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]: ...
 
 
 class FixtureTransport:
@@ -44,7 +46,9 @@ class FixtureTransport:
     def __init__(self, path: Path) -> None:
         self._path = path
 
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
         data: list[dict[str, Any]] = json.loads(self._path.read_text())
         return data
 
@@ -57,13 +61,17 @@ class HttpxTransport:
         self._limit = limit
         self._timeout = timeout
 
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
         url = f"{self._base_url}/markets"
         params: dict[str, str | int] = {
             "limit": self._limit,
             "closed": "true" if closed else "false",
             "include_tag": "true",
         }
+        if end_date_max is not None:
+            params["end_date_max"] = end_date_max
         try:
             response = httpx.get(url, params=params, timeout=self._timeout)
             response.raise_for_status()
@@ -195,18 +203,26 @@ class MarketCrawler:
         sleep: Callable[[float], None] = time.sleep,
         retries: int = 3,
         backoff_base: float = 0.5,
+        close_within_days: int | None = None,
     ) -> None:
         self._transport = transport
         self._clock = clock or (lambda: datetime.now(UTC))
         self._sleep = sleep
         self._retries = retries
         self._backoff_base = backoff_base
+        self._close_within_days = close_within_days
+
+    def _end_date_max(self) -> str | None:
+        if self._close_within_days is None:
+            return None
+        return (self._clock() + timedelta(days=self._close_within_days)).isoformat()
 
     def _fetch(self, *, closed: bool = False) -> list[dict[str, Any]]:
+        end_date_max = None if closed else self._end_date_max()
         last: TransientTransportError | None = None
         for attempt in range(self._retries):
             try:
-                return self._transport.fetch_markets(closed=closed)
+                return self._transport.fetch_markets(closed=closed, end_date_max=end_date_max)
             except LiveVenueAccessError:
                 raise
             except TransientTransportError as exc:
