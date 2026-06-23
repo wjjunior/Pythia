@@ -35,7 +35,11 @@ class _ResolvedTransport:
         self._markets = markets
 
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         return self._markets if closed else []
 

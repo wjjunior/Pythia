@@ -5,11 +5,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from pythia.common import Market, MarketDataPort, MarketSnapshot
 from pythia.ingestion import (
     FixtureTransport,
+    HttpxTransport,
     LiveVenueAccessError,
     MarketCrawler,
     MarketNotFoundError,
@@ -32,7 +34,11 @@ class _FlakyTransport:
         self._fail_times = fail_times
 
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         self.calls += 1
         if self.calls <= self._fail_times:
@@ -45,7 +51,11 @@ class _GeoBlockedTransport:
         self.calls = 0
 
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         self.calls += 1
         raise LiveVenueAccessError("enable the VPN")
@@ -56,7 +66,11 @@ class _StaticTransport:
         self._markets = markets
 
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         return self._markets
 
@@ -64,12 +78,18 @@ class _StaticTransport:
 class _CapturingTransport:
     def __init__(self) -> None:
         self.end_date_max: str | None = "unset"
+        self.end_date_min: str | None = "unset"
         self.closed: bool | None = None
 
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         self.end_date_max = end_date_max
+        self.end_date_min = end_date_min
         self.closed = closed
         return _RAW
 
@@ -99,6 +119,68 @@ def test_resolutions_ignore_the_close_window() -> None:
     crawler.resolutions()
     assert transport.closed is True
     assert transport.end_date_max is None
+    assert transport.end_date_min is None  # resolved markets ended in the past — never floor them
+
+
+def test_poll_floors_the_open_crawl_at_now_to_skip_already_ended_markets() -> None:
+    transport = _CapturingTransport()
+    MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None).poll()
+    assert transport.end_date_min == TS.isoformat()
+
+
+class _FakeResponse:
+    def __init__(self, payload: list[dict[str, Any]]) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> list[dict[str, Any]]:
+        return self._payload
+
+
+def test_httpx_open_crawl_requests_soonest_resolving_liquid_markets_paginated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pages = [[{"i": n} for n in range(100)], [{"i": n} for n in range(100, 150)]]  # full + short
+    calls: list[dict[str, Any]] = []
+
+    def fake_get(url: str, params: dict[str, Any], timeout: float) -> _FakeResponse:
+        calls.append(params)
+        idx = int(params["offset"]) // 100
+        return _FakeResponse(pages[idx] if idx < len(pages) else [])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    transport = HttpxTransport("https://gamma", limit=100, volume_min=1000.0, max_markets=500)
+    out = transport.fetch_markets(
+        closed=False, end_date_max="2026-07-01T00:00:00", end_date_min="2026-06-24T00:00:00"
+    )
+
+    assert [c["offset"] for c in calls] == [0, 100]  # paginated until a short page
+    assert len(out) == 150
+    first = calls[0]
+    assert first["closed"] == "false"
+    assert first["order"] == "endDate" and first["ascending"] == "true"
+    assert first["end_date_min"] == "2026-06-24T00:00:00"
+    assert first["end_date_max"] == "2026-07-01T00:00:00"
+    assert first["volume_num_min"] == 1000.0
+
+
+def test_httpx_resolution_crawl_is_a_single_unordered_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_get(url: str, params: dict[str, Any], timeout: float) -> _FakeResponse:
+        calls.append(params)
+        return _FakeResponse([{"x": 1}])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    HttpxTransport("https://gamma").fetch_markets(closed=True)
+
+    assert len(calls) == 1
+    assert calls[0]["closed"] == "true"
+    assert "order" not in calls[0] and "end_date_min" not in calls[0] and "offset" not in calls[0]
 
 
 def test_poll_drops_a_market_with_mismatched_outcomes_and_prices() -> None:

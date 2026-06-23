@@ -36,7 +36,11 @@ class MarketNotFoundError(LookupError):
 
 class MarketTransport(Protocol):
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]: ...
 
 
@@ -47,7 +51,11 @@ class FixtureTransport:
         self._path = path
 
     def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         data: list[dict[str, Any]] = json.loads(self._path.read_text())
         return data
@@ -56,22 +64,23 @@ class FixtureTransport:
 class HttpxTransport:
     """Live Gamma transport (VPN-gated). Classifies errors for the crawler's retry policy."""
 
-    def __init__(self, base_url: str, *, limit: int = 100, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        limit: int = 100,
+        timeout: float = 20.0,
+        volume_min: float | None = None,
+        max_markets: int = 500,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._limit = limit
         self._timeout = timeout
+        self._volume_min = volume_min
+        self._max_markets = max_markets
 
-    def fetch_markets(
-        self, *, closed: bool = False, end_date_max: str | None = None
-    ) -> list[dict[str, Any]]:
+    def _request(self, params: dict[str, str | int | float]) -> list[dict[str, Any]]:
         url = f"{self._base_url}/markets"
-        params: dict[str, str | int] = {
-            "limit": self._limit,
-            "closed": "true" if closed else "false",
-            "include_tag": "true",
-        }
-        if end_date_max is not None:
-            params["end_date_max"] = end_date_max
         try:
             response = httpx.get(url, params=params, timeout=self._timeout)
             response.raise_for_status()
@@ -87,6 +96,40 @@ class HttpxTransport:
             raise
         data: list[dict[str, Any]] = response.json()
         return data
+
+    def fetch_markets(
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
+    ) -> list[dict[str, Any]]:
+        base: dict[str, str | int | float] = {
+            "limit": self._limit,
+            "closed": "true" if closed else "false",
+            "include_tag": "true",
+        }
+        if closed:
+            return self._request(base)
+        # Open crawl (§A.1): soonest-resolving, liquid markets first, paginated past one page so
+        # short-term markets across every category surface — not just a default-ordered slice.
+        base["order"] = "endDate"
+        base["ascending"] = "true"
+        if end_date_min is not None:
+            base["end_date_min"] = end_date_min
+        if end_date_max is not None:
+            base["end_date_max"] = end_date_max
+        if self._volume_min is not None:
+            base["volume_num_min"] = self._volume_min
+        markets: list[dict[str, Any]] = []
+        offset = 0
+        while len(markets) < self._max_markets:
+            page = self._request({**base, "offset": offset})
+            markets.extend(page)
+            if len(page) < self._limit:
+                break
+            offset += self._limit
+        return markets[: self._max_markets]
 
 
 def _parse_json_list(value: str) -> list[Any]:
@@ -250,10 +293,13 @@ class MarketCrawler:
 
     def _fetch(self, *, closed: bool = False) -> list[dict[str, Any]]:
         end_date_max = None if closed else self._end_date_max()
+        end_date_min = None if closed else self._clock().isoformat()
         last: TransientTransportError | None = None
         for attempt in range(self._retries):
             try:
-                return self._transport.fetch_markets(closed=closed, end_date_max=end_date_max)
+                return self._transport.fetch_markets(
+                    closed=closed, end_date_max=end_date_max, end_date_min=end_date_min
+                )
             except LiveVenueAccessError:
                 raise
             except TransientTransportError as exc:
