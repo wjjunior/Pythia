@@ -44,3 +44,18 @@ def test_build_scheduler_registers_pipeline_and_resolution_jobs_with_settings() 
     )
     ids = {job.id for job in scheduler.get_jobs()}
     assert ids == {"market-crawl", "pipeline-run", "resolution-ingest"}
+
+
+def test_build_scheduler_runs_each_job_immediately_at_startup() -> None:
+    fixed = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
+    scheduler = build_scheduler(
+        _crawler(),
+        lambda _pairs: None,
+        interval_seconds=300,
+        session_factory=session_scope,
+        settings=_settings(),
+        clock=lambda: fixed,
+    )
+    jobs = scheduler.get_jobs()
+    assert jobs
+    assert all(job.next_run_time == fixed for job in jobs)

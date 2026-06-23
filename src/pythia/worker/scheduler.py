@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlmodel import Session
@@ -22,6 +23,10 @@ _log = get_logger(__name__)
 
 Sink = Callable[[list[tuple[Market, MarketSnapshot]]], None]
 SessionFactory = Callable[[], AbstractContextManager[Session]]
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
 def tick(crawler: MarketCrawler, sink: Sink) -> None:
@@ -75,13 +80,17 @@ def build_scheduler(
     embedder: EmbeddingPort | None = None,
     evidence_transports: list[EvidenceTransport] | None = None,
     settings: Settings | None = None,
+    clock: Callable[[], datetime] = _now,
 ) -> BlockingScheduler:
+    # next_run_time = now makes each job fire once immediately at startup, then on the interval.
+    now = clock()
     scheduler = BlockingScheduler()
     scheduler.add_job(
         lambda: tick(crawler, sink),
         "interval",
         seconds=interval_seconds,
         id="market-crawl",
+        next_run_time=now,
     )
     if session_factory is not None and venue_clients:
         scheduler.add_job(
@@ -89,6 +98,7 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="venue-ingest",
+            next_run_time=now,
         )
     if session_factory is not None and embedder is not None and evidence_transports:
         scheduler.add_job(
@@ -96,6 +106,7 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="evidence-ingest",
+            next_run_time=now,
         )
     if session_factory is not None and settings is not None:
         scheduler.add_job(
@@ -103,11 +114,13 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="pipeline-run",
+            next_run_time=now,
         )
         scheduler.add_job(
             lambda: resolution_tick(session_factory, settings, crawler),
             "interval",
             seconds=interval_seconds,
             id="resolution-ingest",
+            next_run_time=now,
         )
     return scheduler
