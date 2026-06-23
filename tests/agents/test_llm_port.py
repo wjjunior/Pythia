@@ -340,6 +340,24 @@ def test_openrouter_estimate_handles_markdown_fenced_json() -> None:
     assert estimate.p_model == 0.4
 
 
+def test_openrouter_estimate_extracts_json_from_a_prose_preamble() -> None:
+    content = (
+        "Here is my reasoned forecast for this market.\n"
+        + json.dumps(
+            {"p_model": 0.4, "confidence": 0.5, "lower": 0.3, "upper": 0.5, "rationale": "r"}
+        )
+        + "\n```"
+    )
+    response: dict[str, Any] = {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.0},
+    }
+    estimate = OpenRouterLLMPort(_FakeTransport([response]), ModelRouter()).estimate(_ctx())
+    assert estimate.p_model == 0.4
+
+
 def _critique_response(lookahead: object = False, notes: object = "ok") -> dict[str, Any]:
     content = json.dumps(
         {
