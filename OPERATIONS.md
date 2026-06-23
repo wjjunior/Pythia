@@ -75,6 +75,15 @@ crawl (live Polymarket) ─▶ market_snapshots ─▶ discovery shortlist ─�
 
 Nothing becomes a paper position automatically: the **human review gate** (`POST /api/review/{estimate_id}`, surfaced in the dashboard) is the only path from a scored opportunity to a paper trade. The deterministic math (score, risk caps) decides sizing; the LLM only estimates and critiques.
 
+### A first run, observed
+
+A bounded session against live Polymarket on the stub-free path:
+
+- A crawl landed **100 real markets + snapshots** (free — VPN on).
+- A pipeline pass with `DISCOVERY_SHORTLIST_SIZE=8` produced **8 real estimates + scores** for **~$0.02** of OpenRouter spend — the full `estimate → critic → score → risk` lifecycle audited under one `correlation_id`, every opportunity correctly vetoed to paper-only.
+
+The gateway is hardened in depth, which matters operationally: cheap models occasionally still return malformed output (prose-wrapped JSON, a wrong field type). The transport asks OpenRouter to **force JSON** (`response_format`), and the parser **degrades gracefully** — it extracts the JSON object from a prose preamble, coerces odd critic fields to safe defaults, and on a genuinely unparseable response **skips that one market and continues** rather than crashing the run. A single bad response costs one market, never the session.
+
 ## 7. Recording resolutions — the fuel for calibration
 
 Calibration accrues only from **resolved** markets. Recording resolutions is the single most important operational habit for "collecting data":
