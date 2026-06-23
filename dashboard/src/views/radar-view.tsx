@@ -1,3 +1,4 @@
+import { ExternalLink } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
 import { EmptyState, QueryState } from "@/components/async-boundary"
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/table"
 import { useRadar } from "@/hooks/use-api"
 import { daysToClose, multiple, num, pct, signedNum } from "@/lib/format"
+import { polymarketUrl } from "@/lib/polymarket"
 import {
   CALIBRATION_MAX_DAYS_TO_RESOLVE,
   CALIBRATION_MIN_WIN_MULTIPLE,
@@ -51,52 +53,75 @@ export function RadarView() {
                     <TableHead className="text-right">win prob</TableHead>
                     <TableHead className="text-right">net edge</TableHead>
                     <TableHead className="text-right">score</TableHead>
+                    <TableHead className="text-right">
+                      <span className="sr-only">Open on Polymarket</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item) => (
-                    <TableRow
-                      key={item.market.id}
-                      className="cursor-pointer"
-                      onClick={() => navigate(`/markets/${item.market.id}`)}
-                    >
-                      <TableCell className="max-w-sm truncate font-medium">
-                        {item.market.question}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="muted">{item.market.category}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.recommended_side === "YES" ? "positive" : "negative"}>
-                          {item.recommended_side}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        {daysToClose(item.resolves_in_days)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {daysToClose(item.closes_in_days)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {pct(item.estimate.p_model)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {pct(item.entry_price)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        {multiple(item.win_multiple)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {pct(item.win_probability)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {signedNum(item.score.edge_net)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">
-                        {num(item.score.opportunity_score, 4)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {items.map((item) => {
+                    const venueUrl = polymarketUrl(item.market.event_slug)
+                    return (
+                      <TableRow
+                        key={item.market.id}
+                        className="cursor-pointer"
+                        onClick={() => navigate(`/markets/${item.market.id}`)}
+                      >
+                        <TableCell className="max-w-sm truncate font-medium">
+                          {item.market.question}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="muted">{item.market.category}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={item.recommended_side === "YES" ? "positive" : "negative"}
+                          >
+                            {item.recommended_side}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {daysToClose(item.resolves_in_days)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {daysToClose(item.closes_in_days)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {pct(item.estimate.p_model)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {pct(item.entry_price)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {multiple(item.win_multiple)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {pct(item.win_probability)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {signedNum(item.score.edge_net)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {num(item.score.opportunity_score, 4)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {venueUrl ? (
+                            <a
+                              href={venueUrl}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              onClick={(event) => event.stopPropagation()}
+                              className="inline-flex text-muted-foreground hover:text-foreground"
+                              aria-label="Open on Polymarket"
+                              title="Open on Polymarket"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </Card>

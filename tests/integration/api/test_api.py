@@ -74,6 +74,7 @@ def _seed_scored_market(session: Session, *, category: str = "politics") -> None
             question="Will it resolve YES?",
             category=category,
             resolution_rule="rule",
+            event_slug="will-it-resolve-yes",
         )
     )
     SnapshotRepository(session).append(
@@ -475,6 +476,7 @@ def test_radar_item_exposes_recommended_side_and_win_multiple(
     assert item["win_probability"] == pytest.approx(0.7)
     assert "closes_in_days" in item
     assert "resolves_in_days" in item
+    assert item["market"]["event_slug"] == "will-it-resolve-yes"  # drives the Polymarket deep-link
 
 
 def _seed_risk_decision(session: Session, *, vetoed: bool, approved_size: float) -> None:
