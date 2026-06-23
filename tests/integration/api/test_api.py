@@ -204,6 +204,134 @@ def _seed_market_scored_twice(session: Session) -> None:
     session.commit()
 
 
+def _seed_calibration_market(
+    session: Session,
+    *,
+    key: str,
+    close_time: datetime,
+    yes_price: float,
+    p_model: float,
+    opp: float,
+) -> str:
+    market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    snapshot_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}-snap"))
+    estimate_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}-est"))
+    MarketRepository(session).upsert(
+        Market(
+            id=market_id,
+            external_id=key,
+            question="q",
+            category="politics",
+            resolution_rule="r",
+            close_time=close_time,
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=snapshot_id,
+            market_id=market_id,
+            ts=TS,
+            yes_price=yes_price,
+            spread=0.0,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    session.commit()
+    EstimateRepository(session).add(
+        Estimate(
+            id=estimate_id,
+            market_id=market_id,
+            snapshot_id=snapshot_id,
+            p_model=p_model,
+            confidence=0.8,
+            lower=0.1,
+            upper=0.9,
+            rationale="r",
+            evidence_ids=[],
+            model_name="stub",
+        )
+    )
+    session.add(
+        models.Score(
+            estimate_id=uuid.UUID(estimate_id),
+            edge=p_model - yes_price,
+            edge_net=p_model - yes_price,
+            ev_unit=p_model - yes_price,
+            p_resol=1.0,
+            p_liq=1.0,
+            p_time=1.0,
+            p_corr=1.0,
+            opportunity_score=opp,
+            kelly_fraction=0.0,
+            created_at=TS,
+        )
+    )
+    session.commit()
+    return market_id
+
+
+def test_radar_calibration_mode_filters_by_window_and_win_multiple(
+    client: TestClient, session: Session
+) -> None:
+    now = datetime.now(UTC)
+    a = _seed_calibration_market(
+        session,
+        key="cal-a",
+        close_time=now + timedelta(days=5),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.09,
+    )
+    b = _seed_calibration_market(
+        session,
+        key="cal-b",
+        close_time=now + timedelta(days=2),
+        yes_price=0.5,
+        p_model=0.7,
+        opp=0.02,
+    )
+    _seed_calibration_market(  # in window but YES @ 0.9 → payout 1.11x, fails 1.4
+        session,
+        key="cal-c",
+        close_time=now + timedelta(days=1),
+        yes_price=0.9,
+        p_model=0.95,
+        opp=0.06,
+    )
+    _seed_calibration_market(  # good payout but 30d out, fails the window
+        session,
+        key="cal-d",
+        close_time=now + timedelta(days=30),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.5,
+    )
+    _seed_calibration_market(  # already closed in the past — must not slip in ahead of near-term
+        session,
+        key="cal-past",
+        close_time=now - timedelta(days=5),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.5,
+    )
+
+    body = client.get("/api/radar?max_days_to_close=7&min_win_multiple=1.4").json()
+
+    assert [r["market"]["id"] for r in body] == [b, a]  # soonest first; c, d, past all filtered out
+
+
+def test_radar_item_exposes_recommended_side_and_win_multiple(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)  # yes_price 0.5, p_model 0.7
+    item = client.get("/api/radar?limit=10").json()[0]
+    assert item["recommended_side"] == "YES"
+    assert item["entry_price"] == pytest.approx(0.5)
+    assert item["win_multiple"] == pytest.approx(2.0)
+    assert "closes_in_days" in item
+
+
 def _seed_risk_decision(session: Session, *, vetoed: bool, approved_size: float) -> None:
     AuditRepository(session).append(
         AuditEvent(

@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     evidence_sources: str = ""
     newsapi_key: str | None = None
     crawl_interval_seconds: int = 300
+    crawl_close_within_days: int | None = None
 
     # Paper bankroll, sizing & risk caps
     bankroll_paper: float = 10_000.0

@@ -34,7 +34,9 @@ class _ResolvedTransport:
     def __init__(self, markets: list[dict[str, Any]]) -> None:
         self._markets = markets
 
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
         return self._markets if closed else []
 
 

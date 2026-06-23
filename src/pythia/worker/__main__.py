@@ -28,7 +28,10 @@ def main() -> None:
     if not settings.use_live_venues:
         _log.info("worker_disabled", reason="USE_LIVE_VENUES is false; enable VPN (§8.6)")
         return
-    crawler = MarketCrawler(HttpxTransport(settings.polymarket_api_base))
+    crawler = MarketCrawler(
+        HttpxTransport(settings.polymarket_api_base),
+        close_within_days=settings.crawl_close_within_days,
+    )
     venue_clients = build_venue_clients(settings)
     evidence_transports = build_evidence_transports(settings)
     embedder = make_embedder(settings)

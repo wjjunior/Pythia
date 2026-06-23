@@ -1,7 +1,7 @@
 """Tests for the Polymarket market crawler: normalization, retries, VPN gating (offline)."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +31,9 @@ class _FlakyTransport:
         self.calls = 0
         self._fail_times = fail_times
 
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
         self.calls += 1
         if self.calls <= self._fail_times:
             raise TransientTransportError("temporary")
@@ -42,7 +44,9 @@ class _GeoBlockedTransport:
     def __init__(self) -> None:
         self.calls = 0
 
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
         self.calls += 1
         raise LiveVenueAccessError("enable the VPN")
 
@@ -51,8 +55,50 @@ class _StaticTransport:
     def __init__(self, markets: list[dict[str, Any]]) -> None:
         self._markets = markets
 
-    def fetch_markets(self, *, closed: bool = False) -> list[dict[str, Any]]:
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
         return self._markets
+
+
+class _CapturingTransport:
+    def __init__(self) -> None:
+        self.end_date_max: str | None = "unset"
+        self.closed: bool | None = None
+
+    def fetch_markets(
+        self, *, closed: bool = False, end_date_max: str | None = None
+    ) -> list[dict[str, Any]]:
+        self.end_date_max = end_date_max
+        self.closed = closed
+        return _RAW
+
+
+def test_poll_requests_a_close_window_when_configured() -> None:
+    transport = _CapturingTransport()
+    crawler = MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None, close_within_days=7)
+    crawler.poll()
+    assert transport.end_date_max == (TS + timedelta(days=7)).isoformat()
+
+
+def test_poll_omits_the_close_window_by_default() -> None:
+    transport = _CapturingTransport()
+    MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None).poll()
+    assert transport.end_date_max is None
+
+
+def test_poll_omits_the_close_window_when_days_is_non_positive() -> None:
+    transport = _CapturingTransport()
+    MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None, close_within_days=0).poll()
+    assert transport.end_date_max is None
+
+
+def test_resolutions_ignore_the_close_window() -> None:
+    transport = _CapturingTransport()
+    crawler = MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None, close_within_days=7)
+    crawler.resolutions()
+    assert transport.closed is True
+    assert transport.end_date_max is None
 
 
 def test_poll_drops_a_market_with_mismatched_outcomes_and_prices() -> None:
