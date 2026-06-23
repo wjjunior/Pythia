@@ -43,17 +43,25 @@ class RadarMetrics:
     win_multiple: float
     win_probability: float
     closes_in_days: float | None
+    resolves_in_days: float | None
 
 
 def radar_metrics(
-    *, p_model: float, q: float, close_time: datetime | None, asof: datetime
+    *,
+    p_model: float,
+    q: float,
+    close_time: datetime | None,
+    resolves_at: datetime | None,
+    asof: datetime,
 ) -> RadarMetrics:
     side = recommended_side(p_model, q)
     entry = entry_price(side, q)
+    effective_resolution = resolves_at if resolves_at is not None else close_time
     return RadarMetrics(
         recommended_side=side,
         entry_price=entry,
         win_multiple=win_multiple(entry),
         win_probability=win_probability(side, p_model),
         closes_in_days=closes_in_days(close_time, asof),
+        resolves_in_days=closes_in_days(effective_resolution, asof),
     )

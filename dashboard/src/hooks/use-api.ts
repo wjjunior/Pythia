@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { qk } from "@/lib/query-keys"
 import {
-  CALIBRATION_MAX_DAYS_TO_CLOSE,
+  CALIBRATION_MAX_DAYS_TO_RESOLVE,
   CALIBRATION_MIN_WIN_MULTIPLE,
   CALIBRATION_MIN_WIN_PROBABILITY,
 } from "@/lib/ranking"
@@ -14,7 +14,7 @@ export const useRadar = () =>
     queryKey: qk.radar,
     queryFn: () =>
       api.radar({
-        maxDaysToClose: CALIBRATION_MAX_DAYS_TO_CLOSE,
+        maxDaysToResolve: CALIBRATION_MAX_DAYS_TO_RESOLVE,
         minWinMultiple: CALIBRATION_MIN_WIN_MULTIPLE,
         minWinProbability: CALIBRATION_MIN_WIN_PROBABILITY,
       }),

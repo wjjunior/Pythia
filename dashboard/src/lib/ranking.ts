@@ -4,8 +4,9 @@ import type { CategoryCalibration } from "./types"
 export const EXPOSURE_WARN = 0.6
 export const EXPOSURE_HIGH = 0.9
 
-// Calibration queue: surface near-term, high-payout markets so resolutions arrive fast (PYT-75/76).
-export const CALIBRATION_MAX_DAYS_TO_CLOSE = 7
+// Calibration queue: surface markets that RESOLVE soon (not just close trading) and are still
+// enterable, so calibration feedback arrives fast (PYT-75/76/82).
+export const CALIBRATION_MAX_DAYS_TO_RESOLVE = 7
 export const CALIBRATION_MIN_WIN_MULTIPLE = 1.4
 // The recommended (edge) side must also be the side the model expects to win — no penny longshots.
 export const CALIBRATION_MIN_WIN_PROBABILITY = 0.5

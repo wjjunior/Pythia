@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
 from pythia.common import (
@@ -51,6 +51,7 @@ def _to_db_market(market: Market) -> models.Market:
         resolution_rule=market.resolution_rule,
         resolution_source=market.resolution_source,
         close_time=market.close_time,
+        resolves_at=market.resolves_at,
         resolved=market.resolved,
     )
 
@@ -64,6 +65,7 @@ def _from_db_market(row: models.Market) -> Market:
         resolution_rule=row.resolution_rule,
         resolution_source=row.resolution_source,
         close_time=row.close_time,
+        resolves_at=row.resolves_at,
         resolved=row.resolved,
     )
 
@@ -128,6 +130,7 @@ class MarketRepository:
             row.resolution_rule = market.resolution_rule
             row.resolution_source = market.resolution_source
             row.close_time = market.close_time
+            row.resolves_at = market.resolves_at
             row.resolved = market.resolved
         self._session.commit()
         self._session.refresh(row)
@@ -442,13 +445,17 @@ def _to_radar_row(
 ) -> tuple[Score, Estimate, Market, RadarMetrics]:
     domain_market = _from_db_market(market)
     metrics = radar_metrics(
-        p_model=estimate.p_model, q=yes_price, close_time=domain_market.close_time, asof=asof
+        p_model=estimate.p_model,
+        q=yes_price,
+        close_time=domain_market.close_time,
+        resolves_at=domain_market.resolves_at,
+        asof=asof,
     )
     return _from_db_score(score), _from_db_estimate(estimate), domain_market, metrics
 
 
-def _days_to_close_key(metrics: RadarMetrics) -> float:
-    return metrics.closes_in_days if metrics.closes_in_days is not None else float("inf")
+def _resolves_in_days_key(metrics: RadarMetrics) -> float:
+    return metrics.resolves_in_days if metrics.resolves_in_days is not None else float("inf")
 
 
 # Calibration-mode candidates are filtered/sorted in Python after the SQL window; bound the fetch.
@@ -477,7 +484,7 @@ class ScoreRepository:
         limit: int,
         *,
         asof: datetime,
-        max_days_to_close: int | None = None,
+        max_days_to_resolve: int | None = None,
         min_win_multiple: float | None = None,
         min_win_probability: float | None = None,
     ) -> list[tuple[Score, Estimate, Market, RadarMetrics]]:
@@ -491,6 +498,8 @@ class ScoreRepository:
                 col(models.Score.id).desc(),
             )
         )
+        # Entry gate (§A.1): only surface markets we can still enter — trading open (or unknown)
+        # and not resolved. A closed market has no entry; ranking it would be misleading.
         query = (
             select(models.Score, models.Estimate, models.Market, models.MarketSnapshot.yes_price)
             .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
@@ -500,13 +509,21 @@ class ScoreRepository:
                 col(models.Estimate.snapshot_id) == col(models.MarketSnapshot.id),
             )
             .where(col(models.Score.id).in_(latest_per_market))
-        )
-        windowed = max_days_to_close is not None
-        if max_days_to_close is not None:
-            cutoff = asof + timedelta(days=max_days_to_close)
-            query = query.where(col(models.Market.close_time) >= asof).where(
-                col(models.Market.close_time) <= cutoff
+            .where(col(models.Market.resolved).is_(False))
+            .where(
+                or_(
+                    col(models.Market.close_time).is_(None),
+                    col(models.Market.close_time) >= asof,
+                )
             )
+        )
+        # The market resolves when UMA settles (resolves_at); fall back to trading-close when Gamma
+        # gives no UMA date. Proximity to *resolution* is what drives calibration feedback speed.
+        resolves_at = func.coalesce(col(models.Market.resolves_at), col(models.Market.close_time))
+        windowed = max_days_to_resolve is not None
+        if max_days_to_resolve is not None:
+            cutoff = asof + timedelta(days=max_days_to_resolve)
+            query = query.where(resolves_at >= asof).where(resolves_at <= cutoff)
         # Fast path: no window and no payout/probability filters → order + limit in SQL.
         if not windowed and min_win_multiple is None and min_win_probability is None:
             rows = self._session.exec(
@@ -514,12 +531,8 @@ class ScoreRepository:
             ).all()
             return [_to_radar_row(score, est, market, q, asof) for score, est, market, q in rows]
         # Otherwise the win-multiple/probability filters compute per row, so fetch a bounded set
-        # (soonest-close when windowed, else best-score), filter in Python, then sort and limit.
-        order = (
-            col(models.Market.close_time)
-            if windowed
-            else col(models.Score.opportunity_score).desc()
-        )
+        # (soonest-resolution when windowed, else best-score), filter in Python, then sort.
+        order = resolves_at if windowed else col(models.Score.opportunity_score).desc()
         fetched = self._session.exec(query.order_by(order).limit(_RADAR_WINDOW_CAP)).all()
         ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in fetched]
         if min_win_multiple is not None:
@@ -527,7 +540,7 @@ class ScoreRepository:
         if min_win_probability is not None:
             ranked = [row for row in ranked if row[3].win_probability >= min_win_probability]
         if windowed:
-            ranked.sort(key=lambda row: (_days_to_close_key(row[3]), -row[0].opportunity_score))
+            ranked.sort(key=lambda row: (_resolves_in_days_key(row[3]), -row[0].opportunity_score))
         return ranked[:limit]
 
 

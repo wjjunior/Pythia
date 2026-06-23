@@ -156,6 +156,17 @@ def derive_category(raw: dict[str, Any]) -> str:
     return _series_title(raw) or "uncategorized"
 
 
+def _uma_resolves_at(raw: dict[str, Any]) -> datetime | None:
+    for key in ("umaEndDate", "umaEndDateIso"):
+        value = raw.get(key)
+        if value:
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                continue
+    return None
+
+
 def to_market(raw: dict[str, Any], market_id: str) -> Market:
     close = raw.get("endDate")
     return Market(
@@ -166,6 +177,7 @@ def to_market(raw: dict[str, Any], market_id: str) -> Market:
         resolution_rule=raw.get("description", ""),
         resolution_source=raw.get("resolutionSource") or None,
         close_time=datetime.fromisoformat(close) if close else None,
+        resolves_at=_uma_resolves_at(raw),
         resolved=bool(raw.get("closed", False)),
     )
 

@@ -63,6 +63,7 @@ class Market(_Frozen):
     resolution_rule: str
     resolution_source: str | None = None
     close_time: datetime | None = None
+    resolves_at: datetime | None = None
     resolved: bool = False
 
 

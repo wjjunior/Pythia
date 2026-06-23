@@ -15,7 +15,7 @@ import {
 import { useRadar } from "@/hooks/use-api"
 import { daysToClose, multiple, num, pct, signedNum } from "@/lib/format"
 import {
-  CALIBRATION_MAX_DAYS_TO_CLOSE,
+  CALIBRATION_MAX_DAYS_TO_RESOLVE,
   CALIBRATION_MIN_WIN_MULTIPLE,
   CALIBRATION_MIN_WIN_PROBABILITY,
 } from "@/lib/ranking"
@@ -28,7 +28,7 @@ export function RadarView() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Opportunity radar"
-        description={`Calibration queue: closing within ${CALIBRATION_MAX_DAYS_TO_CLOSE}d, the model-favoured side paying ≥ ${CALIBRATION_MIN_WIN_MULTIPLE}× with a win probability ≥ ${CALIBRATION_MIN_WIN_PROBABILITY * 100}%, soonest first.`}
+        description={`Calibration queue: resolving within ${CALIBRATION_MAX_DAYS_TO_RESOLVE}d and still open to enter, the model-favoured side paying ≥ ${CALIBRATION_MIN_WIN_MULTIPLE}× with a win probability ≥ ${CALIBRATION_MIN_WIN_PROBABILITY * 100}%, soonest first.`}
       />
       <QueryState query={radar}>
         {(items) => {
@@ -43,6 +43,7 @@ export function RadarView() {
                     <TableHead>Market</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Side</TableHead>
+                    <TableHead className="text-right">resolves in</TableHead>
                     <TableHead className="text-right">closes in</TableHead>
                     <TableHead className="text-right">p_model</TableHead>
                     <TableHead className="text-right">entry</TableHead>
@@ -70,7 +71,10 @@ export function RadarView() {
                           {item.recommended_side}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {daysToClose(item.resolves_in_days)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
                         {daysToClose(item.closes_in_days)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">

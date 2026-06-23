@@ -15,7 +15,7 @@ from pythia.ingestion import (
     MarketNotFoundError,
     TransientTransportError,
 )
-from pythia.ingestion.market_crawler import resolved_outcome
+from pythia.ingestion.market_crawler import resolved_outcome, to_market
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "polymarket" / "gamma_markets.json"
 TS = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
@@ -140,6 +140,19 @@ def test_poll_normalises_markets_and_snapshots() -> None:
     assert snapshot.spread == pytest.approx(0.001)
     assert snapshot.volume == pytest.approx(7119295.285122047)
     assert snapshot.liquidity == pytest.approx(2936866.42816)
+
+
+def test_to_market_reads_resolution_date_from_uma_end_date() -> None:
+    # Trading closes at endDate but settlement is the UMA resolution date — they can be far apart.
+    raw = {**_RAW[0], "umaEndDate": "2026-12-31T00:00:00Z"}
+    market = to_market(raw, "00000000-0000-0000-0000-000000000001")
+    assert market.resolves_at == datetime(2026, 12, 31, 0, 0, tzinfo=UTC)
+    assert market.resolves_at != market.close_time
+
+
+def test_to_market_leaves_resolution_date_empty_without_uma_end_date() -> None:
+    market = to_market(_RAW[0], "00000000-0000-0000-0000-000000000001")
+    assert market.resolves_at is None
 
 
 def test_crawler_conforms_to_market_data_port() -> None:
