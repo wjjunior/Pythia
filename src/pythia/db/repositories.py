@@ -254,6 +254,14 @@ class EstimateRepository:
         row = self._session.get(models.Estimate, uuid.UUID(estimate_id))
         return _from_db_estimate(row) if row is not None else None
 
+    def exists_for_snapshot(self, snapshot_id: str) -> bool:
+        row = self._session.exec(
+            select(models.Estimate.id).where(
+                col(models.Estimate.snapshot_id) == uuid.UUID(snapshot_id)
+            )
+        ).first()
+        return row is not None
+
     def latest_for_market(self, market_id: str) -> Estimate | None:
         row = self._session.exec(
             select(models.Estimate)
