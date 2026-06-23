@@ -164,6 +164,24 @@ def test_to_market_normalises_a_date_only_resolution_to_utc() -> None:
     assert market.resolves_at is not None and market.resolves_at.tzinfo is not None
 
 
+def test_to_market_reads_event_slug_from_the_event() -> None:
+    # The event slug (not the market slug) is what /event/<slug> resolves to on Polymarket.
+    market = to_market(_RAW[0], "00000000-0000-0000-0000-000000000001")
+    assert market.event_slug == "fifwc-che-bih-2026-06-18"
+
+
+def test_to_market_falls_back_to_market_slug_without_an_event() -> None:
+    raw = {**_RAW[0], "events": []}
+    market = to_market(raw, "00000000-0000-0000-0000-000000000001")
+    assert market.event_slug == "fifwc-che-bih-2026-06-18-che"
+
+
+def test_to_market_leaves_event_slug_empty_without_any_slug() -> None:
+    raw = {**_RAW[0], "events": [], "slug": ""}
+    market = to_market(raw, "00000000-0000-0000-0000-000000000001")
+    assert market.event_slug is None
+
+
 def test_crawler_conforms_to_market_data_port() -> None:
     port: MarketDataPort = _crawler()
     markets = port.list_markets()

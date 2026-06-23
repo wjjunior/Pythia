@@ -179,6 +179,13 @@ def _uma_resolves_at(raw: dict[str, Any]) -> datetime | None:
     return None
 
 
+def _event_slug(raw: dict[str, Any]) -> str | None:
+    # /event/<event-slug> is the page that resolves on Polymarket; the market slug is the fallback.
+    events = raw.get("events") or []
+    event = (events[0].get("slug") or "").strip() if events else ""
+    return event or (raw.get("slug") or "").strip() or None
+
+
 def to_market(raw: dict[str, Any], market_id: str) -> Market:
     return Market(
         id=market_id,
@@ -187,6 +194,7 @@ def to_market(raw: dict[str, Any], market_id: str) -> Market:
         category=derive_category(raw),
         resolution_rule=raw.get("description", ""),
         resolution_source=raw.get("resolutionSource") or None,
+        event_slug=_event_slug(raw),
         close_time=_parse_datetime(raw.get("endDate")),
         resolves_at=_uma_resolves_at(raw),
         resolved=bool(raw.get("closed", False)),
