@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     newsapi_key: str | None = None
     crawl_interval_seconds: int = 300
     crawl_close_within_days: int | None = None
+    crawl_volume_min: float | None = 1000.0
+    crawl_max_markets: int = 500
 
     # Paper bankroll, sizing & risk caps
     bankroll_paper: float = 10_000.0
