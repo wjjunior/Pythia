@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     # Falcon (smart-money analytics, v2 §3.1/§4.5). Offline via fixtures when token unset.
     falcon_api_base: str | None = None
     falcon_api_token: str | None = None
+    candidate_daily_cap: int = 20
     cross_venue_sources: str = ""
     evidence_sources: str = ""
     newsapi_key: str | None = None

@@ -193,11 +193,7 @@ class TraderEntryRepo:
             .where(models.TraderEntry.ts == ts)
         ).one_or_none()
 
-    def add(self, entry: TraderEntry) -> TraderEntry:
-        # Idempotent on (trader_id, external_market, ts): re-polling never duplicates (AC-S1).
-        existing = self._find(entry.trader_id, entry.external_market, entry.ts)
-        if existing is not None:
-            return _from_db_entry(existing)
+    def _insert(self, entry: TraderEntry) -> TraderEntry:
         row = models.TraderEntry(
             id=uuid.UUID(entry.id),
             trader_id=uuid.UUID(entry.trader_id),
@@ -213,6 +209,18 @@ class TraderEntryRepo:
         self._session.commit()
         self._session.refresh(row)
         return _from_db_entry(row)
+
+    def add(self, entry: TraderEntry) -> TraderEntry:
+        # Idempotent on (trader_id, external_market, ts): re-polling never duplicates (AC-S1).
+        existing = self._find(entry.trader_id, entry.external_market, entry.ts)
+        return _from_db_entry(existing) if existing is not None else self._insert(entry)
+
+    def add_new(self, entry: TraderEntry) -> TraderEntry | None:
+        # Like add, but returns None when the entry was already seen — lets the detector trigger a
+        # candidate only on a genuinely new entry, never on a re-poll (AC-S1).
+        if self._find(entry.trader_id, entry.external_market, entry.ts) is not None:
+            return None
+        return self._insert(entry)
 
     def list_for_trader(self, trader_id: str, *, asof: datetime) -> list[TraderEntry]:
         # Point-in-time: never return an entry observed after asof (§4.6).

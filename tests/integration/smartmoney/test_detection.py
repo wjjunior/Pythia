@@ -1,0 +1,117 @@
+"""Integration tests (PYT-90): new-entry detection (AC-S1) + the pipeline evaluator (AC-S2)."""
+
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlmodel import Session
+
+from pythia.agents import StubLLMPort
+from pythia.common import Market, MarketSnapshot, TrackedTrader, TraderState
+from pythia.config import Settings
+from pythia.db.repositories import (
+    EstimateRepository,
+    MarketRepository,
+    ScoreRepository,
+    SnapshotRepository,
+)
+from pythia.db.smartmoney import TrackedTraderRepo, TraderEntryRepo
+from pythia.ingestion.falcon import FalconTrade
+from pythia.orchestration import Pipeline
+from pythia.rag import EvidenceStore, StubEmbeddingPort
+from pythia.smartmoney.candidate import PipelineCandidateEvaluator
+from pythia.smartmoney.detector import detect_new_entries
+
+pytestmark = pytest.mark.integration
+
+_TS = datetime(2026, 1, 9, 15, 51, tzinfo=UTC)
+
+
+def _trader(session: Session) -> TrackedTrader:
+    return TrackedTraderRepo(session).add(
+        TrackedTrader(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "w")),
+            wallet="0xwhale",
+            state=TraderState.ACTIVE,
+            added_at=_TS,
+            state_since=_TS,
+        )
+    )
+
+
+def _trade(condition_id: str, side: str, ts: datetime) -> FalconTrade:
+    return FalconTrade(
+        trade_id=f"{condition_id}:{side}:{ts.isoformat()}",
+        wallet="0xwhale",
+        condition_id=condition_id,
+        outcome="Up",
+        side=side,
+        price=0.3,
+        size=100.0,
+        slug="slug",
+        transaction_hash="0xhash",
+        ts=ts,
+    )
+
+
+def test_detection_is_idempotent_and_triggers_on_increases_only(session: Session) -> None:
+    trader = _trader(session)
+    repo = TraderEntryRepo(session)
+    trades = [_trade("0xmktA", "BUY", _TS), _trade("0xmktB", "SELL", _TS)]
+
+    first = detect_new_entries(trader, trades, repo)
+    assert [e.external_market for e in first] == ["0xmktA"]  # the BUY triggers; the SELL never does
+
+    assert detect_new_entries(trader, trades, repo) == []  # re-poll → no duplicate triggers (AC-S1)
+
+    recorded = repo.list_for_trader(trader.id, asof=_TS + timedelta(days=1))
+    assert {e.external_market for e in recorded} == {
+        "0xmktA",
+        "0xmktB",
+    }  # the exit is still recorded
+
+
+def _pipeline(session: Session) -> Pipeline:
+    return Pipeline(
+        session=session,
+        llm=StubLLMPort(),
+        evidence=EvidenceStore(session, StubEmbeddingPort()),
+        settings=Settings(_env_file=None, database_url="postgresql+psycopg://x/y"),
+        routing={"estimation": "stub", "critic": "stub"},
+    )
+
+
+def test_pipeline_evaluator_runs_the_pipeline_and_persists_a_verdict(session: Session) -> None:
+    market = MarketRepository(session).upsert(
+        Market(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "fm")),
+            external_id="0xfalconmkt",
+            question="Will it resolve YES?",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "fm-snap")),
+            market_id=market.id,
+            ts=_TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
+
+    market_id = evaluator.evaluate("0xfalconmkt", _TS, ["trader-1"])
+
+    assert market_id == market.id
+    estimate = EstimateRepository(session).latest_for_market(market.id)
+    assert estimate is not None  # the pipeline ran, point-in-time
+    assert ScoreRepository(session).get_by_estimate(estimate.id) is not None  # verdict persisted
+
+
+def test_pipeline_evaluator_skips_an_untracked_market(session: Session) -> None:
+    evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
+    assert evaluator.evaluate("0xnot-in-our-db", _TS, ["t"]) is None
