@@ -275,3 +275,82 @@ class ImprovementCandidate(_Frozen):
     brier_per_dollar: float | None = None
     n: int | None = None
     human_approved: bool | None = None
+
+
+# ---- v2 smart-money candidate sourcing (Falcon, §4.1) ----
+
+
+class TraderState(StrEnum):
+    TRIAL = "trial"
+    ACTIVE = "active"
+    BENCHED = "benched"
+    RETIRED = "retired"
+
+
+class CandidateSource(StrEnum):
+    NEW_ENTRY = "new_entry"
+    OPEN_BACKFILL = "open_backfill"
+
+
+class CandidateSignalStatus(StrEnum):
+    QUEUED = "queued"
+    EVALUATED = "evaluated"
+    SKIPPED = "skipped"
+
+
+class TrackedTrader(_Frozen):
+    id: str
+    wallet: str
+    state: TraderState
+    added_at: datetime
+    state_since: datetime
+    note: str | None = None
+
+
+class TraderScorecard(_Frozen):
+    id: str
+    trader_id: str
+    asof: datetime
+    n_resolved: int
+    market_class_ok: bool
+    trader_score: float
+    roi: float | None = None
+    risk_adj_edge: float | None = None
+    sortino: float | None = None
+    skew: float | None = None
+    max_drawdown: float | None = None
+    agree_rate: float | None = None
+    agreed_bpd: float | None = None
+    raw: dict[str, Any] | None = None
+
+
+class TraderEntry(_Frozen):
+    id: str
+    trader_id: str
+    external_market: str
+    side: str
+    ts: datetime
+    is_increase: bool
+    market_id: str | None = None
+    size_usd: float | None = None
+    entry_price: float | None = None
+
+
+class CandidateSignal(_Frozen):
+    id: str
+    asof: datetime
+    trader_ids: list[str]
+    source: CandidateSource
+    status: CandidateSignalStatus
+    created_at: datetime
+    market_id: str | None = None
+
+
+class RosterEvent(_Frozen):
+    id: str
+    trader_id: str
+    to_state: TraderState
+    reason: str
+    created_at: datetime
+    from_state: TraderState | None = None
+    metrics: dict[str, Any] | None = None
