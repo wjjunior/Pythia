@@ -1,4 +1,12 @@
-import { Activity, BarChart3, DollarSign, Radar, TrendingUp, Wallet } from "lucide-react"
+import {
+  Activity,
+  BarChart3,
+  DollarSign,
+  Radar,
+  TrendingUp,
+  Users,
+  Wallet,
+} from "lucide-react"
 import { NavLink, Outlet } from "react-router-dom"
 
 import { useSse } from "@/hooks/use-sse"
@@ -6,6 +14,7 @@ import { cn } from "@/lib/utils"
 
 const NAV = [
   { to: "/", label: "Radar", icon: Radar, end: true },
+  { to: "/smart-money", label: "Smart money", icon: Users, end: false },
   { to: "/paper", label: "Paper", icon: Wallet, end: false },
   { to: "/calibration", label: "Calibration", icon: BarChart3, end: false },
   { to: "/cost", label: "Cost", icon: DollarSign, end: false },

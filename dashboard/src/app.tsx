@@ -7,12 +7,14 @@ import { GrowthView } from "@/views/growth-view"
 import { MarketDetailView } from "@/views/market-detail-view"
 import { PaperView } from "@/views/paper-view"
 import { RadarView } from "@/views/radar-view"
+import { SmartMoneyView } from "@/views/smartmoney-view"
 
 export const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
       { path: "/", element: <RadarView /> },
+      { path: "/smart-money", element: <SmartMoneyView /> },
       { path: "/markets/:id", element: <MarketDetailView /> },
       { path: "/paper", element: <PaperView /> },
       { path: "/calibration", element: <CalibrationView /> },

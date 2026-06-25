@@ -178,6 +178,14 @@ class TraderScorecardRepo:
         ).first()
         return _from_db_scorecard(row) if row is not None else None
 
+    def latest_for_trader(self, trader_id: str) -> TraderScorecard | None:
+        row = self._session.exec(
+            select(models.TraderScorecard)
+            .where(models.TraderScorecard.trader_id == uuid.UUID(trader_id))
+            .order_by(col(models.TraderScorecard.asof).desc())
+        ).first()
+        return _from_db_scorecard(row) if row is not None else None
+
 
 class TraderEntryRepo:
     def __init__(self, session: Session) -> None:
@@ -232,6 +240,14 @@ class TraderEntryRepo:
         ).all()
         return [_from_db_entry(row) for row in rows]
 
+    def last_for_trader(self, trader_id: str) -> TraderEntry | None:
+        row = self._session.exec(
+            select(models.TraderEntry)
+            .where(models.TraderEntry.trader_id == uuid.UUID(trader_id))
+            .order_by(col(models.TraderEntry.ts).desc())
+        ).first()
+        return _from_db_entry(row) if row is not None else None
+
 
 class CandidateSignalRepo:
     def __init__(self, session: Session) -> None:
@@ -261,6 +277,14 @@ class CandidateSignalRepo:
             select(models.CandidateSignal)
             .where(models.CandidateSignal.status == status.value)
             .order_by(col(models.CandidateSignal.asof))
+        ).all()
+        return [_from_db_candidate(row) for row in rows]
+
+    def recent(self, limit: int) -> list[CandidateSignal]:
+        rows = self._session.exec(
+            select(models.CandidateSignal)
+            .order_by(col(models.CandidateSignal.created_at).desc())
+            .limit(limit)
         ).all()
         return [_from_db_candidate(row) for row in rows]
 
@@ -298,5 +322,21 @@ class RosterEventRepo:
             select(models.RosterEvent)
             .where(models.RosterEvent.trader_id == uuid.UUID(trader_id))
             .order_by(col(models.RosterEvent.created_at))
+        ).all()
+        return [_from_db_event(row) for row in rows]
+
+    def latest_for_trader(self, trader_id: str) -> RosterEvent | None:
+        row = self._session.exec(
+            select(models.RosterEvent)
+            .where(models.RosterEvent.trader_id == uuid.UUID(trader_id))
+            .order_by(col(models.RosterEvent.created_at).desc())
+        ).first()
+        return _from_db_event(row) if row is not None else None
+
+    def recent(self, limit: int) -> list[RosterEvent]:
+        rows = self._session.exec(
+            select(models.RosterEvent)
+            .order_by(col(models.RosterEvent.created_at).desc())
+            .limit(limit)
         ).all()
         return [_from_db_event(row) for row in rows]
