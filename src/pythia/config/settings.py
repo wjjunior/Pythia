@@ -57,6 +57,17 @@ class Settings(BaseSettings):
     falcon_api_base: str | None = None
     falcon_api_token: str | None = None
     candidate_daily_cap: int = 20
+
+    # Trader selection & roster lifecycle (v2 §4.2/§4.3, Appendix)
+    tracked_traders_max: int = 10
+    trader_trial_min_resolved: int = 20
+    trader_promote_score: float = 0.5
+    trader_promote_agree: float = 0.0
+    trader_demote_score: float = 0.0
+    trader_demote_agree: float = -1.0
+    trader_drawdown_floor: float = 1.0
+    roster_review_interval_seconds: int = 86_400
+    market_class_allow: str = "politics,sports,macro,world affairs"
     cross_venue_sources: str = ""
     evidence_sources: str = ""
     newsapi_key: str | None = None
