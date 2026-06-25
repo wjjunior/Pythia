@@ -19,6 +19,10 @@ def confidence(calib_category: float, source_agreement: float, source_quality: f
 _EXTREME_PRICE_LO = 0.05
 _EXTREME_PRICE_HI = 0.95
 
+# Below this disagreement penalty the radar excludes the row outright (not just de-ranks it): the
+# model is confidently overriding a near-certain market by more than (1 - floor) in probability.
+MARKET_DISAGREEMENT_FLOOR = 0.5
+
 
 def market_disagreement_penalty(p_model: float, q: float) -> float:
     # At an extreme price the market is near-certain; overriding it with no basis is the model's
@@ -26,6 +30,10 @@ def market_disagreement_penalty(p_model: float, q: float) -> float:
     if _EXTREME_PRICE_LO < q < _EXTREME_PRICE_HI:
         return 1.0
     return 1.0 - abs(p_model - q)
+
+
+def is_extreme_market_disagreement(p_model: float, q: float) -> bool:
+    return market_disagreement_penalty(p_model, q) < MARKET_DISAGREEMENT_FLOOR
 
 
 def opportunity_score(

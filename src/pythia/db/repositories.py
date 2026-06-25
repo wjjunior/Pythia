@@ -39,7 +39,7 @@ from pythia.common.ids import deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
-from pythia.scoring import RadarMetrics, radar_metrics
+from pythia.scoring import RadarMetrics, is_extreme_market_disagreement, radar_metrics
 
 
 def _to_db_market(market: Market) -> models.Market:
@@ -527,17 +527,19 @@ class ScoreRepository:
         if max_days_to_resolve is not None:
             cutoff = asof + timedelta(days=max_days_to_resolve)
             query = query.where(resolves_at >= asof).where(resolves_at <= cutoff)
-        # Fast path: no window and no payout/probability filters → order + limit in SQL.
-        if not windowed and min_win_multiple is None and min_win_probability is None:
-            rows = self._session.exec(
-                query.order_by(col(models.Score.opportunity_score).desc()).limit(limit)
-            ).all()
-            return [_to_radar_row(score, est, market, q, asof) for score, est, market, q in rows]
-        # Otherwise the win-multiple/probability filters compute per row, so fetch a bounded set
-        # (soonest-resolution when windowed, else best-score), filter in Python, then sort.
+        # Per-row metrics (win multiple/probability, disagreement) compute in Python, so fetch a
+        # bounded set (soonest-resolution when windowed, else best-score), filter, then sort.
         order = resolves_at if windowed else col(models.Score.opportunity_score).desc()
         fetched = self._session.exec(query.order_by(order).limit(_RADAR_WINDOW_CAP)).all()
-        ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in fetched]
+        # Hard exclusion (PYT-84): never surface a confidently-wrong override of a near-certain
+        # market. PYT-81 only de-ranks these, and they pass the win-probability filter because the
+        # model favours them — so drop them outright before ranking.
+        kept = [
+            (score, est, market, q)
+            for score, est, market, q in fetched
+            if not is_extreme_market_disagreement(est.p_model, q)
+        ]
+        ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in kept]
         if min_win_multiple is not None:
             ranked = [row for row in ranked if row[3].win_multiple >= min_win_multiple]
         if min_win_probability is not None:

@@ -5,6 +5,7 @@ import pytest
 from pythia.scoring import (
     confidence,
     edge,
+    is_extreme_market_disagreement,
     kelly_fraction,
     market_disagreement_penalty,
     net_edge,
@@ -22,6 +23,22 @@ def test_market_disagreement_penalty_distrusts_overriding_an_extreme_market() ->
     assert market_disagreement_penalty(0.85, 0.0005) == pytest.approx(0.1505)  # heavy distrust
     assert market_disagreement_penalty(0.03, 0.02) == pytest.approx(0.99)  # model agrees → mild
     assert market_disagreement_penalty(0.2, 0.98) == pytest.approx(0.22)  # high extreme, disagrees
+
+
+def test_extreme_market_disagreement_flags_a_confident_override() -> None:
+    # Model bets YES at 85% against a market priced at 0.05% — a confident override.
+    assert is_extreme_market_disagreement(0.85, 0.0005) is True
+    assert is_extreme_market_disagreement(0.99, 0.011) is True  # YES at 99% vs 1.1% market
+
+
+def test_extreme_market_disagreement_keeps_a_model_that_agrees_with_the_extreme() -> None:
+    # Model also rates the longshot low — agrees with the near-certain market, so it is kept.
+    assert is_extreme_market_disagreement(0.01, 0.0005) is False
+
+
+def test_extreme_market_disagreement_keeps_a_moderate_non_extreme_disagreement() -> None:
+    assert is_extreme_market_disagreement(0.2, 0.55) is False  # mid-range market, never excluded
+    assert is_extreme_market_disagreement(0.2, 0.04) is False  # extreme price, |diff| 0.16 <= 0.5
 
 
 def test_edge_is_signed_difference() -> None:
