@@ -34,7 +34,9 @@ _log = get_logger(__name__)
 
 class CandidateEvaluator(Protocol):
     def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
-        """Run the v1 pipeline for the market at asof; return our market_id, or None if not run."""
+        """Run the v1 pipeline for the market; return our market_id, or None if not run. ``asof`` is
+        the trigger time (recorded on the candidate); the pipeline runs at the market's latest
+        snapshot, which for a freshly-detected entry is ~the trigger time."""
         ...
 
 

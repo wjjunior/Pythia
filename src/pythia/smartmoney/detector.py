@@ -35,7 +35,9 @@ def detect_new_entries(
 ) -> list[TraderEntry]:
     """Persist a wallet's never-seen trades; return only genuinely new *increases* to trigger."""
     triggers: list[TraderEntry] = []
-    for trade in trades:
+    # The (trader, market, ts) key collapses same-timestamp trades to one entry; process increases
+    # first so a BUY always wins over a same-ts exit and still triggers, whatever the trade order.
+    for trade in sorted(trades, key=lambda t: (t.ts, t.side.upper() != _BUY)):
         created = entry_repo.add_new(_to_entry(trader, trade))
         if created is not None and created.is_increase:
             triggers.append(created)

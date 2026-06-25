@@ -71,6 +71,22 @@ def test_detection_is_idempotent_and_triggers_on_increases_only(session: Session
     }  # the exit is still recorded
 
 
+def test_increase_triggers_even_when_a_same_ts_exit_is_listed_first(session: Session) -> None:
+    trader = _trader(session)
+    repo = TraderEntryRepo(session)
+    # A SELL and a BUY on the same market at the same ts — the (trader, market, ts) key keeps one;
+    # the increase must win regardless of input order, so it still triggers.
+    trades = [_trade("0xmkt", "SELL", _TS), _trade("0xmkt", "BUY", _TS)]
+
+    triggers = detect_new_entries(trader, trades, repo)
+
+    assert [e.external_market for e in triggers] == [
+        "0xmkt"
+    ]  # the increase wins, order-independent
+    recorded = repo.list_for_trader(trader.id, asof=_TS + timedelta(days=1))
+    assert len(recorded) == 1 and recorded[0].is_increase is True
+
+
 def _pipeline(session: Session) -> Pipeline:
     return Pipeline(
         session=session,
