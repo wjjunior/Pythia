@@ -1,0 +1,33 @@
+{
+  "timestamp": "",
+  "params": {
+    "condition_id": "ALL",
+    "granularity": "1d",
+    "wallet": "0x8e433d051bfb5cc6a1f7e5a0452029b7ffb4a3cd"
+  },
+  "pagination": { "limit": 200, "offset": 0, "has_more": false },
+  "data": {
+    "results": [
+      {
+        "date": "2026-02-20T00:00:00Z",
+        "invested": "241245.70",
+        "losses": 18,
+        "pnl": "-302209.22",
+        "proxy_wallet": "0x8e433d051bfb5cc6a1f7e5a0452029b7ffb4a3cd",
+        "trades": 406,
+        "win_rate": "0.49",
+        "wins": 2
+      },
+      {
+        "date": "2026-02-22T00:00:00Z",
+        "invested": "1595819.97",
+        "losses": 4,
+        "pnl": "319548.75",
+        "proxy_wallet": "0x8e433d051bfb5cc6a1f7e5a0452029b7ffb4a3cd",
+        "trades": 2756,
+        "win_rate": "0.33",
+        "wins": 9
+      }
+    ]
+  }
+}

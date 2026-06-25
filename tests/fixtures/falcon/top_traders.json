@@ -1,0 +1,42 @@
+{
+  "timestamp": "",
+  "params": { "leaderboard_period": "7d", "wallet_address": "ALL" },
+  "pagination": { "limit": 50, "offset": 0, "has_more": false },
+  "data": {
+    "results": [
+      {
+        "address": "0x0720803c7cb0d0c5a928787b3b7ea148c6831cdb",
+        "markets_traded": 1,
+        "rank": 1,
+        "roi": "0.414952",
+        "sharpe_ratio": null,
+        "total_pnl": "1494121.7168",
+        "total_trades": 69,
+        "total_volume": "3600711.99",
+        "win_rate": "1.0000"
+      },
+      {
+        "address": "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2",
+        "markets_traded": 50,
+        "rank": 2,
+        "roi": "0.355880",
+        "sharpe_ratio": "0.2847",
+        "total_pnl": "1092294.3287",
+        "total_trades": 1829,
+        "total_volume": "3069274.68",
+        "win_rate": "0.6290"
+      },
+      {
+        "address": "0xdc876e6873772d38716fda7f2452a78d426d7ab6",
+        "markets_traded": 78,
+        "rank": 3,
+        "roi": "0.793496",
+        "sharpe_ratio": "0.1526",
+        "total_pnl": "425301.6430",
+        "total_trades": 1662,
+        "total_volume": "535984.74",
+        "win_rate": "0.5275"
+      }
+    ]
+  }
+}
