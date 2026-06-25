@@ -12,6 +12,7 @@ from pythia.common import (
     CandidateSignal,
     CandidateSignalStatus,
     CandidateSource,
+    Market,
     RosterEvent,
     TrackedTrader,
     TraderEntry,
@@ -19,6 +20,7 @@ from pythia.common import (
     TraderState,
 )
 from pythia.db import models
+from pythia.db.repositories import MarketRepository
 from pythia.db.smartmoney import (
     CandidateSignalRepo,
     RosterEventRepo,
@@ -47,6 +49,45 @@ def _seed_trader(
             )
         )
         .id
+    )
+
+
+def _seed_market(session: Session, name: str) -> str:
+    return (
+        MarketRepository(session)
+        .upsert(
+            Market(
+                id=_uid(name),
+                external_id=name,
+                question="q",
+                category="politics",
+                resolution_rule="r",
+            )
+        )
+        .id
+    )
+
+
+def _entry_on(
+    session: Session,
+    *,
+    trader_id: str,
+    market_id: str,
+    eid: str,
+    ts: datetime,
+    is_increase: bool = True,
+    side: str = "YES",
+) -> None:
+    TraderEntryRepo(session).add(
+        TraderEntry(
+            id=_uid(eid),
+            trader_id=trader_id,
+            market_id=market_id,
+            external_market="0xext",
+            side=side,
+            ts=ts,
+            is_increase=is_increase,
+        )
     )
 
 
@@ -171,6 +212,53 @@ def test_candidate_signal_lifecycle(session: Session) -> None:
     repo.set_status(sig.id, CandidateSignalStatus.EVALUATED)
     assert repo.list_by_status(CandidateSignalStatus.QUEUED) == []
     assert [s.id for s in repo.list_by_status(CandidateSignalStatus.EVALUATED)] == [sig.id]
+
+
+def test_list_active_on_market_filters_active_pit_and_increases(session: Session) -> None:
+    market = _seed_market(session, "mkt")
+    other = _seed_market(session, "mkt-other")
+    active = _seed_trader(session, wallet="0xactive", state=TraderState.ACTIVE)
+    trial = _seed_trader(session, wallet="0xtrial", state=TraderState.TRIAL)
+
+    _entry_on(session, trader_id=active, market_id=market, eid="ea1", ts=_TS)  # the only hit
+    _entry_on(
+        session,
+        trader_id=active,
+        market_id=market,
+        eid="ea2",
+        ts=_TS + timedelta(hours=1),
+        is_increase=False,  # exit — excluded
+    )
+    _entry_on(
+        session, trader_id=active, market_id=market, eid="ea3", ts=_TS + timedelta(days=3)
+    )  # future — excluded by asof
+    _entry_on(session, trader_id=active, market_id=other, eid="ea4", ts=_TS)  # other market
+    _entry_on(session, trader_id=trial, market_id=market, eid="et1", ts=_TS)  # not active
+
+    got = TraderEntryRepo(session).list_active_on_market(market, asof=_TS + timedelta(days=1))
+    assert [e.id for e in got] == [_uid("ea1")]
+
+
+def test_has_market_trigger_detects_attribution(session: Session) -> None:
+    tid = _seed_trader(session)
+    market = _seed_market(session, "mkt-trig")
+    other = _seed_market(session, "mkt-untrig")
+    repo = CandidateSignalRepo(session)
+    assert repo.has_market_trigger(market) is False
+
+    repo.enqueue(
+        CandidateSignal(
+            id=_uid("cs-trig"),
+            market_id=market,
+            asof=_TS,
+            trader_ids=[tid],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.EVALUATED,
+            created_at=_TS,
+        )
+    )
+    assert repo.has_market_trigger(market) is True
+    assert repo.has_market_trigger(other) is False
 
 
 def test_roster_event_is_append_only(session: Session) -> None:

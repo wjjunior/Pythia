@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     trader_drawdown_floor: float = 1.0
     roster_review_interval_seconds: int = 86_400
     market_class_allow: str = "politics,sports,macro,world affairs"
+    smart_money_evidence_enabled: bool = False
     cross_venue_sources: str = ""
     evidence_sources: str = ""
     newsapi_key: str | None = None

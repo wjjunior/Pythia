@@ -242,6 +242,23 @@ class TraderEntryRepo:
         ).first()
         return _from_db_entry(row) if row is not None else None
 
+    def list_active_on_market(self, market_id: str, *, asof: datetime) -> list[TraderEntry]:
+        # Active-roster increases on a market, point-in-time (§5.4): trader currently active,
+        # entry observed no later than asof, exits/decreases excluded.
+        rows = self._session.exec(
+            select(models.TraderEntry)
+            .join(
+                models.TrackedTrader,
+                col(models.TraderEntry.trader_id) == col(models.TrackedTrader.id),
+            )
+            .where(models.TraderEntry.market_id == uuid.UUID(market_id))
+            .where(col(models.TraderEntry.ts) <= asof)
+            .where(col(models.TraderEntry.is_increase).is_(True))
+            .where(models.TrackedTrader.state == TraderState.ACTIVE.value)
+            .order_by(col(models.TraderEntry.ts))
+        ).all()
+        return [_from_db_entry(row) for row in rows]
+
 
 class CandidateSignalRepo:
     def __init__(self, session: Session) -> None:
@@ -281,6 +298,15 @@ class CandidateSignalRepo:
             .limit(limit)
         ).all()
         return [_from_db_candidate(row) for row in rows]
+
+    def has_market_trigger(self, market_id: str) -> bool:
+        # A market is smart-money-triggered if any candidate signal attributes it (§3.2 guard).
+        row = self._session.exec(
+            select(models.CandidateSignal.id)
+            .where(models.CandidateSignal.market_id == uuid.UUID(market_id))
+            .limit(1)
+        ).first()
+        return row is not None
 
     def set_status(self, signal_id: str, status: CandidateSignalStatus) -> CandidateSignal:
         row = self._session.get(models.CandidateSignal, uuid.UUID(signal_id))
