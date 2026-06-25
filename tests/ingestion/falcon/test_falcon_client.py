@@ -77,6 +77,14 @@ def test_orderbook_parses_levels_and_coerces_prices() -> None:
     assert len(book.bids) == 3
 
 
+def test_open_positions_parse_and_coerce_string_numbers() -> None:
+    positions = _fixture_client().get_open_positions("0x11514fb5")
+    assert len(positions) == 2
+    assert positions[0].condition_id.startswith("0x584654")
+    assert positions[0].size == pytest.approx(1200.5)  # JSON string coerced
+    assert positions[0].avg_price == pytest.approx(0.62)  # historical price parsed, never evaluated
+
+
 def test_falcon_client_conforms_to_port() -> None:
     assert isinstance(_fixture_client(), FalconPort)
 

@@ -65,6 +65,15 @@ class FalconMarket(_FalconModel):
     side_b_token_id: str | None = None
 
 
+class OpenPosition(_FalconModel):
+    condition_id: str
+    outcome: str
+    size: float
+    # The trader's historical entry price — recorded for context, NEVER used to evaluate viability:
+    # an open-position candidate is judged at the current price, asof = now (§5.5, AC-S8).
+    avg_price: float | None = None
+
+
 class OrderbookLevel(_FalconModel):
     price: float
     size: float

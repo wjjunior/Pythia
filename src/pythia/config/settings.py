@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     roster_review_interval_seconds: int = 86_400
     market_class_allow: str = "politics,sports,macro,world affairs"
     smart_money_evidence_enabled: bool = False
+    backfill_on_track: bool = True
+    backfill_on_promote: bool = False
+    backfill_max_positions: int = 20
     cross_venue_sources: str = ""
     evidence_sources: str = ""
     newsapi_key: str | None = None

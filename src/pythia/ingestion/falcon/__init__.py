@@ -9,6 +9,7 @@ from pythia.ingestion.falcon.client import (
 from pythia.ingestion.falcon.models import (
     FalconMarket,
     FalconTrade,
+    OpenPosition,
     Orderbook,
     OrderbookLevel,
     TopTrader,
@@ -23,6 +24,7 @@ __all__ = [
     "FalconTransport",
     "FixtureFalconTransport",
     "HttpxFalconTransport",
+    "OpenPosition",
     "Orderbook",
     "OrderbookLevel",
     "TopTrader",

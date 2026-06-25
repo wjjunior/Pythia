@@ -299,14 +299,16 @@ class CandidateSignalRepo:
         ).all()
         return [_from_db_candidate(row) for row in rows]
 
-    def has_market_trigger(self, market_id: str) -> bool:
+    def has_market_trigger(self, market_id: str, *, since: datetime | None = None) -> bool:
         # A market is smart-money-triggered if any candidate signal attributes it (§3.2 guard).
-        row = self._session.exec(
-            select(models.CandidateSignal.id)
-            .where(models.CandidateSignal.market_id == uuid.UUID(market_id))
-            .limit(1)
-        ).first()
-        return row is not None
+        # ``since`` bounds the check to a bucket — backfill dedupes only within the current bucket,
+        # so an old candidate never blocks a fresh viability-at-entry sweep (§5.5).
+        statement = select(models.CandidateSignal.id).where(
+            models.CandidateSignal.market_id == uuid.UUID(market_id)
+        )
+        if since is not None:
+            statement = statement.where(col(models.CandidateSignal.asof) >= since)
+        return self._session.exec(statement.limit(1)).first() is not None
 
     def set_status(self, signal_id: str, status: CandidateSignalStatus) -> CandidateSignal:
         row = self._session.get(models.CandidateSignal, uuid.UUID(signal_id))
