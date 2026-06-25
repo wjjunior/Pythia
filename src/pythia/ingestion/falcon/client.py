@@ -24,6 +24,7 @@ from pythia.common.logging import get_logger
 from pythia.ingestion.falcon.models import (
     FalconMarket,
     FalconTrade,
+    OpenPosition,
     Orderbook,
     TopTrader,
     TraderPnlPoint,
@@ -32,7 +33,9 @@ from pythia.ingestion.market_crawler import LiveVenueAccessError, TransientTrans
 
 _log = get_logger(__name__)
 
-FalconDataset = Literal["top_traders", "trader_pnl", "trader_trades", "market", "orderbook"]
+FalconDataset = Literal[
+    "top_traders", "trader_pnl", "trader_trades", "market", "orderbook", "open_positions"
+]
 
 _PNL_LOOKBACK_DAYS = 30
 _DEFAULT_PERIOD = "7d"
@@ -50,6 +53,7 @@ class FalconPort(Protocol):
     def get_trader_trades(self, wallet: str, since: datetime) -> list[FalconTrade]: ...
     def get_market(self, condition_id: str) -> FalconMarket | None: ...
     def get_orderbook(self, token_id: str) -> Orderbook | None: ...
+    def get_open_positions(self, wallet: str) -> list[OpenPosition]: ...
 
 
 class FalconTransport(Protocol):
@@ -197,6 +201,11 @@ class FalconClient:
     def get_orderbook(self, token_id: str) -> Orderbook | None:
         raw = self._soft("orderbook", {"token_id": token_id}, default=None)
         return Orderbook.model_validate(raw) if raw else None
+
+    def get_open_positions(self, wallet: str) -> list[OpenPosition]:
+        params = {"proxy_wallet": wallet, "condition_id": "ALL"}
+        raw = self._soft("open_positions", params, default=None)
+        return [OpenPosition.model_validate(row) for row in _results(raw)] if raw else []
 
 
 # agent_id per dataset for the live gateway; top-traders confirmed (579), the rest pending the
