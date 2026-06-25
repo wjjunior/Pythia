@@ -8,4 +8,7 @@ export const qk = {
   calibration: (category?: string) => ["calibration", category ?? null] as const,
   cost: ["cost"] as const,
   simulation: (category?: string) => ["simulation", category ?? null] as const,
+  roster: ["roster"] as const,
+  smartCandidates: ["smart-candidates"] as const,
+  rosterEvents: ["roster-events"] as const,
 }

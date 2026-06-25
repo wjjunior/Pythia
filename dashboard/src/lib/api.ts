@@ -1,15 +1,19 @@
 // Thin typed REST client. The REST snapshot is the source of truth; SSE is advisory.
 import type {
   CalibrationResponse,
+  CandidateFeedItem,
   CostResponse,
   EstimateDetail,
   Market,
   MarketDetail,
+  OverrideAction,
   PaperPortfolio,
   PortfolioResponse,
   RadarItem,
   ReviewRequest,
   ReviewResult,
+  RosterEntry,
+  RosterEventItem,
   SimulationResponse,
 } from "./types"
 
@@ -81,5 +85,14 @@ export const api = {
     request<ReviewResult>(withParams(`/review/${estimateId}`), {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  roster: () => get<RosterEntry[]>("/smartmoney/roster"),
+  smartCandidates: (limit = 50) =>
+    get<CandidateFeedItem[]>("/smartmoney/candidates", { limit }),
+  rosterEvents: (limit = 50) => get<RosterEventItem[]>("/smartmoney/roster-events", { limit }),
+  override: (traderId: string, action: OverrideAction) =>
+    request<RosterEntry>(withParams(`/smartmoney/traders/${traderId}/override`), {
+      method: "POST",
+      body: JSON.stringify({ action }),
     }),
 }

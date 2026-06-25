@@ -7,7 +7,19 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from pythia.common import Estimate, Evidence, Market, MarketSnapshot, PaperTrade, Score, Side
+from pythia.common import (
+    CandidateSignal,
+    Estimate,
+    Evidence,
+    Market,
+    MarketSnapshot,
+    PaperTrade,
+    RosterEvent,
+    Score,
+    Side,
+    TrackedTrader,
+    TraderEntry,
+)
 from pythia.eval.models import CategoryCalibration, EvCalibration, ReliabilityBin
 
 
@@ -142,3 +154,51 @@ class HealthResponse(BaseModel):
     last_snapshot_at: datetime | None
     last_run_at: datetime | None
     queue_age_seconds: float | None
+
+
+# ---- v2 smart-money dashboard (§6) ----
+
+
+class ScorecardView(BaseModel):
+    """A scorecard for the UI: non-finite floats (the ``-inf`` hard floor) become ``null``."""
+
+    asof: datetime
+    n_resolved: int
+    market_class_ok: bool
+    trader_score: float | None
+    roi: float | None
+    risk_adj_edge: float | None
+    sortino: float | None
+    skew: float | None
+    max_drawdown: float | None
+    agree_rate: float | None
+    agreed_bpd: float | None
+
+
+class RosterEntry(BaseModel):
+    trader: TrackedTrader
+    scorecard: ScorecardView | None
+    last_entry: TraderEntry | None
+    reason: str | None  # the latest roster_event reason — why the wallet holds its slot
+
+
+class CandidateFeedItem(BaseModel):
+    candidate: CandidateSignal
+    market: Market | None
+    viable: bool
+    opportunity_score: float | None
+    recommended_side: Side | None
+
+
+class RosterEventItem(BaseModel):
+    event: RosterEvent
+    wallet: str
+
+
+class OverrideAction(StrEnum):
+    PIN = "pin"  # force-keep → active
+    MUTE = "mute"  # force-bench → benched
+
+
+class OverrideRequest(BaseModel):
+    action: OverrideAction

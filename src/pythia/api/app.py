@@ -21,6 +21,7 @@ from pythia.api.routers import (
     review,
     run,
     simulation,
+    smartmoney,
 )
 
 
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
         review,
         resolutions,
         run,
+        smartmoney,
         events,
         health,
     )

@@ -7,7 +7,7 @@ import {
   CALIBRATION_MIN_WIN_MULTIPLE,
   CALIBRATION_MIN_WIN_PROBABILITY,
 } from "@/lib/ranking"
-import type { ReviewRequest } from "@/lib/types"
+import type { OverrideAction, ReviewRequest } from "@/lib/types"
 
 export const useRadar = () =>
   useQuery({
@@ -43,6 +43,26 @@ export const useReview = (estimateId: string) => {
       void client.invalidateQueries({ queryKey: qk.paper })
       void client.invalidateQueries({ queryKey: qk.portfolio })
       void client.invalidateQueries({ queryKey: qk.radar })
+    },
+  })
+}
+
+export const useRoster = () => useQuery({ queryKey: qk.roster, queryFn: api.roster })
+
+export const useSmartCandidates = () =>
+  useQuery({ queryKey: qk.smartCandidates, queryFn: () => api.smartCandidates() })
+
+export const useRosterHistory = () =>
+  useQuery({ queryKey: qk.rosterEvents, queryFn: () => api.rosterEvents() })
+
+export const useOverride = () => {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ traderId, action }: { traderId: string; action: OverrideAction }) =>
+      api.override(traderId, action),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: qk.roster })
+      void client.invalidateQueries({ queryKey: qk.rosterEvents })
     },
   })
 }
