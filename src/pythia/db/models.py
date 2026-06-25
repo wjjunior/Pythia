@@ -16,6 +16,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -394,6 +395,130 @@ class ImprovementCandidate(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
     )
     updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+
+
+# ---- v2 smart-money candidate sourcing (Falcon, §4.4) ----
+
+
+class TrackedTrader(SQLModel, table=True):
+    __tablename__ = "tracked_traders"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('trial','active','benched','retired')", name="tracked_traders_state_check"
+        ),
+    )
+
+    id: uuid.UUID | None = _id()
+    wallet: str = Field(sa_column=Column(Text, nullable=False, unique=True))
+    state: str = Field(
+        default="trial",
+        sa_column=Column(Text, nullable=False, server_default=text("'trial'")),
+    )
+    added_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+    state_since: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+    note: str | None = Field(default=None, sa_column=Column(Text))
+
+
+class TraderScorecard(SQLModel, table=True):
+    __tablename__ = "trader_scorecards"
+    __table_args__ = (Index("scorecard_trader_asof", "trader_id", "asof"),)
+
+    id: uuid.UUID | None = _id()
+    trader_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("tracked_traders.id"), nullable=False)
+    )
+    asof: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    n_resolved: int = Field(sa_column=Column(Integer, nullable=False))
+    roi: float | None = Field(default=None, sa_column=Column(Double))
+    risk_adj_edge: float | None = Field(default=None, sa_column=Column(Double))
+    sortino: float | None = Field(default=None, sa_column=Column(Double))
+    skew: float | None = Field(default=None, sa_column=Column(Double))
+    max_drawdown: float | None = Field(default=None, sa_column=Column(Double))
+    agree_rate: float | None = Field(default=None, sa_column=Column(Double))
+    agreed_bpd: float | None = Field(default=None, sa_column=Column(Double))
+    market_class_ok: bool = Field(sa_column=Column(Boolean, nullable=False))
+    trader_score: float = Field(sa_column=Column(Double, nullable=False))
+    raw: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB))
+
+
+class TraderEntry(SQLModel, table=True):
+    __tablename__ = "trader_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "trader_id", "external_market", "ts", name="trader_entries_trader_market_ts"
+        ),
+        Index("trader_entries_ts", "ts"),
+    )
+
+    id: uuid.UUID | None = _id()
+    trader_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("tracked_traders.id"), nullable=False)
+    )
+    market_id: uuid.UUID | None = Field(
+        default=None, sa_column=Column(UUID(as_uuid=True), ForeignKey("markets.id"))
+    )
+    external_market: str = Field(sa_column=Column(Text, nullable=False))
+    side: str = Field(sa_column=Column(Text, nullable=False))
+    size_usd: float | None = Field(default=None, sa_column=Column(Double))
+    entry_price: float | None = Field(default=None, sa_column=Column(Double))
+    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    is_increase: bool = Field(sa_column=Column(Boolean, nullable=False))
+
+
+class CandidateSignal(SQLModel, table=True):
+    __tablename__ = "candidate_signals"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('new_entry','open_backfill')", name="candidate_signals_source_check"
+        ),
+        CheckConstraint(
+            "status IN ('queued','evaluated','skipped')", name="candidate_signals_status_check"
+        ),
+        Index("candidate_status", "status", "asof"),
+    )
+
+    id: uuid.UUID | None = _id()
+    market_id: uuid.UUID | None = Field(
+        default=None, sa_column=Column(UUID(as_uuid=True), ForeignKey("markets.id"))
+    )
+    asof: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    trader_ids: list[uuid.UUID] = Field(sa_column=Column(ARRAY(UUID(as_uuid=True)), nullable=False))
+    source: str = Field(
+        default="new_entry",
+        sa_column=Column(Text, nullable=False, server_default=text("'new_entry'")),
+    )
+    status: str = Field(
+        default="queued",
+        sa_column=Column(Text, nullable=False, server_default=text("'queued'")),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+
+
+class RosterEvent(SQLModel, table=True):
+    __tablename__ = "roster_events"
+    __table_args__ = (Index("roster_events_trader", "trader_id", "created_at"),)
+
+    id: uuid.UUID | None = _id()
+    trader_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("tracked_traders.id"), nullable=False)
+    )
+    from_state: str | None = Field(default=None, sa_column=Column(Text))
+    to_state: str = Field(sa_column=Column(Text, nullable=False))
+    reason: str = Field(sa_column=Column(Text, nullable=False))
+    metrics: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB))
+    created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
     )

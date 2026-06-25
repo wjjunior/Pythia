@@ -40,6 +40,7 @@ def session(migrated_engine: Engine) -> Iterator[Session]:
         connection.execute(
             text(
                 "TRUNCATE markets, market_snapshots, sources, audit_events, "
-                "recalibration_models CASCADE"
+                "recalibration_models, tracked_traders, trader_scorecards, trader_entries, "
+                "candidate_signals, roster_events CASCADE"
             )
         )
