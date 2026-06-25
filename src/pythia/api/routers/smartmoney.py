@@ -60,15 +60,16 @@ def roster(session: SessionDep) -> list[RosterEntry]:
     scorecards = TraderScorecardRepo(session)
     entries = TraderEntryRepo(session)
     events = RosterEventRepo(session)
+    now = datetime.now(UTC)
     out: list[RosterEntry] = []
     for trader in traders.list():
-        card = scorecards.latest_for_trader(trader.id)
+        card = scorecards.latest(trader.id, now)
         last_event = events.latest_for_trader(trader.id)
         out.append(
             RosterEntry(
                 trader=trader,
                 scorecard=_scorecard_view(card) if card is not None else None,
-                last_entry=entries.last_for_trader(trader.id),
+                last_entry=entries.last_for_trader(trader.id, asof=now),
                 reason=last_event.reason if last_event is not None else None,
             )
         )
@@ -139,10 +140,10 @@ def override(trader_id: uuid.UUID, body: OverrideRequest, session: SessionDep) -
         )
     )
     moved = traders.set_state(tid, to_state, at=now)
-    card = TraderScorecardRepo(session).latest_for_trader(tid)
+    card = TraderScorecardRepo(session).latest(tid, now)
     return RosterEntry(
         trader=moved,
         scorecard=_scorecard_view(card) if card is not None else None,
-        last_entry=TraderEntryRepo(session).last_for_trader(tid),
+        last_entry=TraderEntryRepo(session).last_for_trader(tid, asof=now),
         reason="manual",
     )

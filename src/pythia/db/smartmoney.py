@@ -178,14 +178,6 @@ class TraderScorecardRepo:
         ).first()
         return _from_db_scorecard(row) if row is not None else None
 
-    def latest_for_trader(self, trader_id: str) -> TraderScorecard | None:
-        row = self._session.exec(
-            select(models.TraderScorecard)
-            .where(models.TraderScorecard.trader_id == uuid.UUID(trader_id))
-            .order_by(col(models.TraderScorecard.asof).desc())
-        ).first()
-        return _from_db_scorecard(row) if row is not None else None
-
 
 class TraderEntryRepo:
     def __init__(self, session: Session) -> None:
@@ -240,10 +232,12 @@ class TraderEntryRepo:
         ).all()
         return [_from_db_entry(row) for row in rows]
 
-    def last_for_trader(self, trader_id: str) -> TraderEntry | None:
+    def last_for_trader(self, trader_id: str, *, asof: datetime) -> TraderEntry | None:
+        # Point-in-time: the freshest entry NOT after asof (§4.6 — no lookahead).
         row = self._session.exec(
             select(models.TraderEntry)
             .where(models.TraderEntry.trader_id == uuid.UUID(trader_id))
+            .where(col(models.TraderEntry.ts) <= asof)
             .order_by(col(models.TraderEntry.ts).desc())
         ).first()
         return _from_db_entry(row) if row is not None else None
