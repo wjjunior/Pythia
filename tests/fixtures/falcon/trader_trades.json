@@ -1,0 +1,33 @@
+{
+  "timestamp": "",
+  "params": { "condition_id": "ALL", "proxy_wallet": "ALL", "side": "BUY" },
+  "pagination": { "limit": 10, "offset": 0, "has_more": false },
+  "data": {
+    "results": [
+      {
+        "condition_id": "0x584654c869a3f1868f3ad1248e11ea988f3c4e332002839c6cac0e6db94485ee",
+        "id": "0x19320a9cfc47d70e2ac56c25b3555a34f402484a236267a8c220fa060eba74c7_0x1e30835026c910cd5f676a504ce8c39666917f402dfe93bb46c19adf6b152c13",
+        "outcome": "Down",
+        "price": 0.001,
+        "proxy_wallet": "0x11514fb5ef1e3fe110691243714fcf2182db1fed",
+        "side": "BUY",
+        "size": 225.23,
+        "slug": "bitcoin-up-or-down-january-9-10am-et",
+        "timestamp": "2026-01-09T15:51:00Z",
+        "transaction_hash": "0x19320a9cfc47d70e2ac56c25b3555a34f402484a236267a8c220fa060eba74c7"
+      },
+      {
+        "condition_id": "0x584654c869a3f1868f3ad1248e11ea988f3c4e332002839c6cac0e6db94485ee",
+        "id": "0x828175e5fe3c6688e81bbcd09ac9fb9e4a7b2c135b33cc5311e768d673e09804_0xf47df1130870ac2c859a9719c01e79ecb0f41c1bab1de1d2fc085c7731ebc718",
+        "outcome": "Up",
+        "price": 0.993,
+        "proxy_wallet": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+        "side": "BUY",
+        "size": 69,
+        "slug": "bitcoin-up-or-down-january-9-10am-et",
+        "timestamp": "2026-01-09T15:50:40Z",
+        "transaction_hash": "0x828175e5fe3c6688e81bbcd09ac9fb9e4a7b2c135b33cc5311e768d673e09804"
+      }
+    ]
+  }
+}

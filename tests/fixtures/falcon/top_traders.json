@@ -1,0 +1,45 @@
+{
+  "timestamp": "",
+  "params": { "leaderboard_period": "7d", "wallet_address": "ALL" },
+  "pagination": { "limit": 50, "offset": 0, "has_more": false },
+  "data": {
+    "results": [
+      {
+        "address": "0x2c335066fe58fe9237c3d3dc7b275c2a034a0563",
+        "avg_trade_size": "1161.38",
+        "markets_traded": 106,
+        "rank": 1,
+        "roi": "0.087904",
+        "sharpe_ratio": null,
+        "total_invested": "18400914.27",
+        "total_pnl": "1617522.5693",
+        "total_trades": 15844,
+        "win_rate": "0.5693"
+      },
+      {
+        "address": "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2",
+        "avg_trade_size": "1678.12",
+        "markets_traded": 50,
+        "rank": 2,
+        "roi": "0.355880",
+        "sharpe_ratio": "0.2847",
+        "total_invested": "3069274.68",
+        "total_pnl": "1092294.3287",
+        "total_trades": 1829,
+        "win_rate": "0.6290"
+      },
+      {
+        "address": "0xdc876e6873772d38716fda7f2452a78d426d7ab6",
+        "avg_trade_size": "322.49",
+        "markets_traded": 78,
+        "rank": 3,
+        "roi": "0.793496",
+        "sharpe_ratio": "0.1526",
+        "total_invested": "535984.74",
+        "total_pnl": "425301.6430",
+        "total_trades": 1662,
+        "win_rate": "0.5275"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "timestamp": "",
+  "params": {
+    "condition_id": "0xeaff81adbcd9dcd88a73a41402cb4a6b87234213a6b3ecaa0441126cde6d5b7f"
+  },
+  "pagination": { "limit": 100, "offset": 0, "has_more": false },
+  "data": {
+    "results": [
+      {
+        "closed": true,
+        "closed_date": "2026-01-17T22:07:24Z",
+        "condition_id": "0xeaff81adbcd9dcd88a73a41402cb4a6b87234213a6b3ecaa0441126cde6d5b7f",
+        "end_date": "2026-01-17T21:00:00Z",
+        "event_slug": "bitcoin-up-or-down-january-17-3pm-et",
+        "question": "Bitcoin Up or Down - January 17, 3PM ET",
+        "side_a_outcome": "Up",
+        "side_a_token_id": "54962395221233298907357564706944806093710338832907683007646483576474886134345",
+        "side_b_outcome": "Down",
+        "side_b_token_id": "99436386356623686771311452414494038846982778884699006473918967429453507432222",
+        "slug": "bitcoin-up-or-down-january-17-3pm-et",
+        "start_date": "2026-01-15T20:01:06.506385Z",
+        "volume_total": 104456.760687,
+        "winning_outcome": "Up"
+      }
+    ]
+  }
+}
