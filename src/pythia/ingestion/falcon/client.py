@@ -120,7 +120,9 @@ class HttpxFalconTransport:
         raise last
 
     def retrieve(self, dataset: FalconDataset, params: dict[str, Any]) -> Any:
-        agent_id = self._agent_ids[dataset]
+        agent_id = self._agent_ids.get(dataset)
+        if agent_id is None:  # unknown agent_id → no data (fail-soft), not a KeyError crash
+            raise TransientTransportError(f"no Falcon agent_id configured for '{dataset}'")
         if dataset == "orderbook":  # flat response, no envelope / pagination
             return self._post({"agent_id": agent_id, "params": params})
         results: list[dict[str, Any]] = []

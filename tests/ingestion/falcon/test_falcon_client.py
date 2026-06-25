@@ -104,6 +104,17 @@ def test_client_is_fail_soft_when_falcon_is_down() -> None:
     assert client.get_orderbook("123") is None
 
 
+def test_client_is_fail_soft_when_an_agent_id_is_unconfigured() -> None:
+    # Live transport knows only the top-traders agent_id; other datasets must fail soft (no data),
+    # never KeyError-crash. The guard precedes any POST, so this makes no network call.
+    transport = HttpxFalconTransport(
+        "https://falcon.example/api/v2/semantic/retrieve/parameterized", "t", {"top_traders": 579}
+    )
+    client = FalconClient(transport)
+    assert client.get_market("0xabc") is None
+    assert client.get_trader_pnl("0xabc", ASOF) == []
+
+
 def test_client_surfaces_a_geo_block_to_the_operator() -> None:
     client = FalconClient(_RaisingTransport(LiveVenueAccessError("enable VPN")))
     with pytest.raises(LiveVenueAccessError):
