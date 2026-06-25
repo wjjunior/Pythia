@@ -9,6 +9,7 @@ a breached budget halts the batch.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlmodel import Session
 
@@ -20,7 +21,7 @@ from pythia.agents import (
     LLMResponseError,
     make_llm_port,
 )
-from pythia.common import LLMPort, Market, MarketStatus
+from pythia.common import EvidencePort, LLMPort, Market, MarketStatus, TraderEntry
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import (
@@ -29,8 +30,10 @@ from pythia.db.repositories import (
     MarketRepository,
     SnapshotRepository,
 )
+from pythia.db.smartmoney import CandidateSignalRepo, TraderEntryRepo
 from pythia.orchestration.pipeline import Pipeline
 from pythia.rag import EvidenceStore, make_embedder
+from pythia.smartmoney.evidence import SmartMoneyEvidencePort
 
 _log = get_logger(__name__)
 
@@ -63,6 +66,34 @@ def _default_llm_factory(session: Session, settings: Settings) -> LlmFactory:
 def _routing(settings: Settings) -> dict[str, str]:
     selection = settings.model_routing_strategy if settings.llm_enabled else "stub"
     return {"estimation": selection, "critic": selection}
+
+
+class _RepoRosterFlow:
+    def __init__(self, session: Session) -> None:
+        self._entries = TraderEntryRepo(session)
+
+    def active_on_market(self, market_id: str, *, asof: datetime) -> list[TraderEntry]:
+        return self._entries.list_active_on_market(market_id, asof=asof)
+
+
+class _RepoTriggeredMarkets:
+    def __init__(self, session: Session) -> None:
+        self._signals = CandidateSignalRepo(session)
+
+    def is_triggered(self, market_id: str) -> bool:
+        return self._signals.has_market_trigger(market_id)
+
+
+def _evidence_port(session: Session, settings: Settings, base: EvidencePort) -> EvidencePort:
+    # §5.4 optional feature: expose active-roster flow as estimation evidence, off by default.
+    if not settings.smart_money_evidence_enabled:
+        return base
+    return SmartMoneyEvidencePort(
+        base,
+        flow=_RepoRosterFlow(session),
+        triggers=_RepoTriggeredMarkets(session),
+        enabled=True,
+    )
 
 
 def _discovery_llm(session: Session, settings: Settings) -> LLMPort:
@@ -108,7 +139,7 @@ def run_open_markets(
     markets = _shortlist(session, settings, markets, discovery_llm)
     snapshots = SnapshotRepository(session)
     estimates = EstimateRepository(session)
-    evidence = EvidenceStore(session, make_embedder(settings))
+    evidence = _evidence_port(session, settings, EvidenceStore(session, make_embedder(settings)))
     build_llm = llm_factory if llm_factory is not None else _default_llm_factory(session, settings)
     routing = _routing(settings)
     scored = 0
