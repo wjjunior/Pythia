@@ -29,9 +29,10 @@ def test_top_traders_parse_and_coerce_string_numbers() -> None:
     traders = _fixture_client().list_top_traders()
     assert len(traders) == 3
     top = traders[0]
-    assert top.address == "0x0720803c7cb0d0c5a928787b3b7ea148c6831cdb"
+    assert top.address == "0x2c335066fe58fe9237c3d3dc7b275c2a034a0563"
     assert top.rank == 1
-    assert top.total_pnl == pytest.approx(1494121.7168)  # parsed from a JSON string
+    assert top.total_pnl == pytest.approx(1617522.5693)  # parsed from a JSON string
+    assert top.total_invested == pytest.approx(18400914.27)
     assert top.sharpe_ratio is None  # null in the wire response
 
 
@@ -134,16 +135,15 @@ def test_httpx_transport_sends_bearer_agent_id_and_paginates(
         return _FakeResponse(pages[json["pagination"]["offset"] // 100])
 
     monkeypatch.setattr(httpx, "post", fake_post)
-    transport = HttpxFalconTransport(
-        "https://falcon.example", "secret-token", {"top_traders": 579}, limit=100
-    )
+    endpoint = "https://falcon.example/api/v2/semantic/retrieve/parameterized"
+    transport = HttpxFalconTransport(endpoint, "secret-token", {"top_traders": 579}, limit=100)
     out = transport.retrieve("top_traders", {"wallet_address": "ALL"})
 
     assert [c["body"]["pagination"]["offset"] for c in calls] == [0, 100]  # paginated
     assert out["data"]["results"] == [{"a": 1}, {"a": 2}]  # merged across pages
     assert calls[0]["headers"]["Authorization"] == "Bearer secret-token"
     assert calls[0]["body"]["agent_id"] == 579
-    assert calls[0]["url"].endswith("/api/v2/semantic/retrieve/parameterized")
+    assert calls[0]["url"] == endpoint  # FALCON_API_BASE is used as-is, no path appended
 
 
 def test_httpx_transport_classifies_a_connection_error_as_geo_block(

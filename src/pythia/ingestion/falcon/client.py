@@ -6,9 +6,9 @@ replay, the default) and a live httpx transport that classifies a geo/connection
 parses DTOs at the boundary, and is **fail-soft**: Falcon down yields no data, never a crash — the
 v1 path keeps running. A geo block is re-raised so the operator is prompted (§8.6).
 
-The live API is a semantic-retrieve gateway: ``POST {base}/api/v2/semantic/retrieve/parameterized``
-with ``{agent_id, params, pagination, formatter_config}`` and a Bearer token. ``agent_id`` selects
-the dataset (top-traders = 579); the remaining ids are confirmed before the live path is exercised.
+The live API is a semantic-retrieve gateway: ``POST {FALCON_API_BASE}`` (the full endpoint URL,
+e.g. ``.../api/v2/semantic/retrieve/parameterized``) with ``{agent_id, params, pagination,
+formatter_config}`` and a Bearer token. ``agent_id`` selects the dataset (top-traders = 579).
 """
 
 import json
@@ -34,7 +34,6 @@ _log = get_logger(__name__)
 
 FalconDataset = Literal["top_traders", "trader_pnl", "trader_trades", "market", "orderbook"]
 
-_RETRIEVE_PATH = "/api/v2/semantic/retrieve/parameterized"
 _PNL_LOOKBACK_DAYS = 30
 _DEFAULT_PERIOD = "7d"
 _DEFAULT_LIMIT = 50
@@ -82,7 +81,7 @@ class HttpxFalconTransport:
         retries: int = 3,
         backoff_base: float = 0.5,
     ) -> None:
-        self._url = base_url.rstrip("/") + _RETRIEVE_PATH
+        self._url = base_url.rstrip("/")  # FALCON_API_BASE is the full semantic-retrieve endpoint
         self._token = token
         self._agent_ids = agent_ids
         self._limit = limit

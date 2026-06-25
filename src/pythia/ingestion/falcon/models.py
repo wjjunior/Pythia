@@ -18,11 +18,12 @@ class TopTrader(_FalconModel):
     rank: int
     total_pnl: float
     total_trades: int
-    total_volume: float
     win_rate: float
     markets_traded: int
     roi: float | None = None
     sharpe_ratio: float | None = None
+    total_invested: float | None = None
+    avg_trade_size: float | None = None
 
 
 class TraderPnlPoint(_FalconModel):
