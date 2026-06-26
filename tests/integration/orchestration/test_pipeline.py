@@ -411,6 +411,36 @@ def test_pipeline_penalizes_p_corr_on_cross_venue_divergence(session: Session) -
     assert result.score.p_corr == pytest.approx(0.7)
 
 
+def test_should_move_the_opportunity_score_when_a_divergent_venue_quote_is_present(
+    session: Session,
+) -> None:
+    # The divergence penalty must reach opportunity_score end-to-end, not just the p_corr field
+    # (F-07). The two runs are identical except for a divergent venue quote on one market.
+    baseline_market, baseline_snapshot = _seed_priced(session, key="venue-baseline", yes_price=0.5)
+    divergent_market, divergent_snapshot = _seed_priced(
+        session, key="venue-divergent", yes_price=0.5
+    )
+    VenueQuoteRepository(session).add(
+        VenueQuote(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt126-vq")),
+            market_id=divergent_market.id,
+            venue=Venue.MANIFOLD,
+            external_ref="m1",
+            ts=ASOF - timedelta(hours=1),
+            yes_price=0.8,
+            match_confidence=0.9,
+        )
+    )
+
+    baseline = _pipeline(session, _ConfidentLLM()).run(baseline_market, baseline_snapshot)
+    divergent = _pipeline(session, _ConfidentLLM()).run(divergent_market, divergent_snapshot)
+
+    assert baseline.score is not None and divergent.score is not None
+    assert baseline.score.p_corr == pytest.approx(1.0)  # no venue quote ⇒ no divergence penalty
+    assert divergent.score.p_corr < baseline.score.p_corr  # divergence(0.5,[0.8])=0.3 ⇒ p_corr 0.7
+    assert divergent.score.opportunity_score < baseline.score.opportunity_score
+
+
 def test_pipeline_vetoes_the_low_confidence_stub(session: Session) -> None:
     market, snapshot = _seed(session)
     result = _pipeline(session, StubLLMPort()).run(market, snapshot)

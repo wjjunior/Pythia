@@ -49,6 +49,26 @@ def test_ingest_tick_persists_matched_quote(session: Session) -> None:
     assert quotes[0].yes_price == pytest.approx(0.259, abs=1e-3)
 
 
+def test_should_discard_a_sub_threshold_venue_match_without_persisting_it(session: Session) -> None:
+    # An open market unrelated to every venue candidate stays below MATCH_CONFIDENCE_MIN, so the
+    # tick persists nothing (F-07): a sub-threshold match would poison the divergence signal.
+    market = MarketRepository(session).upsert(
+        Market(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "ingest-tick-unrelated")),
+            external_id="ingest-tick-unrelated",
+            question="Will SpaceX land humans on Mars before 2030?",
+            category="space",
+            resolution_rule="r",
+        )
+    )
+    venue_enum, client = _manifold_client()
+
+    count = ingest_tick(session, [(venue_enum, client)], ts=T1)
+
+    assert count == 0
+    assert VenueQuoteRepository(session).retrieve(market.id, asof=T1) == []
+
+
 def test_ingest_tick_returns_zero_for_empty_clients(session: Session) -> None:
     _market(session)
     assert ingest_tick(session, [], ts=T1) == 0
