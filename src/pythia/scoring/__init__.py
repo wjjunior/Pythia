@@ -1,5 +1,5 @@
+from pythia.common import ResolutionSourceType
 from pythia.scoring.assembly import (
-    ResolutionSourceType,
     build_score,
     classify_resolution_source,
     resolution_penalty,

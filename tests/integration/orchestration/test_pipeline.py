@@ -19,6 +19,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     MemberForecast,
+    ResolutionSourceType,
     Source,
     Venue,
     VenueQuote,
@@ -41,6 +42,7 @@ from pythia.eval.recalibration import CalibrationMap
 from pythia.orchestration import Pipeline, PipelineRunStatus
 from pythia.rag import EvidenceStore, StubEmbeddingPort
 from pythia.risk import RiskReason
+from pythia.scoring import resolution_penalty
 from pythia.smartmoney.evidence import SMART_MONEY_SOURCE_ID
 
 pytestmark = pytest.mark.integration
@@ -455,3 +457,41 @@ def test_flow_evidence_synthetic_source_does_not_break_source_reliability(sessio
 
     assert pipeline._source_reliability([flow]) == 0.0  # synthetic-only → gracefully 0, no crash
     assert pipeline._source_reliability([flow, real]) == pytest.approx(0.8)  # synthetic skipped
+
+
+def test_p_resol_reads_the_stored_resolution_source_type(session: Session) -> None:
+    # PYT-122: the stored type wins over what runtime classification of the free-text source would
+    # give — proving both the round-trip and that P_resol grading reads the persisted column.
+    markets = MarketRepository(session)
+    stored = markets.upsert(
+        Market(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "rst-mkt")),
+            external_id="rst",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+            resolution_source="Chainlink price feed",  # runtime would classify CHAINLINK (0.95)
+            resolution_source_type=ResolutionSourceType.SUBJECTIVE_UMA,  # stored type is 0.6
+        )
+    )
+    reloaded = markets.get(stored.id)
+    assert reloaded is not None
+    assert reloaded.resolution_source_type is ResolutionSourceType.SUBJECTIVE_UMA  # round-trip
+
+    snapshot = SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "rst-snap")),
+            market_id=stored.id,
+            ts=ASOF,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1000.0,
+            liquidity=5000.0,
+        )
+    )
+    result = _pipeline(session, StubLLMPort()).run(reloaded, snapshot)
+    assert result.score is not None
+    # No disputes ⇒ invalid_rate 0 ⇒ p_resol is exactly the stored type's penalty (0.6), not 0.95.
+    assert result.score.p_resol == pytest.approx(
+        resolution_penalty(ResolutionSourceType.SUBJECTIVE_UMA)
+    )
