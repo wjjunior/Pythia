@@ -123,7 +123,9 @@ class CalibrationReport:
 
 def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
     return GateThresholds(
-        min_n=settings.gate_min_n,
+        # Floor at recalibration_min_n: below it a category runs raw, so it stays paper-gated
+        # whatever gate_min_n is set to (PYT-121, §4.9/§8.5 coupling).
+        min_n=max(settings.gate_min_n, settings.recalibration_min_n),
         brier_margin=settings.gate_brier_margin,
         ev_tolerance=settings.gate_ev_tolerance,
         max_invalid_rate=settings.max_category_invalid_rate,
