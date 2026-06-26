@@ -5,17 +5,8 @@ value per unit. The resolution penalty is graded by the resolution-source type (
 penalties are passed in by the caller.
 """
 
-from enum import StrEnum
-
-from pythia.common import Estimate, Score
+from pythia.common import Estimate, ResolutionSourceType, Score
 from pythia.scoring.functions import edge, kelly_fraction, net_edge, opportunity_score
-
-
-class ResolutionSourceType(StrEnum):
-    CHAINLINK = "chainlink"
-    CLEAN_BINARY = "clean_binary"
-    SUBJECTIVE_UMA = "subjective_uma"
-
 
 _RESOLUTION_PENALTY: dict[ResolutionSourceType, float] = {
     ResolutionSourceType.CHAINLINK: 0.95,

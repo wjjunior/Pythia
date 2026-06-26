@@ -18,6 +18,7 @@ import httpx
 
 from pythia.common import Market, MarketSnapshot
 from pythia.common.logging import get_logger
+from pythia.scoring import classify_resolution_source
 
 _log = get_logger(__name__)
 
@@ -245,13 +246,17 @@ def _event_slug(raw: dict[str, Any]) -> str | None:
 
 
 def to_market(raw: dict[str, Any], market_id: str) -> Market:
+    resolution_source = raw.get("resolutionSource") or None
     return Market(
         id=market_id,
         external_id=raw["conditionId"],
         question=raw["question"],
         category=derive_category(raw),
         resolution_rule=raw.get("description", ""),
-        resolution_source=raw.get("resolutionSource") or None,
+        resolution_source=resolution_source,
+        # Classify and store the resolution-source type at ingest so the P_resol grading reads a
+        # stored, queryable value rather than re-deriving it at score time (PYT-122).
+        resolution_source_type=classify_resolution_source(resolution_source),
         event_slug=_event_slug(raw),
         close_time=_parse_datetime(raw.get("endDate")),
         resolves_at=_uma_resolves_at(raw),

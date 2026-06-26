@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 import pytest
 
-from pythia.common import Market, MarketDataPort, MarketSnapshot
+from pythia.common import Market, MarketDataPort, MarketSnapshot, ResolutionSourceType
 from pythia.ingestion import (
     FixtureTransport,
     HttpxTransport,
@@ -259,6 +259,16 @@ def test_to_market_normalises_a_date_only_resolution_to_utc() -> None:
     market = to_market(raw, "00000000-0000-0000-0000-000000000001")
     assert market.resolves_at == datetime(2026, 12, 31, 0, 0, tzinfo=UTC)
     assert market.resolves_at is not None and market.resolves_at.tzinfo is not None
+
+
+def test_to_market_classifies_and_stores_the_resolution_source_type() -> None:
+    # PYT-122: the resolution-source type is classified at ingest and stored, not re-derived at
+    # score time, so P_resol grading reads a queryable value that never drifts under the classifier.
+    mid = "00000000-0000-0000-0000-000000000001"
+    chainlink = to_market({**_RAW[0], "resolutionSource": "Chainlink price feed"}, mid)
+    assert chainlink.resolution_source_type is ResolutionSourceType.CHAINLINK
+    no_source = to_market({**_RAW[0], "resolutionSource": None}, mid)
+    assert no_source.resolution_source_type is ResolutionSourceType.SUBJECTIVE_UMA
 
 
 def test_to_market_reads_event_slug_from_the_event() -> None:

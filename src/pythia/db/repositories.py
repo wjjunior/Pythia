@@ -30,6 +30,7 @@ from pythia.common import (
     MemberForecast,
     PaperTrade,
     Postmortem,
+    ResolutionSourceType,
     Score,
     Side,
     Source,
@@ -51,6 +52,9 @@ def _to_db_market(market: Market) -> models.Market:
         category=market.category,
         resolution_rule=market.resolution_rule,
         resolution_source=market.resolution_source,
+        resolution_source_type=(
+            market.resolution_source_type.value if market.resolution_source_type else None
+        ),
         event_slug=market.event_slug,
         close_time=market.close_time,
         resolves_at=market.resolves_at,
@@ -66,6 +70,9 @@ def _from_db_market(row: models.Market) -> Market:
         category=row.category,
         resolution_rule=row.resolution_rule,
         resolution_source=row.resolution_source,
+        resolution_source_type=(
+            ResolutionSourceType(row.resolution_source_type) if row.resolution_source_type else None
+        ),
         event_slug=row.event_slug,
         close_time=row.close_time,
         resolves_at=row.resolves_at,

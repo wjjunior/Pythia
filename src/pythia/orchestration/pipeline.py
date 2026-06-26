@@ -341,7 +341,12 @@ class Pipeline:
             market.category, since=since, asof=snapshot.ts
         )
         rate = invalid_rate(invalid, total)
-        base = resolution_penalty(classify_resolution_source(market.resolution_source))
+        # Prefer the stored, queryable type (PYT-122); fall back to runtime classification only for
+        # legacy rows persisted before the column existed.
+        source_type = market.resolution_source_type or classify_resolution_source(
+            market.resolution_source
+        )
+        base = resolution_penalty(source_type)
         gated = is_resolution_gated(rate, self._settings.max_category_invalid_rate)
         return grade_p_resol(base, rate), gated
 

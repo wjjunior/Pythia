@@ -43,6 +43,7 @@ class Market(SQLModel, table=True):
     category: str = Field(sa_column=Column(Text, nullable=False))
     resolution_rule: str = Field(sa_column=Column(Text, nullable=False))
     resolution_source: str | None = Field(default=None, sa_column=Column(Text))
+    resolution_source_type: str | None = Field(default=None, sa_column=Column(Text))
     event_slug: str | None = Field(default=None, sa_column=Column(Text))
     close_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     resolves_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))

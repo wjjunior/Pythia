@@ -25,6 +25,14 @@ class MarketStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class ResolutionSourceType(StrEnum):
+    """How a market resolves (§4.4.2) — grades the P_resol penalty and gates promotion."""
+
+    CHAINLINK = "chainlink"
+    CLEAN_BINARY = "clean_binary"
+    SUBJECTIVE_UMA = "subjective_uma"
+
+
 class Cohort(StrEnum):
     """Eval cohort labels (§4.11): config-defined market slices for honest calibration."""
 
@@ -71,6 +79,7 @@ class Market(_Frozen):
     category: str
     resolution_rule: str
     resolution_source: str | None = None
+    resolution_source_type: ResolutionSourceType | None = None
     event_slug: str | None = None
     close_time: datetime | None = None
     resolves_at: datetime | None = None
