@@ -50,5 +50,20 @@ def test_bpd_weights_by_dollar_size() -> None:
         _sample(True, p=0.5, market=0.5, outcome=1, weight=1.0),  # small, zero improvement
     ]
     _, agreed_bpd = agreement_metrics(samples)
-    # (9*(0.25-0.01) + 1*0.0) / 10 = 2.16/10
+    # (9*(0.25-0.01) + 1*0.0) / 10 = 2.16/10 — within the 5x-median cap, so weighting is unchanged
     assert agreed_bpd == pytest.approx(0.216)
+
+
+def test_agreed_bpd_winsorises_an_oversized_lucky_fill_to_the_weight_cap() -> None:
+    # PYT-127: 20 small agreed fills worse than the market + one huge lucky win. Raw weighting
+    # would let the whale's improvement at weight 1000 dominate and read positive (promotable); the
+    # winsorised weight (5x the median = 5) gives it no more pull than a fill at the cap.
+    small = [_sample(True, p=0.6, market=0.8, outcome=1, weight=1.0) for _ in range(20)]
+    whale_at_cap = _sample(True, p=0.95, market=0.5, outcome=1, weight=5.0)
+    whale_oversized = _sample(True, p=0.95, market=0.5, outcome=1, weight=1000.0)
+
+    _, capped = agreement_metrics([*small, whale_at_cap])
+    _, winsorised = agreement_metrics([*small, whale_oversized])
+
+    assert winsorised == pytest.approx(capped)  # the 1000x fill is winsorised down to the cap
+    assert winsorised < 0.0  # the 20 worse-than-market fills win — one lucky whale can't promote it

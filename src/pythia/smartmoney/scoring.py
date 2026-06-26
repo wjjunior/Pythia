@@ -13,6 +13,7 @@ Fills the two seams `SelectionHarness` (PYT-91) left as Protocols:
 Both are strictly point-in-time: nothing observed after `asof` enters a scorecard (§3.5, AC-S3).
 """
 
+import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -46,17 +47,37 @@ class AgreementSample:
     weight: float
 
 
+# Winsorise a single fill's dollar weight at this multiple of the median agreed weight (PYT-127), so
+# one oversized lucky fill cannot dominate the promote-gate metric — the size twin of the PYT-116
+# entry-price concentration guard. Domain robustness math, not operator-tunable.
+_AGREED_BPD_WEIGHT_CAP_MULT = 5.0
+
+
+def _winsorised_weights(weights: Sequence[float]) -> list[float]:
+    cap = _AGREED_BPD_WEIGHT_CAP_MULT * statistics.median(weights)
+    return [min(weight, cap) for weight in weights]
+
+
 def agreement_metrics(samples: Sequence[AgreementSample]) -> tuple[float, float]:
-    """(agree_rate, agreed_bpd): coverage, and dollar-weighted Brier improvement vs the market."""
+    """(agree_rate, agreed_bpd): coverage, and dollar-weighted Brier improvement vs the market.
+
+    Each agreed entry's dollar weight is winsorised at a multiple of the median agreed weight
+    (PYT-127), so a single oversized lucky fill cannot swing ``agreed_bpd`` — a survivorship guard
+    on the selection side. ``agree_rate`` is the unweighted coverage companion.
+    """
     if not samples:
         return 0.0, 0.0
     agreed = [s for s in samples if s.agreed]
     agree_rate = len(agreed) / len(samples)
-    total_weight = sum(s.weight for s in agreed)
-    if not agreed or total_weight <= 0.0:
+    if not agreed:
+        return agree_rate, 0.0
+    weights = _winsorised_weights([s.weight for s in agreed])
+    total_weight = sum(weights)
+    if total_weight <= 0.0:
         return agree_rate, 0.0
     improvement = sum(
-        s.weight * (brier(s.market_price, s.outcome) - brier(s.p_model, s.outcome)) for s in agreed
+        weight * (brier(s.market_price, s.outcome) - brier(s.p_model, s.outcome))
+        for weight, s in zip(weights, agreed, strict=True)
     )
     return agree_rate, improvement / total_weight
 
