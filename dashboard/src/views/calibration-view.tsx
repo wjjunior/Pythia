@@ -23,8 +23,15 @@ import {
 } from "@/components/ui/table"
 import { useCalibration } from "@/hooks/use-api"
 import { num, pct, signedNum } from "@/lib/format"
-import { calibrationVerdict } from "@/lib/ranking"
-import type { ReliabilityBin } from "@/lib/types"
+import {
+  calibrationVerdict,
+  cohortConfidence,
+  COHORT_LABELS,
+  COHORT_MIN_N,
+  COHORT_SLICES,
+  OVERALL_COHORT,
+} from "@/lib/ranking"
+import type { CohortCalibration, ReliabilityBin } from "@/lib/types"
 
 const VERDICT = {
   system: { label: "system better", variant: "positive" as const },
@@ -40,6 +47,78 @@ function reliabilityData(bins: ReliabilityBin[]) {
       observed: bin.observed_frequency,
       ideal: bin.mean_forecast,
     }))
+}
+
+function CohortBreakdown({ cohorts }: { cohorts: CohortCalibration[] }) {
+  const overall = cohorts.find((cohort) => cohort.cohort === OVERALL_COHORT)
+  if (!overall) {
+    return <EmptyState message="No resolved markets to score yet." />
+  }
+  const overallVerdict = VERDICT[calibrationVerdict(overall)]
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+        <Stat
+          label="Overall · Brier(system)"
+          value={num(overall.brier_system)}
+          sub={`vs market ${num(overall.brier_market)} · n=${overall.n}`}
+        />
+        <Stat label="Δ vs market" value={signedNum(overall.delta)} />
+        <Badge variant={overallVerdict.variant}>{overallVerdict.label}</Badge>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Cohort slice</TableHead>
+            <TableHead className="text-right">n</TableHead>
+            <TableHead className="text-right">Brier(system)</TableHead>
+            <TableHead className="text-right">Brier(market)</TableHead>
+            <TableHead className="text-right">Δ</TableHead>
+            <TableHead>Verdict</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {COHORT_SLICES.map((key) => {
+            const label = COHORT_LABELS[key] ?? key
+            const slice = cohorts.find((cohort) => cohort.cohort === key)
+            if (!slice) {
+              return (
+                <TableRow key={key}>
+                  <TableCell className="font-medium">{label}</TableCell>
+                  <TableCell colSpan={5} className="text-muted-foreground">
+                    no resolved markets in this slice yet
+                  </TableCell>
+                </TableRow>
+              )
+            }
+            const verdict = VERDICT[calibrationVerdict(slice)]
+            return (
+              <TableRow key={key}>
+                <TableCell className="font-medium">{label}</TableCell>
+                <TableCell className="text-right tabular-nums">{slice.n}</TableCell>
+                <TableCell className="text-right tabular-nums">{num(slice.brier_system)}</TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {num(slice.brier_market)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{signedNum(slice.delta)}</TableCell>
+                <TableCell>
+                  {cohortConfidence(slice.n) === "low" ? (
+                    <Badge variant="muted">{`low confidence (n<${COHORT_MIN_N})`}</Badge>
+                  ) : (
+                    <Badge variant={verdict.variant}>{verdict.label}</Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+      <p className="text-xs text-muted-foreground">
+        Cohorts overlap — a market can be in several, so slices don't sum to overall. Each is a
+        labeled subset, never the whole-market calibration claim.
+      </p>
+    </div>
+  )
 }
 
 export function CalibrationView() {
@@ -104,6 +183,15 @@ export function CalibrationView() {
                       </TableBody>
                     </Table>
                   )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Brier by cohort</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CohortBreakdown cohorts={report.cohorts} />
                 </CardContent>
               </Card>
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { calibrationVerdict, exposureSeverity } from "./ranking"
+import { calibrationVerdict, cohortConfidence, COHORT_MIN_N, exposureSeverity } from "./ranking"
 import type { CategoryCalibration } from "./types"
 
 const category = (delta: number): CategoryCalibration => ({
@@ -18,6 +18,19 @@ describe("calibrationVerdict", () => {
     expect(calibrationVerdict(category(0.05))).toBe("system")
     expect(calibrationVerdict(category(-0.05))).toBe("market")
     expect(calibrationVerdict(category(0))).toBe("tie")
+  })
+
+  it("works for any item carrying a delta (cohorts reuse it)", () => {
+    expect(calibrationVerdict({ delta: 0.1 })).toBe("system")
+    expect(calibrationVerdict({ delta: -0.1 })).toBe("market")
+  })
+})
+
+describe("cohortConfidence", () => {
+  it("flags low confidence below the min-n threshold", () => {
+    expect(cohortConfidence(COHORT_MIN_N - 1)).toBe("low")
+    expect(cohortConfidence(COHORT_MIN_N)).toBe("ok")
+    expect(cohortConfidence(COHORT_MIN_N + 50)).toBe("ok")
   })
 })
 
