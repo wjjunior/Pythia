@@ -478,6 +478,8 @@ export interface components {
             model_name: string;
             /** Critic Notes */
             critic_notes?: string | null;
+            /** P Model Calibrated */
+            p_model_calibrated?: number | null;
             /** Members */
             members?: components["schemas"]["MemberForecast"][];
         };

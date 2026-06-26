@@ -129,6 +129,9 @@ class Estimate(_Frozen):
     evidence_ids: list[str]
     model_name: str
     critic_notes: str | None = None
+    # The recalibrated forecast the deterministic layer sizes on (PYT-100). ``None`` means raw
+    # ``p_model`` is the committed value (no active recalibration map, or a pre-PYT-100 row).
+    p_model_calibrated: Prob | None = None
     members: list[MemberForecast] = Field(default_factory=list)
 
 
