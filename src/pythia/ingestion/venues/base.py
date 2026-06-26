@@ -16,7 +16,11 @@ from typing import Any, Protocol
 import httpx
 
 from pythia.common.logging import get_logger
-from pythia.ingestion.market_crawler import LiveVenueAccessError, TransientTransportError
+from pythia.ingestion.market_crawler import (
+    LiveVenueAccessError,
+    TransientTransportError,
+    require_live,
+)
 
 _log = get_logger(__name__)
 
@@ -50,10 +54,12 @@ def fetch_json(
     url: str,
     *,
     venue: str,
+    use_live: bool,
     headers: dict[str, str] | None = None,
     params: dict[str, str | int] | None = None,
     timeout: float = 20.0,
 ) -> Any:
+    require_live(use_live, venue)
     try:
         response = httpx.get(url, headers=headers, params=params, timeout=timeout)
         response.raise_for_status()

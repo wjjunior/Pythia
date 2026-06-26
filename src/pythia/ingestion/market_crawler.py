@@ -30,6 +30,18 @@ class TransientTransportError(RuntimeError):
     """A retryable provider error (timeout or 5xx)."""
 
 
+def require_live(use_live: bool, venue: str) -> None:
+    """Defense-in-depth §8.6 gate: a live transport refuses a call unless USE_LIVE_VENUES is on.
+
+    Travels with the transport, so a call-site that builds a live client outside the worker
+    entrypoint (or in the API process) still cannot leak a geo-restricted call.
+    """
+    if not use_live:
+        raise LiveVenueAccessError(
+            f"refusing a live {venue} call: USE_LIVE_VENUES is off — enable the VPN gate (§8.6)"
+        )
+
+
 class MarketNotFoundError(LookupError):
     """No market matched the requested external id."""
 
@@ -68,18 +80,21 @@ class HttpxTransport:
         self,
         base_url: str,
         *,
+        use_live: bool = False,
         limit: int = 100,
         timeout: float = 20.0,
         volume_min: float | None = None,
         max_markets: int = 500,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._use_live = use_live
         self._limit = limit
         self._timeout = timeout
         self._volume_min = volume_min
         self._max_markets = max_markets
 
     def _request(self, params: dict[str, str | int | float]) -> list[dict[str, Any]]:
+        require_live(self._use_live, "polymarket")
         url = f"{self._base_url}/markets"
         try:
             response = httpx.get(url, params=params, timeout=self._timeout)

@@ -38,12 +38,16 @@ def to_candidate(raw: dict[str, Any]) -> VenueCandidate | None:
 
 
 class KalshiHttpTransport:
-    def __init__(self, *, limit: int = 100) -> None:
+    def __init__(self, *, use_live: bool = False, limit: int = 100) -> None:
+        self._use_live = use_live
         self._limit = limit
 
     def fetch(self) -> list[dict[str, Any]]:
         payload = fetch_json(
-            MARKETS_URL, venue=VENUE.value, params={"limit": self._limit, "status": "open"}
+            MARKETS_URL,
+            venue=VENUE.value,
+            use_live=self._use_live,
+            params={"limit": self._limit, "status": "open"},
         )
         markets: list[dict[str, Any]] = payload["markets"]
         return markets

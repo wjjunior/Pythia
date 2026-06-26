@@ -1,10 +1,12 @@
 """Venue adapter tests (§4.10): normalization from recorded fixtures, the §8.6 VPN gate, and the
 Metaculus access-gated community prediction (null at this token tier ⇒ discarded)."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from pythia.common import Market, Venue
@@ -17,9 +19,47 @@ from pythia.ingestion.venues import (
     metaculus,
     quote_for_market,
 )
+from pythia.ingestion.venues.base import VenueTransport
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "venues"
 TS = datetime(2026, 6, 19, 12, 0, tzinfo=UTC)
+
+
+_VENUE_TRANSPORTS: dict[str, Callable[[bool], VenueTransport]] = {
+    "kalshi": lambda use_live: kalshi.KalshiHttpTransport(use_live=use_live),
+    "manifold": lambda use_live: manifold.ManifoldHttpTransport(use_live=use_live),
+    "metaculus": lambda use_live: metaculus.MetaculusHttpTransport("token", use_live=use_live),
+}
+
+
+@pytest.mark.parametrize("make", _VENUE_TRANSPORTS.values(), ids=list(_VENUE_TRANSPORTS))
+def test_venue_transport_refuses_a_live_call_when_use_live_is_off(
+    monkeypatch: pytest.MonkeyPatch, make: Callable[[bool], VenueTransport]
+) -> None:
+    # §8.6 defense-in-depth (PYT-115): the guard refuses before any network call, independent of the
+    # worker entrypoint — httpx.get must never run with the flag off.
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("live HTTP call made with USE_LIVE_VENUES off")
+
+    monkeypatch.setattr(httpx, "get", _boom)
+    with pytest.raises(LiveVenueAccessError):
+        make(False).fetch()
+
+
+@pytest.mark.parametrize("make", _VENUE_TRANSPORTS.values(), ids=list(_VENUE_TRANSPORTS))
+def test_venue_transport_attempts_a_live_call_when_use_live_is_on(
+    monkeypatch: pytest.MonkeyPatch, make: Callable[[bool], VenueTransport]
+) -> None:
+    calls = {"n": 0}
+
+    def _record(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        raise httpx.ConnectError("offline")  # no VPN ⇒ a geo-block; proves the guard let it through
+
+    monkeypatch.setattr(httpx, "get", _record)
+    with pytest.raises(LiveVenueAccessError):
+        make(True).fetch()
+    assert calls["n"] == 1
 
 
 def test_manifold_normalises_binary_markets() -> None:

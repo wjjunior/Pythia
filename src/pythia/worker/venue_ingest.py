@@ -25,14 +25,15 @@ def build_venue_clients(settings: Settings) -> list[tuple[Venue, VenueClient]]:
 
 
 def _make_client(name: str, settings: Settings) -> tuple[Venue, VenueClient] | None:
+    use_live = settings.use_live_venues  # threaded into the transport (§8.6 defense-in-depth)
     if name == Venue.KALSHI:
         from pythia.ingestion.venues.kalshi import KalshiHttpTransport, to_candidate
 
-        return Venue.KALSHI, VenueClient(KalshiHttpTransport(), to_candidate)
+        return Venue.KALSHI, VenueClient(KalshiHttpTransport(use_live=use_live), to_candidate)
     if name == Venue.MANIFOLD:
         from pythia.ingestion.venues.manifold import ManifoldHttpTransport, to_candidate
 
-        return Venue.MANIFOLD, VenueClient(ManifoldHttpTransport(), to_candidate)
+        return Venue.MANIFOLD, VenueClient(ManifoldHttpTransport(use_live=use_live), to_candidate)
     if name == Venue.METACULUS:
         if not settings.metaculus_api_key:
             _log.warning("venue_skipped", venue=name, reason="no METACULUS_API_KEY configured")
@@ -42,7 +43,10 @@ def _make_client(name: str, settings: Settings) -> tuple[Venue, VenueClient] | N
         return (
             Venue.METACULUS,
             VenueClient(
-                MetaculusHttpTransport(settings.metaculus_api_key.get_secret_value()), to_candidate
+                MetaculusHttpTransport(
+                    settings.metaculus_api_key.get_secret_value(), use_live=use_live
+                ),
+                to_candidate,
             ),
         )
     _log.warning("unknown_venue_skipped", venue=name)
