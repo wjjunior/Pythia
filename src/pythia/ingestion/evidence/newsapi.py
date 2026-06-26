@@ -31,8 +31,11 @@ def to_article(raw: dict[str, Any]) -> EvidenceArticle | None:
 class NewsApiTransport:
     """Live NewsAPI transport — not geo-restricted; requires NEWSAPI_KEY."""
 
-    def __init__(self, api_key: str, *, page_size: int = _PAGE_SIZE) -> None:
+    def __init__(
+        self, api_key: str, *, use_live: bool = False, page_size: int = _PAGE_SIZE
+    ) -> None:
         self._api_key = api_key
+        self._use_live = use_live
         self._page_size = page_size
         self.name = SOURCE_NAME
         self.reliability = SOURCE_RELIABILITY
@@ -41,6 +44,7 @@ class NewsApiTransport:
         payload = fetch_json_evidence(
             _BASE_URL,
             source=SOURCE_NAME,
+            use_live=self._use_live,
             params={
                 "q": query,
                 "language": "en",
