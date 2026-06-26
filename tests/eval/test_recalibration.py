@@ -78,3 +78,39 @@ def test_fit_on_degenerate_data_yields_a_finite_usable_map() -> None:
     for cmap in (fit("platt", [0.5] * 4, [1, 1, 1, 1]), fit("beta", [0.5] * 4, [0, 0, 0, 0])):
         for p in (0.0, 0.3, 0.7, 1.0):
             assert 0.0 <= cmap.apply(p) <= 1.0
+
+
+@given(
+    rows=st.lists(st.tuples(st.floats(0.02, 0.98), st.integers(0, 1)), min_size=2, max_size=30),
+    leak_p=st.floats(0.02, 0.98),
+    leak_outcome=st.integers(0, 1),
+    after_days=st.integers(0, 30),
+)
+def test_should_fit_only_on_resolutions_strictly_before_asof(
+    rows: list[tuple[float, int]], leak_p: float, leak_outcome: int, after_days: int
+) -> None:
+    before = [(p, o, _BEFORE) for p, o in rows]
+    # The leak samples land exactly at asof and after it; a strictly-before fit must ignore both, so
+    # adding them cannot change the map. An off-by-one (< → <=) lets the at-asof sample in.
+    leak = [
+        (leak_p, leak_outcome, _T0),
+        (leak_p, 1 - leak_outcome, _T0 + timedelta(days=after_days)),
+    ]
+    clean = recalibrate(before, asof=_T0, method="platt", min_n=2)
+    leaked = recalibrate([*before, *leak], asof=_T0, method="platt", min_n=2)
+    assert leaked == clean
+
+
+@given(rows=st.lists(st.tuples(st.floats(0.02, 0.98), st.integers(0, 1)), min_size=1, max_size=30))
+def test_should_fit_a_monotone_beta_map(rows: list[tuple[float, int]]) -> None:
+    cmap = fit("beta", [p for p, _ in rows], [o for _, o in rows])
+    grid = [i / 50 for i in range(1, 50)]
+    applied = [cmap.apply(p) for p in grid]
+    assert all(applied[i] <= applied[i + 1] + 1e-9 for i in range(len(applied) - 1))
+
+
+def test_should_fall_back_from_isotonic_to_platt_below_isotonic_min_n() -> None:
+    assert select_method(49, "isotonic", 50) == "identity"
+    assert select_method(50, "isotonic", 50) == "platt"
+    assert select_method(ISOTONIC_MIN_N - 1, "isotonic", 50) == "platt"
+    assert select_method(ISOTONIC_MIN_N, "isotonic", 50) == "isotonic"

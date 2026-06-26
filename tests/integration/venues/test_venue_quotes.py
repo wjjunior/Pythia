@@ -58,6 +58,17 @@ def test_retrieve_is_asof_filtered_point_in_time(session: Session) -> None:
     assert {q.external_ref for q in at_t2} == {"m1", "k1", "m2"}
 
 
+def test_should_filter_retrieve_for_markets_by_asof(session: Session) -> None:
+    market = _market(session, "Will it resolve yes?", close=None)
+    repo = VenueQuoteRepository(session)
+    repo.add(_quote(market.id, Venue.MANIFOLD, "m1", T1, 0.61))
+    repo.add(_quote(market.id, Venue.MANIFOLD, "m2", T2, 0.64))
+
+    by_market = repo.retrieve_for_markets({market.id: T1})
+    refs = {q.external_ref for q in by_market.get(market.id, [])}
+    assert refs == {"m1"}  # the T2 quote is excluded in SQL by the per-market asof
+
+
 def test_quote_round_trips_venue_and_fields(session: Session) -> None:
     market = _market(session, "Will it resolve yes?", close=None)
     repo = VenueQuoteRepository(session)

@@ -145,6 +145,8 @@ def select_method(n: int, configured: RecalibrationMethod, min_n: int) -> Method
         return "identity"
     if n >= ISOTONIC_MIN_N:
         return "isotonic"
+    # isotonic needs n >= ISOTONIC_MIN_N; configured isotonic in [min_n, ISOTONIC_MIN_N) falls back
+    # to platt (parametric) — an explicit, tested substitution, not a silent one (F-13).
     return configured if configured in ("platt", "beta") else "platt"
 
 

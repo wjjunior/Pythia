@@ -1,7 +1,7 @@
 """Schema-level invariants on real Postgres (§4.7, PYT-44/PYT-46)."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import update
@@ -148,3 +148,42 @@ def test_evidence_rejects_in_place_update(session: Session) -> None:
     session.rollback()
     row = session.get(models.Evidence, evidence_id)
     assert row is not None and row.content == "original"
+
+
+def _seed_resolution(session: Session) -> uuid.UUID:
+    market_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt102-res-market")
+    session.add(
+        models.Market(
+            id=market_id,
+            external_id="pyt102-res",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    session.commit()
+    resolution_id = uuid.uuid5(uuid.NAMESPACE_URL, "pyt102-resolution")
+    session.add(
+        models.Resolution(
+            id=resolution_id,
+            market_id=market_id,
+            outcome=1,
+            resolved_at=_TS,
+            ambiguous=False,
+        )
+    )
+    session.commit()
+    return resolution_id
+
+
+def test_should_reject_resolutions_in_place_update(session: Session) -> None:
+    resolution_id = _seed_resolution(session)
+    with pytest.raises(DBAPIError):
+        session.execute(
+            update(models.Resolution)
+            .where(col(models.Resolution.id) == resolution_id)
+            .values(resolved_at=_TS + timedelta(days=99))
+        )
+    session.rollback()
+    row = session.get(models.Resolution, resolution_id)
+    assert row is not None and row.resolved_at == _TS
