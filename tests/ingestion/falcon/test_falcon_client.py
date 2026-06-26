@@ -155,7 +155,9 @@ def test_httpx_transport_sends_bearer_agent_id_and_paginates(
 
     monkeypatch.setattr(httpx, "post", fake_post)
     endpoint = "https://falcon.example/api/v2/semantic/retrieve/parameterized"
-    transport = HttpxFalconTransport(endpoint, "secret-token", {"top_traders": 579}, limit=100)
+    transport = HttpxFalconTransport(
+        endpoint, "secret-token", {"top_traders": 579}, use_live=True, limit=100
+    )
     out = transport.retrieve("top_traders", {"wallet_address": "ALL"})
 
     assert [c["body"]["pagination"]["offset"] for c in calls] == [0, 100]  # paginated
@@ -172,6 +174,22 @@ def test_httpx_transport_classifies_a_connection_error_as_geo_block(
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx, "post", fake_post)
+    transport = HttpxFalconTransport(
+        "https://falcon.example", "t", {"top_traders": 579}, use_live=True
+    )
+    with pytest.raises(LiveVenueAccessError):
+        transport.retrieve("top_traders", {})
+
+
+def test_httpx_transport_refuses_a_live_call_when_use_live_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # PYT-120/§8.6 defense-in-depth: the transport refuses BEFORE any POST, independent of the
+    # factory/entrypoint gate — httpx.post must never run with the flag off.
+    def _boom(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("live Falcon POST made with USE_LIVE_VENUES off")
+
+    monkeypatch.setattr(httpx, "post", _boom)
     transport = HttpxFalconTransport("https://falcon.example", "t", {"top_traders": 579})
     with pytest.raises(LiveVenueAccessError):
         transport.retrieve("top_traders", {})

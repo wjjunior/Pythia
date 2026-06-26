@@ -29,7 +29,11 @@ from pythia.ingestion.falcon.models import (
     TopTrader,
     TraderPnlPoint,
 )
-from pythia.ingestion.market_crawler import LiveVenueAccessError, TransientTransportError
+from pythia.ingestion.market_crawler import (
+    LiveVenueAccessError,
+    TransientTransportError,
+    require_live,
+)
 
 _log = get_logger(__name__)
 
@@ -79,6 +83,7 @@ class HttpxFalconTransport:
         token: str,
         agent_ids: Mapping[FalconDataset, int],
         *,
+        use_live: bool = False,
         limit: int = 100,
         timeout: float = 20.0,
         sleep: Callable[[float], None] = time.sleep,
@@ -88,6 +93,7 @@ class HttpxFalconTransport:
         self._url = base_url.rstrip("/")  # FALCON_API_BASE is the full semantic-retrieve endpoint
         self._token = token
         self._agent_ids = agent_ids
+        self._use_live = use_live
         self._limit = limit
         self._timeout = timeout
         self._sleep = sleep
@@ -95,6 +101,7 @@ class HttpxFalconTransport:
         self._backoff_base = backoff_base
 
     def _post(self, body: dict[str, Any]) -> Any:
+        require_live(self._use_live, "falcon")  # §8.6 defense-in-depth: refuse before any POST
         last: TransientTransportError | None = None
         for attempt in range(self._retries):
             try:
@@ -223,7 +230,9 @@ def make_falcon_client(
 ) -> FalconClient:
     """Live transport only when explicitly enabled and credentialed; otherwise offline fixtures."""
     if use_live and token and base_url:
-        return FalconClient(HttpxFalconTransport(base_url, token, agent_ids or _FALCON_AGENT_IDS))
+        return FalconClient(
+            HttpxFalconTransport(base_url, token, agent_ids or _FALCON_AGENT_IDS, use_live=use_live)
+        )
     if fixtures_dir is None:
         raise ValueError("fixtures_dir is required for the offline Falcon transport")
     return FalconClient(FixtureFalconTransport(fixtures_dir))
