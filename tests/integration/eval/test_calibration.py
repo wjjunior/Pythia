@@ -206,6 +206,95 @@ def test_latest_estimate_per_market_wins(session: Session) -> None:
     assert report.categories[0].brier_system == pytest.approx((0.8 - 1) ** 2)
 
 
+def test_should_exclude_post_resolution_estimate_from_brier(session: Session) -> None:
+    _market(session, "m1", "politics")
+    resolved_at = _TS + timedelta(days=10)
+    session.add_all(
+        [
+            models.MarketSnapshot(
+                id=_uid("m1-snap-pre"),
+                market_id=_uid("m1"),
+                ts=_TS,
+                yes_price=0.5,
+                spread=0.02,
+                volume=1.0,
+                liquidity=1.0,
+            ),
+            models.MarketSnapshot(
+                id=_uid("m1-snap-post"),
+                market_id=_uid("m1"),
+                ts=resolved_at + timedelta(days=10),
+                yes_price=0.5,
+                spread=0.02,
+                volume=1.0,
+                liquidity=1.0,
+            ),
+        ]
+    )
+    session.commit()
+    session.add(
+        models.Estimate(
+            id=_uid("m1-est-pre"),
+            market_id=_uid("m1"),
+            snapshot_id=_uid("m1-snap-pre"),
+            p_model=0.8,
+            confidence=0.5,
+            lower=0.0,
+            upper=1.0,
+            rationale="r",
+            evidence_ids=[],
+            model_name="stub",
+            created_at=_TS,
+        )
+    )
+    session.add(
+        models.Estimate(
+            id=_uid("m1-est-post"),
+            market_id=_uid("m1"),
+            snapshot_id=_uid("m1-snap-post"),
+            p_model=0.1,
+            confidence=0.5,
+            lower=0.0,
+            upper=1.0,
+            rationale="r",
+            evidence_ids=[],
+            model_name="stub",
+            created_at=resolved_at + timedelta(days=11),
+        )
+    )
+    session.commit()
+    _resolution(session, "m1", 1)
+
+    report = CalibrationService(session, settings=_settings()).report()
+    # The post-resolution estimate (p=0.1) is the latest by created_at but sits on a snapshot taken
+    # after resolution; only the pre-resolution forecast (p=0.8) may enter the verdict.
+    assert report.categories[0].n == 1
+    assert report.categories[0].brier_system == pytest.approx((0.8 - 1) ** 2)
+
+
+def test_should_exclude_post_snapshot_quote_from_blended_baseline(session: Session) -> None:
+    _resolved_market(session, "p1", "politics", q=0.5, p_model=0.9, outcome=1)
+    session.add(
+        models.VenueQuote(
+            market_id=_uid("p1"),
+            venue="manifold",
+            external_ref="late",
+            ts=_TS + timedelta(hours=1),
+            yes_price=0.8,
+            match_confidence=0.9,
+        )
+    )
+    session.commit()
+
+    blended = {
+        c.category: c
+        for c in CalibrationService(session, settings=_settings()).blended_report().categories
+    }["politics"]
+    # The quote postdates the estimate's snapshot (ts=_TS) so it cannot enter the baseline; the
+    # blended market price stays q_market=0.5, not (0.5 + 0.8) / 2.
+    assert blended.brier_market == pytest.approx((0.5 - 1) ** 2)
+
+
 def test_reliability_curve_is_produced(session: Session) -> None:
     _resolved_market(session, "r1", "politics", q=0.5, p_model=0.2, outcome=0)
     _resolved_market(session, "r2", "politics", q=0.5, p_model=0.85, outcome=1)

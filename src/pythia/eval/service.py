@@ -72,15 +72,27 @@ def _latest_estimate_per_market(
 ) -> dict[uuid.UUID, models.Estimate]:
     if not market_ids:
         return {}
+    # Anti-lookahead: drop estimates on a post-resolution snapshot, then keep the latest per market.
     rows = session.exec(
         select(models.Estimate)
+        .join(
+            models.MarketSnapshot,
+            col(models.MarketSnapshot.id) == col(models.Estimate.snapshot_id),
+        )
+        .join(
+            models.Resolution,
+            col(models.Resolution.market_id) == col(models.Estimate.market_id),
+        )
         .where(col(models.Estimate.market_id).in_(market_ids))
-        .order_by(col(models.Estimate.created_at), col(models.Estimate.id))
+        .where(col(models.MarketSnapshot.ts) <= col(models.Resolution.resolved_at))
+        .distinct(col(models.Estimate.market_id))
+        .order_by(
+            col(models.Estimate.market_id),
+            col(models.Estimate.created_at).desc(),
+            col(models.Estimate.id).desc(),
+        )
     ).all()
-    latest: dict[uuid.UUID, models.Estimate] = {}
-    for row in rows:
-        latest[row.market_id] = row
-    return latest
+    return {row.market_id: row for row in rows}
 
 
 def _categories_of(session: Session, market_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -177,15 +189,17 @@ class CalibrationService:
         categories = _categories_of(self._session, list(latest))
         market_rows = _markets_of(self._session, list(latest))
         snapshots = self._snapshots([estimate.snapshot_id for estimate in latest.values()])
-        all_quotes = VenueQuoteRepository(self._session).retrieve_for_markets(
-            [str(mid) for mid in latest]
-        )
+        asof_by_market = {
+            str(market_id): snapshots[estimate.snapshot_id][1]
+            for market_id, estimate in latest.items()
+        }
+        all_quotes = VenueQuoteRepository(self._session).retrieve_for_markets(asof_by_market)
         policy = cohort_policy(self._settings)
         by_category: _Records = {}
         by_cohort: _Records = {}
         for market_id, estimate in latest.items():
             q_market, ts = snapshots[estimate.snapshot_id]
-            quotes = [q for q in all_quotes.get(str(market_id), []) if q.ts <= ts]
+            quotes = all_quotes.get(str(market_id), [])
             q_blended = blended_baseline(q_market, latest_prices_per_venue(quotes))
             # Brier baseline column uses q_blended; cohort classification bins on q_market
             record: tuple[float, float, int] = (
