@@ -400,6 +400,22 @@ class ImprovementCandidate(SQLModel, table=True):
     )
 
 
+class CohortMembership(SQLModel, table=True):
+    __tablename__ = "cohort_memberships"
+    __table_args__ = (UniqueConstraint("paper_trade_id", "cohort", name="cohort_memberships_uq"),)
+
+    id: uuid.UUID | None = _id()
+    paper_trade_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("paper_trades.id"), nullable=False)
+    )
+    cohort: str = Field(sa_column=Column(Text, nullable=False))
+    asof: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=text("now()"), nullable=False),
+    )
+
+
 # ---- v2 smart-money candidate sourcing (Falcon, §4.4) ----
 
 

@@ -5,7 +5,7 @@ append-only (no update path); sources upsert by name. Contract ids are used as p
 """
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -38,6 +38,7 @@ from pythia.common import (
 )
 from pythia.common.ids import deterministic_id
 from pythia.db import models
+from pythia.eval.cohorts import Cohort
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
 from pythia.scoring import RadarMetrics, is_extreme_market_disagreement, radar_metrics
@@ -809,6 +810,37 @@ class PaperTradeRepository:
             for size, category, market_id, opened_at in rows
             if opened_at is not None
         ]
+
+
+class CohortMembershipRepo:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add_many(self, trade_id: str, cohorts: Iterable[Cohort], *, asof: datetime) -> None:
+        existing = self.cohorts_of(trade_id)
+        added = False
+        for cohort in cohorts:
+            if cohort in existing:
+                continue
+            self._session.add(
+                models.CohortMembership(
+                    id=uuid.uuid4(),
+                    paper_trade_id=uuid.UUID(trade_id),
+                    cohort=cohort.value,
+                    asof=asof,
+                )
+            )
+            added = True
+        if added:
+            self._session.commit()
+
+    def cohorts_of(self, trade_id: str) -> set[Cohort]:
+        rows = self._session.exec(
+            select(models.CohortMembership.cohort).where(
+                models.CohortMembership.paper_trade_id == uuid.UUID(trade_id)
+            )
+        ).all()
+        return {Cohort(row) for row in rows}
 
 
 def _from_db_evidence(row: models.Evidence) -> Evidence:
