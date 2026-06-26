@@ -20,7 +20,7 @@ def _falcon(settings: Settings) -> FalconClient | None:
         return None
     return make_falcon_client(
         base_url=settings.falcon_api_base,
-        token=settings.falcon_api_token,
+        token=settings.falcon_api_token.get_secret_value(),
         use_live=settings.use_live_venues,
     )
 
@@ -30,7 +30,9 @@ def _configure(settings: Settings) -> None:
         service="worker",
         level=settings.log_level,
         json_logs=settings.log_json,
-        logfire_token=settings.logfire_token,
+        logfire_token=(
+            settings.logfire_token.get_secret_value() if settings.logfire_token else None
+        ),
         environment=settings.environment,
     )
 
