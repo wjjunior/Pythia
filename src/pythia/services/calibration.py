@@ -249,7 +249,8 @@ class CalibrationService:
             if estimate is None:
                 continue
             q = prices[estimate.snapshot_id]
-            deltas.append(brier(q, outcome) - brier(estimate.p_model, outcome))
+            # Drift tracks the committed (recalibrated) forecast the system acts on, not raw.
+            deltas.append(brier(q, outcome) - brier(_committed(estimate), outcome))
         return deltas
 
     def _resolved_outcomes(self) -> dict[uuid.UUID, int]:

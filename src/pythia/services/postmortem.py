@@ -55,8 +55,15 @@ class PostmortemService:
         asof: datetime,
         resolution_id: str | None = None,
     ) -> Postmortem | None:
+        # Surprise and the stored Brier measure the committed (recalibrated) forecast the system
+        # acted on, not the raw estimator output (PYT-112); None ⇒ raw is the committed value.
+        committed = (
+            estimate.p_model_calibrated
+            if estimate.p_model_calibrated is not None
+            else estimate.p_model
+        )
         if not is_surprising(
-            estimate.p_model,
+            committed,
             estimate.confidence,
             outcome,
             threshold=self._settings.postmortem_surprise_threshold,
@@ -64,13 +71,13 @@ class PostmortemService:
         ):
             return None
 
-        surprise = surprise_score(estimate.p_model, estimate.confidence, outcome)
+        surprise = surprise_score(committed, estimate.confidence, outcome)
         verdict = self._attribution.attribute(
             FailureCase(
                 market_id=estimate.market_id,
                 estimate_id=estimate.id,
                 category=category,
-                p_model=estimate.p_model,
+                p_model=committed,
                 confidence=estimate.confidence,
                 outcome=outcome,
                 surprise=surprise,
@@ -87,7 +94,7 @@ class PostmortemService:
                 estimate_id=estimate.id,
                 resolution_id=resolution_id,
                 failure_class=verdict.failure_class,
-                brier=brier(estimate.p_model, outcome),
+                brier=brier(committed, outcome),
                 rationale=verdict.rationale,
                 evidence_ids=verdict.evidence_ids,
             )
