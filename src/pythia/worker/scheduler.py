@@ -13,10 +13,12 @@ from pythia.config import Settings
 from pythia.db.repositories import persist_crawl
 from pythia.ingestion import MarketCrawler
 from pythia.ingestion.evidence import EvidenceTransport
+from pythia.ingestion.falcon import FalconPort
 from pythia.ingestion.venues import VenueClient
 from pythia.orchestration import run_open_markets
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
 from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
+from pythia.worker.smartmoney_ingest import run_detection, run_roster_review
 from pythia.worker.venue_ingest import ingest_tick as venue_ingest_tick
 
 _log = get_logger(__name__)
@@ -70,6 +72,26 @@ def resolution_tick(
         resolution_ingest_tick(session, settings, crawler)
 
 
+def smartmoney_detection_tick(
+    session_factory: SessionFactory,
+    settings: Settings,
+    falcon: FalconPort,
+    clock: Callable[[], datetime],
+) -> None:
+    with session_factory() as session:
+        run_detection(session, settings, falcon, now=clock())
+
+
+def smartmoney_roster_tick(
+    session_factory: SessionFactory,
+    settings: Settings,
+    falcon: FalconPort,
+    clock: Callable[[], datetime],
+) -> None:
+    with session_factory() as session:
+        run_roster_review(session, settings, falcon, now=clock())
+
+
 def build_scheduler(
     crawler: MarketCrawler,
     sink: Sink,
@@ -80,6 +102,7 @@ def build_scheduler(
     embedder: EmbeddingPort | None = None,
     evidence_transports: list[EvidenceTransport] | None = None,
     settings: Settings | None = None,
+    falcon: FalconPort | None = None,
     clock: Callable[[], datetime] = _now,
 ) -> BlockingScheduler:
     # next_run_time = now makes each job fire once immediately at startup, then on the interval.
@@ -121,6 +144,21 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="resolution-ingest",
+            next_run_time=now,
+        )
+    if session_factory is not None and settings is not None and falcon is not None:
+        scheduler.add_job(
+            lambda: smartmoney_detection_tick(session_factory, settings, falcon, clock),
+            "interval",
+            seconds=interval_seconds,
+            id="smartmoney-detection",
+            next_run_time=now,
+        )
+        scheduler.add_job(
+            lambda: smartmoney_roster_tick(session_factory, settings, falcon, clock),
+            "interval",
+            seconds=settings.roster_review_interval_seconds,
+            id="smartmoney-roster-review",
             next_run_time=now,
         )
     return scheduler

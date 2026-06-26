@@ -218,10 +218,12 @@ def make_falcon_client(
     base_url: str | None,
     token: str | None,
     use_live: bool,
-    fixtures_dir: Path,
+    fixtures_dir: Path | None = None,
     agent_ids: Mapping[FalconDataset, int] | None = None,
 ) -> FalconClient:
     """Live transport only when explicitly enabled and credentialed; otherwise offline fixtures."""
     if use_live and token and base_url:
         return FalconClient(HttpxFalconTransport(base_url, token, agent_ids or _FALCON_AGENT_IDS))
+    if fixtures_dir is None:
+        raise ValueError("fixtures_dir is required for the offline Falcon transport")
     return FalconClient(FixtureFalconTransport(fixtures_dir))
