@@ -472,6 +472,7 @@ class TraderScorecard(SQLModel, table=True):
     sortino: float | None = Field(default=None, sa_column=Column(Double))
     skew: float | None = Field(default=None, sa_column=Column(Double))
     max_drawdown: float | None = Field(default=None, sa_column=Column(Double))
+    extreme_price_share: float | None = Field(default=None, sa_column=Column(Double))
     agree_rate: float | None = Field(default=None, sa_column=Column(Double))
     agreed_bpd: float | None = Field(default=None, sa_column=Column(Double))
     market_class_ok: bool = Field(sa_column=Column(Boolean, nullable=False))

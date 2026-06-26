@@ -68,9 +68,12 @@ class FalconTraderReturns:
         self._markets = MarketRepository(session)
         self._falcon = falcon
 
-    def resolved(self, trader: TrackedTrader, asof: datetime) -> tuple[list[float], list[str]]:
+    def resolved(
+        self, trader: TrackedTrader, asof: datetime
+    ) -> tuple[list[float], list[str], list[float]]:
         returns: list[float] = []
         categories: list[str] = []
+        entry_prices: list[float] = []
         winning: dict[str, str | None] = {}
         for entry in self._entries.list_for_trader(trader.id, asof=asof):
             if not entry.is_increase or entry.market_id is None or entry.entry_price is None:
@@ -95,7 +98,8 @@ class FalconTraderReturns:
                 position_return(won=entry.side == win_outcome, entry_price=entry.entry_price)
             )
             categories.append(market.category)
-        return returns, categories
+            entry_prices.append(entry.entry_price)
+        return returns, categories, entry_prices
 
 
 class PipelineAgreementEvaluator:

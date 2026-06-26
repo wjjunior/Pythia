@@ -153,10 +153,13 @@ def test_returns_exclude_resolutions_after_asof(session: Session) -> None:
         session, trader.id, name="0xB", resolved_at=_ASOF + timedelta(days=1), side=_WINNING
     )
 
-    returns, categories = FalconTraderReturns(session, _falcon()).resolved(trader, _ASOF)
+    returns, categories, entry_prices = FalconTraderReturns(session, _falcon()).resolved(
+        trader, _ASOF
+    )
 
     assert categories == ["politics"]  # only market A; B resolved after asof (no lookahead)
     assert returns == [pytest.approx((1.0 - 0.4) / 0.4)]  # side "Up" == winning_outcome → a win
+    assert entry_prices == [pytest.approx(0.4)]  # the wallet's entry price, for the scalper guard
 
 
 def test_agreement_replays_only_resolved_before_asof(session: Session) -> None:

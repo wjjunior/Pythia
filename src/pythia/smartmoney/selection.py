@@ -18,6 +18,7 @@ from pythia.common.ids import deterministic_id
 from pythia.config import Settings
 from pythia.smartmoney.metrics import (
     SelectionPolicy,
+    extreme_price_share,
     market_class_ok,
     max_drawdown,
     risk_adj_edge,
@@ -40,6 +41,7 @@ def selection_policy(settings: Settings) -> SelectionPolicy:
     return SelectionPolicy(
         min_resolved=settings.trader_trial_min_resolved,
         skew_hard_cap=SKEW_HARD_CAP,
+        extreme_price_share_cap=settings.trader_extreme_price_share_cap,
         w_edge=W_EDGE,
         w_agree=W_AGREE,
         w_cov=W_COV,
@@ -68,13 +70,16 @@ def build_scorecard(
     asof: datetime,
     returns: Sequence[float],
     categories: Sequence[str],
+    entry_prices: Sequence[float],
     agree_rate: float,
     agreed_bpd: float,
     policy: SelectionPolicy,
 ) -> TraderScorecard:
-    """Pure: a point-in-time scorecard from per-resolution returns, categories, and agreement."""
+    """Pure: a point-in-time scorecard from per-resolution returns, categories, entry prices, and
+    agreement."""
     n_resolved = len(returns)
     class_ok = market_class_ok(categories, policy)
+    share = extreme_price_share(entry_prices)
     if n_resolved == 0:  # nothing resolved yet → never promotable, but still a (visible) scorecard
         return TraderScorecard(
             id=scorecard_id,
@@ -82,6 +87,7 @@ def build_scorecard(
             asof=asof,
             n_resolved=0,
             market_class_ok=class_ok,
+            extreme_price_share=share,
             trader_score=float("-inf"),
         )
     edge = risk_adj_edge(returns)
@@ -99,6 +105,7 @@ def build_scorecard(
         agree_rate=agree_rate,
         agreed_bpd=agreed_bpd,
         market_class_ok=class_ok,
+        extreme_price_share=share,
         trader_score=trader_score(
             risk_adj_edge=edge,
             agreed_bpd=agreed_bpd,
@@ -106,14 +113,17 @@ def build_scorecard(
             n_resolved=n_resolved,
             market_class_ok=class_ok,
             skew=skew,
+            extreme_price_share=share,
             policy=policy,
         ),
     )
 
 
 class TraderReturns(Protocol):
-    def resolved(self, trader: TrackedTrader, asof: datetime) -> tuple[list[float], list[str]]:
-        """Per-resolution returns + categories for entries resolved before asof (no lookahead)."""
+    def resolved(
+        self, trader: TrackedTrader, asof: datetime
+    ) -> tuple[list[float], list[str], list[float]]:
+        """Per-resolution returns, categories and entry prices for entries resolved before asof."""
         ...
 
 
@@ -144,7 +154,7 @@ class SelectionHarness:
         """Write a point-in-time scorecard for each wallet; return them (newest per wallet)."""
         cards: list[TraderScorecard] = []
         for trader in traders:
-            returns, categories = self._returns.resolved(trader, asof)
+            returns, categories, entry_prices = self._returns.resolved(trader, asof)
             agree_rate, agreed_bpd = self._agreement.agreement(trader, asof)
             card = build_scorecard(
                 scorecard_id=deterministic_id("scorecard", trader.id, asof.isoformat()),
@@ -152,6 +162,7 @@ class SelectionHarness:
                 asof=asof,
                 returns=returns,
                 categories=categories,
+                entry_prices=entry_prices,
                 agree_rate=agree_rate,
                 agreed_bpd=agreed_bpd,
                 policy=self._policy,

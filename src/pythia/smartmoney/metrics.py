@@ -2,8 +2,9 @@
 
 Asymmetric on purpose: **Sortino** (downside-deviation only) + **max drawdown** drive the risk
 adjustment — symmetric Sharpe would *reward* the convergence-scalper profile (many tiny wins, a rare
-catastrophic loss). **Skewness** is an explicit guard: a strongly negative return-skew hard-caps the
-wallet to ``-inf`` regardless of its ratio. All computed on **per-resolution** returns.
+catastrophic loss). Two explicit guards hard-cap the wallet to ``-inf`` regardless of its ratio: a
+strongly negative **return-skew**, and a high **entry-price concentration** at the tails (the
+scalper buys near 0/1 to harvest convergence). All return stats are on **per-resolution** returns.
 """
 
 from collections.abc import Sequence
@@ -12,6 +13,10 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import stats
 
+# What counts as an "extreme" entry price (the convergence-scalper's habitat) — domain math.
+_EXTREME_PRICE_LO = 0.10
+_EXTREME_PRICE_HI = 0.90
+
 
 @dataclass(frozen=True, slots=True)
 class SelectionPolicy:
@@ -19,11 +24,22 @@ class SelectionPolicy:
 
     min_resolved: int
     skew_hard_cap: float  # return-skew below this ⇒ never promotable (scalper tell, §4.2/AC-S5)
+    extreme_price_share_cap: float  # extreme-price entry share above this ⇒ never promotable
     w_edge: float
     w_agree: float
     w_cov: float
     market_class_allow: frozenset[str]
     market_class_min_share: float
+
+
+def extreme_price_share(entry_prices: Sequence[float]) -> float:
+    """Fraction of entries at extreme prices (<= LO or >= HI) — the convergence-scalper tell; 0 if
+    empty. A wallet that only buys near-certain outcomes harvests convergence, not forecasting edge.
+    """
+    if not entry_prices:
+        return 0.0
+    extreme = sum(1 for p in entry_prices if p <= _EXTREME_PRICE_LO or p >= _EXTREME_PRICE_HI)
+    return extreme / len(entry_prices)
 
 
 def sortino(returns: Sequence[float], *, target: float = 0.0) -> float:
@@ -78,11 +94,17 @@ def trader_score(
     n_resolved: int,
     market_class_ok: bool,
     skew: float,
+    extreme_price_share: float,
     policy: SelectionPolicy,
 ) -> float:
     """Weighted blend of risk-adjusted edge, pipeline-agreement and coverage, with hard floors: a
-    wallet failing the market-class filter, with ``n < min_resolved``, or with strongly negative
-    skew is **never promotable** (``-inf``)."""
-    if not market_class_ok or n_resolved < policy.min_resolved or skew < policy.skew_hard_cap:
+    wallet failing the market-class filter, with ``n < min_resolved``, strongly negative skew, or
+    too high an extreme-price entry concentration is **never promotable** (``-inf``)."""
+    if (
+        not market_class_ok
+        or n_resolved < policy.min_resolved
+        or skew < policy.skew_hard_cap
+        or extreme_price_share > policy.extreme_price_share_cap
+    ):
         return float("-inf")
     return policy.w_edge * risk_adj_edge + policy.w_agree * agreed_bpd + policy.w_cov * coverage
