@@ -4,7 +4,9 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from pythia.common import TrackedTrader, TraderScorecard, TraderState
+from pythia.config import Settings
 from pythia.smartmoney.roster import RosterPolicy, plan_transitions
+from pythia.smartmoney.selection import roster_policy
 
 _TS = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 _BENCH_TTL = timedelta(days=14)
@@ -47,6 +49,16 @@ def test_qualifying_trial_is_promoted_when_a_slot_is_open() -> None:
     assert transitions[0].from_state is TraderState.TRIAL
     assert transitions[0].to_state is TraderState.ACTIVE
     assert "promoted" in transitions[0].reason  # audited reason (AC-S4)
+
+
+def test_should_not_promote_a_wallet_that_only_ties_the_market_under_the_default_policy() -> None:
+    # F-11: the default agreement floor must be > 0 — a wallet must *beat* the market, not tie it.
+    policy = roster_policy(Settings(_env_file=None, database_url="x"))
+    trader = _trader("tie", TraderState.TRIAL)
+    card = _card("tie", score=policy.promote_score, agree=0.0)  # clears score, exactly ties market
+
+    assert policy.promote_agree > 0.0
+    assert plan_transitions([trader], {"tie": card}, policy, asof=_TS) == []
 
 
 def test_trial_below_threshold_or_hard_floored_never_promotes() -> None:

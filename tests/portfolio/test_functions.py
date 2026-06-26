@@ -14,13 +14,19 @@ _DAY = timedelta(days=1)
 _WEEK = timedelta(days=7)
 
 
-def test_available_capital_is_bankroll_plus_pnl_minus_locked() -> None:
-    assert available_capital(10_000.0, 250.0, 400.0) == 9_850.0
-
-
-@given(_money, st.floats(min_value=-1e9, max_value=1e9, allow_nan=False), _money)
-def test_available_capital_identity(bankroll: float, realized: float, locked: float) -> None:
-    assert available_capital(bankroll, realized, locked) == bankroll + realized - locked
+@pytest.mark.parametrize(
+    ("bankroll", "realized", "locked", "expected"),
+    [
+        (10_000.0, 250.0, 400.0, 9_850.0),  # profit, some locked
+        (10_000.0, -500.0, 0.0, 9_500.0),  # a realized loss shrinks capital
+        (1_000.0, 0.0, 1_000.0, 0.0),  # everything locked
+        (500.0, 100.0, 700.0, -100.0),  # locked beyond capital ⇒ negative headroom
+    ],
+)
+def test_should_compute_available_capital_from_independent_examples(
+    bankroll: float, realized: float, locked: float, expected: float
+) -> None:
+    assert available_capital(bankroll, realized, locked) == expected
 
 
 def test_exposure_fraction_is_deployed_over_capital() -> None:

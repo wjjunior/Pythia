@@ -47,11 +47,13 @@ def test_evidence_stub_conforms_and_requires_asof() -> None:
 
 def test_ledger_stub_conforms() -> None:
     port: PaperLedgerPort = _StubLedger()
-    port.resolve("m1", 1, _TS)
+    assert isinstance(port, PaperLedgerPort)
+    port.resolve("m1", 1, _TS)  # callable per the protocol
 
 
 def test_audit_stub_conforms() -> None:
     port: AuditPort = _StubAudit()
+    assert isinstance(port, AuditPort)
     port.append(AuditEvent(kind=AuditKind.ESTIMATE, payload={}))
 
 

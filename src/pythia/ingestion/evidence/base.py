@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pythia.common.logging import get_logger
-from pythia.ingestion.market_crawler import LiveVenueAccessError, TransientTransportError
+from pythia.ingestion.market_crawler import (
+    LiveVenueAccessError,
+    TransientTransportError,
+    require_live,
+)
 
 _log = get_logger(__name__)
 
@@ -63,10 +67,12 @@ def fetch_json_evidence(
     url: str,
     *,
     source: str,
+    use_live: bool,
     params: dict[str, str | int] | None = None,
     headers: dict[str, str] | None = None,
     timeout: float = 20.0,
 ) -> Any:
+    require_live(use_live, source)  # §8.6 defense-in-depth: no live egress unless the flag is on
     import httpx
 
     try:

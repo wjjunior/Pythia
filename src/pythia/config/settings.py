@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     trader_trial_min_resolved: int = 20
     trader_extreme_price_share_cap: float = Field(default=0.5, ge=0.0, le=1.0)  # scalper guard
     trader_promote_score: float = 0.5
-    trader_promote_agree: float = 0.0
+    trader_promote_agree: float = 0.01  # must *beat* the market, not merely tie it (>= gate)
     trader_demote_score: float = 0.0
     trader_demote_agree: float = -1.0
     trader_drawdown_floor: float = 1.0

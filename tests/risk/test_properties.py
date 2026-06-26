@@ -49,6 +49,7 @@ proposal_st = st.builds(
     p_resol_severity=unit,
     opportunity_score=signed_unit,
     category_calibrated=st.booleans(),
+    resolution_gated=st.booleans(),
 )
 
 
@@ -89,7 +90,7 @@ def test_paper_only_mirrors_category_calibration(
     proposal: TradeProposal, limits: RiskLimits, exposure: ExposureState
 ) -> None:
     decision = evaluate(proposal, limits, exposure)
-    assert decision.paper_only == (not proposal.category_calibrated)
+    assert decision.paper_only == (not proposal.category_calibrated or proposal.resolution_gated)
 
 
 # Invariant 6 — no silent bets: any penalty == 0 ⇒ opportunity_score == 0 ⇒ approved_size == 0.

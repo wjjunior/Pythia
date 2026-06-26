@@ -187,3 +187,19 @@ def test_should_reject_resolutions_in_place_update(session: Session) -> None:
     session.rollback()
     row = session.get(models.Resolution, resolution_id)
     assert row is not None and row.resolved_at == _TS
+
+
+def test_should_reject_an_unknown_resolution_source_type(session: Session) -> None:
+    session.add(
+        models.Market(
+            id=uuid.uuid5(uuid.NAMESPACE_URL, "pyt130-bad-restype"),
+            external_id="pyt130-bad-restype",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+            resolution_source_type="bogus",  # not in the ResolutionSourceType vocabulary
+        )
+    )
+    with pytest.raises(IntegrityError):
+        session.commit()
+    session.rollback()
