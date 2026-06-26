@@ -22,7 +22,8 @@ from pythia.db.repositories import (
     ResolutionRepository,
 )
 from pythia.eval.postmortem import AttributionPort
-from pythia.eval.service import CalibrationService, PostmortemService
+from pythia.services.calibration import CalibrationService
+from pythia.services.postmortem import PostmortemService
 
 _log = get_logger(__name__)
 

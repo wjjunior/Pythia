@@ -10,7 +10,7 @@ from pythia.common import Side, TradeStatus
 from pythia.config import Settings
 from pythia.db import models
 from pythia.eval.gate import GateReason
-from pythia.eval.service import CalibrationService, gate_thresholds_from_settings
+from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
 
 pytestmark = pytest.mark.integration
 

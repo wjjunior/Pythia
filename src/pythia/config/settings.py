@@ -6,8 +6,7 @@ from typing import Literal
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from pythia.common.types import RecalibrationMethod
-from pythia.eval.cohorts import Cohort
+from pythia.common.types import Cohort, RecalibrationMethod
 
 Mode = Literal["paper", "live"]
 RoutingStrategy = Literal["static", "escalate", "ensemble"]

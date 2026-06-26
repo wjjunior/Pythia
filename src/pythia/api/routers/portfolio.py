@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import CapitalState, ExposureView, PortfolioResponse
 from pythia.portfolio import exposure_fraction
-from pythia.portfolio.service import PortfolioService
+from pythia.services.portfolio import PortfolioService
 
 router = APIRouter(tags=["portfolio"])
 

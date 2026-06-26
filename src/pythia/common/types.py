@@ -25,6 +25,14 @@ class MarketStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class Cohort(StrEnum):
+    """Eval cohort labels (§4.11): config-defined market slices for honest calibration."""
+
+    FAST_7D = "fast_7d"
+    MIDBAND = "midband"
+    OVERALL = "overall"
+
+
 class OpportunityStatus(StrEnum):
     """The §A.4 opportunity lifecycle vocabulary (discovered → … → resolved)."""
 

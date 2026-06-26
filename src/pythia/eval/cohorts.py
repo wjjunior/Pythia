@@ -8,17 +8,14 @@ measure always agree. `price` is the market YES price at `asof` (never the side-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from pythia.common.types import Cohort
 
 if TYPE_CHECKING:
     from pythia.config import Settings
 
-
-class Cohort(StrEnum):
-    FAST_7D = "fast_7d"
-    MIDBAND = "midband"
-    OVERALL = "overall"
+__all__ = ["Cohort", "CohortPolicy", "cohort_policy", "cohorts_for"]
 
 
 @dataclass(frozen=True, slots=True)

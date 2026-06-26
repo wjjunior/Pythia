@@ -24,7 +24,7 @@ from pythia.db.repositories import (
     SnapshotRepository,
 )
 from pythia.eval.harness.models import Ablation, ConfigReport
-from pythia.eval.service import PostmortemService
+from pythia.services.postmortem import PostmortemService
 
 pytestmark = pytest.mark.integration
 

@@ -27,9 +27,9 @@ from pythia.db.repositories import (
 )
 from pythia.orchestration import Pipeline
 from pythia.paper import PaperLedger
-from pythia.portfolio.service import PortfolioService
 from pythia.rag import EvidenceStore, StubEmbeddingPort
 from pythia.risk import RiskReason
+from pythia.services.portfolio import PortfolioService
 
 pytestmark = pytest.mark.integration
 

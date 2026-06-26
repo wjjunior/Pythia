@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from pythia.api.deps import SessionDep
 from pythia.api.schemas import RadarItem
 from pythia.db.repositories import ScoreRepository
+from pythia.scoring import rank_radar
 
 router = APIRouter(tags=["radar"])
 
@@ -22,10 +23,13 @@ def radar(
     min_win_multiple: Annotated[float | None, Query(ge=1.0)] = None,
     min_win_probability: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
 ) -> list[RadarItem]:
-    rows = ScoreRepository(session).radar(
-        limit,
-        asof=datetime.now(UTC),
-        max_days_to_resolve=max_days_to_resolve,
+    asof = datetime.now(UTC)
+    candidates = ScoreRepository(session).radar(asof=asof, max_days_to_resolve=max_days_to_resolve)
+    rows = rank_radar(
+        candidates,
+        asof=asof,
+        limit=limit,
+        windowed=max_days_to_resolve is not None,
         min_win_multiple=min_win_multiple,
         min_win_probability=min_win_probability,
     )

@@ -17,6 +17,7 @@ from pythia.common import (
     AuditEvent,
     AuditKind,
     CandidateStatus,
+    Cohort,
     CostEvent,
     Estimate,
     Evidence,
@@ -38,10 +39,8 @@ from pythia.common import (
 )
 from pythia.common.ids import deterministic_id
 from pythia.db import models
-from pythia.eval.cohorts import Cohort
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
-from pythia.scoring import RadarMetrics, is_extreme_market_disagreement, radar_metrics
 
 
 def _to_db_market(market: Market) -> models.Market:
@@ -474,29 +473,8 @@ def _from_db_score(row: models.Score) -> Score:
     )
 
 
-def _to_radar_row(
-    score: models.Score,
-    estimate: models.Estimate,
-    market: models.Market,
-    yes_price: float,
-    asof: datetime,
-) -> tuple[Score, Estimate, Market, RadarMetrics]:
-    domain_market = _from_db_market(market)
-    metrics = radar_metrics(
-        p_model=estimate.p_model,
-        q=yes_price,
-        close_time=domain_market.close_time,
-        resolves_at=domain_market.resolves_at,
-        asof=asof,
-    )
-    return _from_db_score(score), _from_db_estimate(estimate), domain_market, metrics
-
-
-def _resolves_in_days_key(metrics: RadarMetrics) -> float:
-    return metrics.resolves_in_days if metrics.resolves_in_days is not None else float("inf")
-
-
-# Calibration-mode candidates are filtered/sorted in Python after the SQL window; bound the fetch.
+# Calibration-mode candidates are ranked/filtered (scoring.rank_radar) after the SQL window; the
+# repository returns this bounded candidate set as raw domain rows, no scoring on the db layer.
 _RADAR_WINDOW_CAP = 500
 
 
@@ -518,14 +496,12 @@ class ScoreRepository:
         return _from_db_score(row) if row is not None else None
 
     def radar(
-        self,
-        limit: int,
-        *,
-        asof: datetime,
-        max_days_to_resolve: int | None = None,
-        min_win_multiple: float | None = None,
-        min_win_probability: float | None = None,
-    ) -> list[tuple[Score, Estimate, Market, RadarMetrics]]:
+        self, *, asof: datetime, max_days_to_resolve: int | None = None
+    ) -> list[tuple[Score, Estimate, Market, float]]:
+        """Bounded candidate set as raw domain rows (Score, Estimate, Market, yes_price).
+
+        Ranking, per-row metrics and win filters live in scoring.rank_radar — db stays scoring-free.
+        """
         latest_per_market = (
             select(models.Score.id)
             .join(models.Estimate, col(models.Score.estimate_id) == col(models.Estimate.id))
@@ -562,26 +538,14 @@ class ScoreRepository:
         if max_days_to_resolve is not None:
             cutoff = asof + timedelta(days=max_days_to_resolve)
             query = query.where(resolves_at >= asof).where(resolves_at <= cutoff)
-        # Per-row metrics (win multiple/probability, disagreement) compute in Python, so fetch a
-        # bounded set (soonest-resolution when windowed, else best-score), filter, then sort.
+        # Fetch a bounded candidate set (soonest-resolution when windowed, else best-score); the
+        # caller ranks and filters it.
         order = resolves_at if windowed else col(models.Score.opportunity_score).desc()
         fetched = self._session.exec(query.order_by(order).limit(_RADAR_WINDOW_CAP)).all()
-        # Hard exclusion (PYT-84): never surface a confidently-wrong override of a near-certain
-        # market. PYT-81 only de-ranks these, and they pass the win-probability filter because the
-        # model favours them — so drop them outright before ranking.
-        kept = [
-            (score, est, market, q)
+        return [
+            (_from_db_score(score), _from_db_estimate(est), _from_db_market(market), q)
             for score, est, market, q in fetched
-            if not is_extreme_market_disagreement(est.p_model, q)
         ]
-        ranked = [_to_radar_row(score, est, market, q, asof) for score, est, market, q in kept]
-        if min_win_multiple is not None:
-            ranked = [row for row in ranked if row[3].win_multiple >= min_win_multiple]
-        if min_win_probability is not None:
-            ranked = [row for row in ranked if row[3].win_probability >= min_win_probability]
-        if windowed:
-            ranked.sort(key=lambda row: (_resolves_in_days_key(row[3]), -row[0].opportunity_score))
-        return ranked[:limit]
 
 
 class PipelineRunRepository:
