@@ -17,6 +17,10 @@ pytestmark = pytest.mark.integration
 _TS = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
+def _settings() -> Settings:
+    return Settings(_env_file=None, database_url="x")
+
+
 def _uid(name: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, name)
 
@@ -105,7 +109,7 @@ def test_per_category_brier_with_n_excluding_ambiguous(session: Session) -> None
     _resolved_market(session, "a1", "politics", q=0.5, p_model=0.5, outcome=0, ambiguous=True)
     session.commit()
 
-    report = CalibrationService(session).report()
+    report = CalibrationService(session, settings=_settings()).report()
     by_cat = {c.category: c for c in report.categories}
 
     assert by_cat["politics"].n == 2
@@ -126,7 +130,7 @@ def test_gate_status_blocks_a_category_with_insufficient_evidence(session: Sessi
     session.commit()
 
     thresholds = gate_thresholds_from_settings(Settings(_env_file=None, database_url="x"))
-    decisions = CalibrationService(session).gate_status(thresholds)
+    decisions = CalibrationService(session, settings=_settings()).gate_status(thresholds)
 
     politics = next(decision for decision in decisions if decision.category == "politics")
     assert politics.cleared is False
@@ -147,10 +151,9 @@ def test_blended_report_uses_the_venue_baseline(session: Session) -> None:
     )
     session.commit()
 
-    market = {c.category: c for c in CalibrationService(session).report().categories}["politics"]
-    blended = {c.category: c for c in CalibrationService(session).blended_report().categories}[
-        "politics"
-    ]
+    svc = CalibrationService(session, settings=_settings())
+    market = {c.category: c for c in svc.report().categories}["politics"]
+    blended = {c.category: c for c in svc.blended_report().categories}["politics"]
     # market baseline q=0.5; blended = (0.5 + 0.8) / 2 = 0.65, against outcome 1.
     assert market.brier_market == pytest.approx((0.5 - 1) ** 2)
     assert blended.brier_market == pytest.approx((0.65 - 1) ** 2)
@@ -164,7 +167,7 @@ def test_latest_estimate_per_market_wins(session: Session) -> None:
     _resolution(session, "m1", 1)
     session.commit()
 
-    report = CalibrationService(session).report()
+    report = CalibrationService(session, settings=_settings()).report()
     assert report.categories[0].n == 1
     assert report.categories[0].brier_system == pytest.approx((0.8 - 1) ** 2)
 
@@ -174,7 +177,7 @@ def test_reliability_curve_is_produced(session: Session) -> None:
     _resolved_market(session, "r2", "politics", q=0.5, p_model=0.85, outcome=1)
     session.commit()
 
-    report = CalibrationService(session).report()
+    report = CalibrationService(session, settings=_settings()).report()
     assert report.reliability
     assert sum(b.count for b in report.reliability) == 2
 
@@ -197,7 +200,7 @@ def test_ev_predicted_vs_realized_over_resolved_trades(session: Session) -> None
     )
     session.commit()
 
-    report = CalibrationService(session).report()
+    report = CalibrationService(session, settings=_settings()).report()
     assert report.ev is not None
     assert report.ev.n == 1
     assert report.ev.mean_predicted == pytest.approx(0.7 - 0.52)

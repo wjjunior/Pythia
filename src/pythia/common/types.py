@@ -48,6 +48,7 @@ class AuditKind(StrEnum):
     APPROVAL = "approval"
     REJECTION = "rejection"
     PAPER_OPEN = "paper_open"
+    COHORT_TAGGED = "cohort_tagged"
     RESOLUTION = "resolution"
 
 

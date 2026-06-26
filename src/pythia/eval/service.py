@@ -35,9 +35,11 @@ from pythia.db.repositories import (
     ResolutionRepository,
     VenueQuoteRepository,
 )
+from pythia.eval.cohorts import Cohort, cohort_policy, cohorts_for
 from pythia.eval.functions import (
     brier,
     calibration_by_category,
+    calibration_by_cohort,
     ev_predicted_vs_realized,
     reliability_bins,
 )
@@ -46,6 +48,7 @@ from pythia.eval.harness.models import Ablation
 from pythia.eval.improvement import adoption_decision, requires_review, suggested_action
 from pythia.eval.models import (
     CategoryCalibration,
+    CohortCalibration,
     EvCalibration,
     RecalibrationReport,
     ReliabilityBin,
@@ -60,6 +63,8 @@ from pythia.eval.postmortem import (
 from pythia.eval.recalibration import Sample, compare_brier, recalibrate
 
 DEFAULT_RELIABILITY_BINS = 10
+
+_Records = dict[str, list[tuple[float, float, int]]]
 
 
 def _latest_estimate_per_market(
@@ -85,11 +90,26 @@ def _categories_of(session: Session, market_ids: list[uuid.UUID]) -> dict[uuid.U
     return {row.id: row.category for row in rows if row.id is not None}
 
 
+def _markets_of(session: Session, market_ids: list[uuid.UUID]) -> dict[uuid.UUID, models.Market]:
+    if not market_ids:
+        return {}
+    rows = session.exec(select(models.Market).where(col(models.Market.id).in_(market_ids))).all()
+    return {row.id: row for row in rows if row.id is not None}
+
+
+def _horizon(market: models.Market, ts: datetime) -> float | None:
+    deadline = market.resolves_at or market.close_time
+    if deadline is None:
+        return None
+    return (deadline - ts).total_seconds() / 86_400
+
+
 @dataclass(frozen=True, slots=True)
 class CalibrationReport:
     categories: list[CategoryCalibration]
     reliability: list[ReliabilityBin]
     ev: EvCalibration | None
+    cohorts: list[CohortCalibration]
 
 
 def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
@@ -102,16 +122,19 @@ def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
 
 
 class CalibrationService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, settings: Settings) -> None:
         self._session = session
+        self._settings = settings
 
     def report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
         outcomes = self._resolved_outcomes()
-        return self._assemble(self._records(outcomes), outcomes, n_bins)
+        by_category, by_cohort = self._records(outcomes)
+        return self._assemble(by_category, by_cohort, outcomes, n_bins)
 
     def blended_report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
         outcomes = self._resolved_outcomes()
-        return self._assemble(self._blended_records(outcomes), outcomes, n_bins)
+        by_category, by_cohort = self._blended_records(outcomes)
+        return self._assemble(by_category, by_cohort, outcomes, n_bins)
 
     def gate_status(self, thresholds: GateThresholds) -> list[GateDecision]:
         # The §8.5 gate per category; ev is system-wide today (per-category EV is a future
@@ -121,7 +144,8 @@ class CalibrationService:
 
     def _assemble(
         self,
-        records: dict[str, list[tuple[float, float, int]]],
+        records: _Records,
+        by_cohort: _Records,
         outcomes: dict[uuid.UUID, int],
         n_bins: int,
     ) -> CalibrationReport:
@@ -132,29 +156,37 @@ class CalibrationService:
             categories=calibration_by_category(records, invalid_counts),
             reliability=reliability_bins(forecasts, observed, n_bins) if forecasts else [],
             ev=self._ev(outcomes),
+            cohorts=calibration_by_cohort(by_cohort),
         )
 
-    def records(self) -> dict[str, list[tuple[float, float, int]]]:
-        return self._records(self._resolved_outcomes())
+    def records(self) -> _Records:
+        by_category, _by_cohort = self._records(self._resolved_outcomes())
+        return by_category
 
-    def _blended_records(
-        self, outcomes: dict[uuid.UUID, int]
-    ) -> dict[str, list[tuple[float, float, int]]]:
+    def _blended_records(self, outcomes: dict[uuid.UUID, int]) -> tuple[_Records, _Records]:
         latest = _latest_estimate_per_market(self._session, list(outcomes))
         categories = _categories_of(self._session, list(latest))
+        market_rows = _markets_of(self._session, list(latest))
         snapshots = self._snapshots([estimate.snapshot_id for estimate in latest.values()])
         all_quotes = VenueQuoteRepository(self._session).retrieve_for_markets(
             [str(mid) for mid in latest]
         )
-        records: dict[str, list[tuple[float, float, int]]] = {}
+        policy = cohort_policy(self._settings)
+        by_category: _Records = {}
+        by_cohort: _Records = {}
         for market_id, estimate in latest.items():
             q_market, ts = snapshots[estimate.snapshot_id]
             quotes = [q for q in all_quotes.get(str(market_id), []) if q.ts <= ts]
             q_blended = blended_baseline(q_market, latest_prices_per_venue(quotes))
-            records.setdefault(categories[market_id], []).append(
-                (estimate.p_model, q_blended, outcomes[market_id])
-            )
-        return records
+            # Brier baseline column uses q_blended; cohort classification bins on q_market
+            record: tuple[float, float, int] = (estimate.p_model, q_blended, outcomes[market_id])
+            by_category.setdefault(categories[market_id], []).append(record)
+            market = market_rows.get(market_id)
+            h = _horizon(market, ts) if market is not None else None
+            for c in cohorts_for(price=q_market, horizon_days=h, policy=policy):
+                by_cohort.setdefault(c.value, []).append(record)
+            by_cohort.setdefault(Cohort.OVERALL.value, []).append(record)
+        return by_category, by_cohort
 
     def _snapshots(self, snapshot_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[float, datetime]]:
         if not snapshot_ids:
@@ -164,15 +196,24 @@ class CalibrationService:
         ).all()
         return {row.id: (row.yes_price, row.ts) for row in rows if row.id is not None}
 
-    def _records(self, outcomes: dict[uuid.UUID, int]) -> dict[str, list[tuple[float, float, int]]]:
+    def _records(self, outcomes: dict[uuid.UUID, int]) -> tuple[_Records, _Records]:
         latest = _latest_estimate_per_market(self._session, list(outcomes))
         categories = _categories_of(self._session, list(latest))
-        prices = self._snapshot_prices([estimate.snapshot_id for estimate in latest.values()])
-        records: dict[str, list[tuple[float, float, int]]] = {}
+        market_rows = _markets_of(self._session, list(latest))
+        snapshots = self._snapshots([estimate.snapshot_id for estimate in latest.values()])
+        policy = cohort_policy(self._settings)
+        by_category: _Records = {}
+        by_cohort: _Records = {}
         for market_id, estimate in latest.items():
-            record = (estimate.p_model, prices[estimate.snapshot_id], outcomes[market_id])
-            records.setdefault(categories[market_id], []).append(record)
-        return records
+            q_market, ts = snapshots[estimate.snapshot_id]
+            record: tuple[float, float, int] = (estimate.p_model, q_market, outcomes[market_id])
+            by_category.setdefault(categories[market_id], []).append(record)
+            market = market_rows.get(market_id)
+            h = _horizon(market, ts) if market is not None else None
+            for c in cohorts_for(price=q_market, horizon_days=h, policy=policy):
+                by_cohort.setdefault(c.value, []).append(record)
+            by_cohort.setdefault(Cohort.OVERALL.value, []).append(record)
+        return by_category, by_cohort
 
     def category_brier_deltas(self, category: str) -> list[float]:
         """Chronological per-resolution `brier_market - brier_system` for a category (drift input).

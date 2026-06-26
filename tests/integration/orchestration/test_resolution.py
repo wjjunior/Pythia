@@ -167,7 +167,7 @@ def test_category_brier_deltas_are_ordered_for_drift(session: Session) -> None:
     service.record(first.market_id, outcome=1, at=AT + timedelta(days=1))
     service.record(second.market_id, outcome=1, at=AT + timedelta(days=2))
 
-    deltas = CalibrationService(session).category_brier_deltas("politics")
+    deltas = CalibrationService(session, settings=_settings()).category_brier_deltas("politics")
     assert len(deltas) == 2
     # d1 resolved first: p_model=0.8, market=0.5, outcome=1 → brier_market-brier_system = 0.25-0.04
     # d2 resolved second: p_model=0.2, market=0.5, outcome=1 → 0.25-0.64

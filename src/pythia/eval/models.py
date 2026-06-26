@@ -35,3 +35,12 @@ class RecalibrationReport:
     brier_raw: float
     brier_recalibrated: float
     n: int
+
+
+@dataclass(frozen=True, slots=True)
+class CohortCalibration:
+    cohort: str
+    brier_system: float
+    brier_market: float
+    delta: float
+    n: int

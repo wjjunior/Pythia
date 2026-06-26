@@ -20,7 +20,7 @@ router = APIRouter(tags=["simulation"])
 def simulation(
     session: SessionDep, settings: SettingsDep, category: str | None = None
 ) -> SimulationResponse:
-    records = CalibrationService(session).records()
+    records = CalibrationService(session, settings=settings).records()
     samples = (
         records.get(category, [])
         if category is not None

@@ -20,7 +20,7 @@ from pythia.common import (
     TrackedTrader,
     TraderEntry,
 )
-from pythia.eval.models import CategoryCalibration, EvCalibration, ReliabilityBin
+from pythia.eval.models import CategoryCalibration, CohortCalibration, EvCalibration, ReliabilityBin
 
 
 class MarketDetail(BaseModel):
@@ -77,6 +77,7 @@ class CalibrationResponse(BaseModel):
     categories: list[CategoryCalibration]
     reliability: list[ReliabilityBin]
     ev: EvCalibration | None
+    cohorts: list[CohortCalibration]
 
 
 class CostResponse(BaseModel):

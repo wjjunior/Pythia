@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pythia.common.types import RecalibrationMethod
+from pythia.eval.cohorts import Cohort
 
 Mode = Literal["paper", "live"]
 RoutingStrategy = Literal["static", "escalate", "ensemble"]
@@ -119,6 +120,13 @@ class Settings(BaseSettings):
     gate_min_n: int = 50
     gate_brier_margin: float = 0.01
     gate_ev_tolerance: float = 0.05
+
+    # Eval cohorts (§4.11, AC-17) — config-defined market slices for faster, honest calibration.
+    eval_cohort_max_horizon_days: float = 7.0
+    eval_cohort_price_min: float = 0.10
+    eval_cohort_price_max: float = 0.85
+    cohort_trade_filter_enabled: bool = False
+    cohort_trade_filter: Cohort = Cohort.FAST_7D
 
     # Post-mortem & improvement loop (§5.5)
     postmortem_surprise_threshold: float = 0.6
