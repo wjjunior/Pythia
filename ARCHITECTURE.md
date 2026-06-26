@@ -36,24 +36,33 @@ Ports & Adapters only where domain reasoning lives — the deterministic core is
 | Contracts | `common/` | Canonical Pydantic types (§4.1), `ports.py` Protocols (§4.5), structlog + Logfire logging. |
 | Pure core | `scoring/` | `edge`, `net_edge`, `confidence`, `opportunity_score`, `kelly_fraction`, `position_size`; `assembly.py` builds a `Score` and grades the resolution source; `divergence.py` is the cross-venue feature. |
 | Pure core | `risk/` | Deterministic caps, gating and correlated-exposure veto (`functions.py`); `resolution_risk.py` grades `P_resol` by the measured invalid-rate. |
-| Pure core | `eval/` | `brier`, reliability bins, per-category calibration (`functions.py`); `service.py` wires it to the store; `recalibration.py` (Platt/Beta/isotonic maps); `harness/` (Brier-per-dollar) and `simulation/` (Monte-Carlo growth); `postmortem.py` classifies statistical-surprise failures and `improvement.py` gates candidate fixes on harness validation. |
-| Pure core | `portfolio/` | `available_capital`, `exposure_fraction`, exposure aggregation; `service.py` reads the ledger for live capital. |
-| Adapter | `ingestion/` | `market_crawler.py` (Gamma fixtures / live, VPN-gated) and `venue_match.py` (cross-venue quotes). |
+| Pure core | `eval/` | `brier`, reliability bins, per-category calibration (`functions.py`); `recalibration.py` (Platt/Beta/isotonic maps); `gate.py` (the §8.5 calibration gate); `harness/` (Brier-per-dollar) and `simulation/` (Monte-Carlo growth); `postmortem.py` classifies statistical-surprise failures and `improvement.py` gates candidate fixes on harness validation. |
+| Pure core | `portfolio/` | `available_capital`, `exposure_fraction`, exposure aggregation (`functions.py`). |
+| Adapter | `ingestion/` | `market_crawler.py` (Gamma fixtures / live, VPN-gated), `venues/` (cross-venue quotes), `evidence/` (news), `falcon/` (smart-money analytics) — every live transport is `require_live`-gated (§8.6). |
 | Adapter | `rag/` | Chunk · embed (pgvector) · `retrieve(market, asof, k)` ranked by freshness × reliability; never returns `observed_at > asof`. |
-| Adapter | `agents/` | `llm_port.py` (stub + OpenRouter gateway, measured cost, ensemble); `router.py` (per-agent model routing); `aggregation.py`; `cost.py` (budget guard + caching); `estimation.py`; `critic.py`. |
+| Adapter | `agents/` | `llm_port.py` (stub + OpenRouter gateway, measured cost, ensemble, `max_price` ceiling); `router.py` (per-agent model routing); `aggregation.py`; `cost.py` (budget guard + caching); `estimation.py`; `critic.py`. |
+| Adapter | `smartmoney/` | v2 Falcon candidate sourcing (trigger ≠ judge, §3.2): `metrics.py` (pure Sortino / skew / entry-concentration floors), `scoring.py` + `selection.py` (harness-validated scorecards via `agreed_bpd`), `roster.py` (bounded trial→active→benched→retired lifecycle), `candidate.py` / `backfill.py` / `evidence.py`. |
+| Composition | `services/` | Impure companions that wire the pure core to the store: `calibration.py` (eval math + the §8.5 gate + recalibration fit), `portfolio.py` (live capital from the ledger), `postmortem.py` (surprise/drift triggers → improvement candidates). |
 | Composition | `orchestration/` | `pipeline.py` (the integration hub; owns `asof = snapshot.ts`) and `review.py` (the human approve/reject gate). |
 | Adapter | `paper/` | `ledger.py` opens fills at the observed price and computes PnL on resolution; `pricing.py`. |
-| Adapter | `db/` | SQLModel `models.py` (§4.7), `repositories.py`, Alembic migrations in `alembic/versions/`. |
+| Adapter | `db/` | SQLModel `models.py` (§4.7), `repositories.py` + `smartmoney.py` repos, Alembic migrations in `alembic/versions/`. |
 | Entrypoint | `api/` | FastAPI REST + SSE (`app.py`, `routers/`, `events.py`); OpenAPI is the contract that generates the dashboard's TS types. |
 | Entrypoint | `worker/` | APScheduler market-crawl loop (`scheduler.py`); a no-op until `USE_LIVE_VENUES` and the VPN are enabled. |
 
 ## Data model (§4.7)
 
-PostgreSQL 18 + pgvector is the single stateful store — relational system of record, vector evidence index, and append-only audit ledger in one. The 16 tables (in `db/models.py`, migrated under `alembic/versions/`):
+PostgreSQL 18 + pgvector is the single stateful store — relational system of record, vector evidence index, and append-only audit ledger in one. The tables (in `db/models.py`, migrated under `alembic/versions/`):
 
-`markets` · `market_snapshots` (immutable) · `sources` · `evidence` (`vector(1536)`, HNSW) · `estimates` · `estimate_members` · `scores` · `paper_trades` · `resolutions` (carries `ambiguous`) · `recalibration_models` (one active map per category) · `cost_events` (measured) · `audit_events` (append-only) · `pipeline_runs` · `venue_quotes` · `postmortems` · `improvement_candidates`.
+- **v1 core:** `markets` · `market_snapshots` (immutable) · `sources` · `evidence` (`vector(1536)`, HNSW) · `estimates` · `estimate_members` · `scores` · `paper_trades` · `resolutions` (carries `ambiguous`) · `recalibration_models` (one active map per category) · `cost_events` (measured) · `audit_events` (append-only) · `pipeline_runs` · `venue_quotes` · `postmortems` · `improvement_candidates` · `cohort_memberships`.
+- **v2 smart-money:** `tracked_traders` · `trader_scorecards` · `trader_entries` · `candidate_signals` · `roster_events`.
 
 Two invariants are load-bearing: `market_snapshots`/`evidence` have **no update path** (point-in-time), and a snapshot's `ts` becomes the downstream `asof` for research. Invalid (50/50) `resolutions` are excluded from Brier and tracked separately as a per-category invalid-rate.
+
+## The dual-type seam (contracts vs storage)
+
+`common/types.py` holds **frozen Pydantic domain contracts** — the same objects cross every boundary (agent output, the pure core, the API/OpenAPI response that generates the dashboard's TS types). `db/models.py` holds **SQLModel `table=True` rows**. They are deliberately separate **same-named** families: a frozen contract cannot be a mutable ORM row, and the storage layer carries fields the domain does not — surrogate PKs on append-only/secondary tables (`audit_events`, `cost_events`, `scores`), storage timestamps (`created_at`/`ts`), the pgvector embedding + JSONB `metadata` on `evidence`, the raw provider JSON on `market_snapshots`, and denormalized FK tags on `cost_events` for cost queries. A few contract fields live in a child table (an `Estimate`'s ensemble `members` → `estimate_members`). Types legitimately differ too (`id: str` vs `uuid.UUID`, enums stored as text).
+
+Conversion is explicit at the repository boundary (`_to_db_*` / `_from_db_*` in `db/repositories.py`). `tests/test_field_parity.py` pins **every** intentional divergence per pair, so a field added to one side and not the other — the silent contract-break `CLAUDE.md` rule 13 warns about — fails the build. Pairs that need not diverge (e.g. `PaperTrade`, `Source`, `CandidateSignal`) carry identical field names and are kept honest by the same test.
 
 ## Process topology (§2.2)
 
