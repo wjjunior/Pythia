@@ -98,6 +98,6 @@ class ProviderEmbeddingPort:
 def make_embedder(settings: Settings) -> EmbeddingPort:
     if settings.embedding_provider and settings.embedding_api_key and settings.embedding_model:
         base_url = settings.embedding_base_url or settings.openrouter_base_url
-        transport = HttpxEmbeddingTransport(settings.embedding_api_key, base_url)
+        transport = HttpxEmbeddingTransport(settings.embedding_api_key.get_secret_value(), base_url)
         return ProviderEmbeddingPort(transport, settings.embedding_model)
     return StubEmbeddingPort()
