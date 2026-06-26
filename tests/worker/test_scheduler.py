@@ -45,7 +45,7 @@ def test_build_scheduler_registers_pipeline_and_resolution_jobs_with_settings() 
         settings=_settings(),
     )
     ids = {job.id for job in scheduler.get_jobs()}
-    assert ids == {"market-crawl", "pipeline-run", "resolution-ingest"}
+    assert ids == {"market-crawl", "pipeline-run", "resolution-ingest", "recalibration-fit"}
 
 
 def test_build_scheduler_registers_smartmoney_jobs_when_falcon_is_wired() -> None:
