@@ -162,6 +162,17 @@ def test_estimate_emits_llm_call_log_with_cost_fields() -> None:
     assert "latency_ms" in call
 
 
+def test_missing_cost_warns_instead_of_measuring_zero_silently() -> None:
+    # PYT-118/R-11: a provider response with no `cost` would otherwise read $0 silently.
+    response = _estimate_response()
+    del response["usage"]["cost"]
+    router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]}, max_price=0.5)
+    port = OpenRouterLLMPort(_FakeTransport([response]), router)
+    with capture_logs() as logs:
+        port.estimate(_ctx())
+    assert any(entry["event"] == "llm_cost_missing" for entry in logs)
+
+
 def test_cost_event_is_stamped_with_the_bound_correlation_id() -> None:
     costs: list[CostEvent] = []
     transport = _FakeTransport([_estimate_response()])

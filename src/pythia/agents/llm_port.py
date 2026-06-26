@@ -378,6 +378,8 @@ class OpenRouterLLMPort:
         input_tokens = int(usage.get("prompt_tokens", 0))
         output_tokens = int(usage.get("completion_tokens", 0))
         cached_tokens = int(details.get("cached_tokens", 0))
+        if usage.get("cost") is None:  # mirror llm_provider_missing — don't measure 0 silently
+            _log.warning("llm_cost_missing", model=model)
         cost_usd = float(usage.get("cost", 0.0))
         _log.info(
             "llm_call",

@@ -136,8 +136,12 @@ class PipelineAgreementEvaluator:
             snapshot = self._snapshots.latest_for_market_asof(entry.market_id, asof=entry.ts)
             if snapshot is None:
                 continue  # no point-in-time price at entry time — cannot replay
-            # Replay the live estimate→critic path (§3.3): the mandatory critic lowers confidence on
-            # lookahead/weak sources, so agreement counts only entries the system would commit to.
+            # Replay the live estimate→critic→score path (§3.3): the mandatory critic lowers
+            # confidence on lookahead/weak sources, so agreement counts only entries the system
+            # would commit to. This is a DIRECTIONAL approximation of the live pipeline, not a PnL
+            # replay (R-10): risk penalties are neutral (p_resol/p_liq/p_time/p_corr = 1.0), fee and
+            # slippage are 0, and no recalibration map is applied. It answers "would we have
+            # independently flagged +EV here?", which is all agree_rate/agreed_bpd need.
             evidence = self._evidence.retrieve(market.id, snapshot.ts, self._k)
             estimate = self._llm.estimate(
                 EstimationContext(market=market, snapshot=snapshot, evidence=evidence)

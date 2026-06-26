@@ -1,13 +1,16 @@
 """Evaluation harness (§5.2): replay frozen markets through configs, rank by Brier-per-dollar.
 
-Pure: the dataset is frozen point-in-time cases and each config's runner is injected, so this module
-only aggregates measured results into metrics. The decision metric is Brier-per-dollar — a config's
-calibration improvement over the market baseline per dollar spent, where higher is better.
+Aggregates injected, measured per-case results into metrics; the dataset is frozen point-in-time
+cases. The decision metric is Brier-per-dollar — a config's calibration improvement over the market
+baseline per dollar spent, where higher is better. A config that reports **zero measured cost**
+(a missing ``usage.cost``) would score ``+inf`` and top the ranking, so it is **warned**, not
+silently ranked first.
 """
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from pythia.common.logging import get_logger
 from pythia.eval.functions import brier_score, calibration_by_category
 from pythia.eval.harness.models import (
     Ablation,
@@ -16,6 +19,8 @@ from pythia.eval.harness.models import (
     EvalCase,
     HarnessReport,
 )
+
+_log = get_logger(__name__)
 
 Runner = Callable[[EvalCase], CaseResult]
 
@@ -47,6 +52,10 @@ def config_report(name: str, dataset: list[EvalCase], results: list[CaseResult])
     brier_market = brier_score(markets, outcomes) if markets else 0.0
     brier_delta = brier_market - brier_system
     total_cost = sum(result.cost_usd for result in results)
+    if valid and total_cost <= 0.0:
+        # Successful estimations but no measured cost ⇒ Brier-per-dollar is +inf and would top the
+        # ranking. Surface it (R-11) rather than letting an unmeasured config silently win.
+        _log.warning("harness_zero_cost", config=name, n=len(valid))
 
     records: dict[str, list[tuple[float, float, int]]] = {}
     for case, result in valid:
