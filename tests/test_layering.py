@@ -1,7 +1,9 @@
 """Layering + money-path purity invariants (§3, PYT-108/PYT-110): the pure core decides size/veto
 and must stay deterministic and dependency-free.
 
-Two AST guards over real (non-TYPE_CHECKING) runtime code in scoring/risk/eval/portfolio:
+Two AST guards over real (non-TYPE_CHECKING) runtime code in the pure modules — scoring/risk/eval/
+portfolio, the common/ contract layer (minus the logging adapter) and smartmoney/metrics (PYT-110,
+PYT-123):
   1. an import allowlist — only stdlib, the math stack (numpy/scipy/pydantic), the shared contracts
      (pythia.common) and the sibling pure packages. A reverse import (pythia.agents/db/rag) or a
      framework (fastapi/httpx/sqlmodel) fails CI — "math decides", never an agent;
@@ -23,6 +25,13 @@ _SRC = Path(__file__).resolve().parents[1] / "src" / "pythia"
 
 # The pure money-path + analytics core (CLAUDE.md rule 16).
 _PURE_CORE = ("scoring", "risk", "eval", "portfolio")
+
+# The contract layer (common/) and pure trader scoring take time and seeds as parameters too
+# (PYT-123), so the same allowlist + clock/RNG bans apply. common/logging.py is the composition /
+# adapter layer (logfire/structlog) and is deliberately excluded.
+_PURE_EXTRA_PACKAGES = ("common",)
+_PURE_EXTRA_MODULES = ("smartmoney/metrics.py",)
+_PURE_EXCLUDE = frozenset({"common/logging.py"})
 
 # Allowlist for the pure core: the math stack, the shared contracts, and the sibling pure packages.
 _ALLOWED_THIRD_PARTY = frozenset({"numpy", "scipy", "pydantic"})
@@ -114,26 +123,34 @@ def _denylist_violations(package: str, forbidden: tuple[str, ...]) -> list[str]:
     return found
 
 
+def _pure_paths() -> list[Path]:
+    paths: list[Path] = []
+    for package in (*_PURE_CORE, *_PURE_EXTRA_PACKAGES):
+        paths += sorted((_SRC / package).rglob("*.py"))
+    paths += [_SRC / module for module in _PURE_EXTRA_MODULES]
+    return [path for path in paths if path.relative_to(_SRC).as_posix() not in _PURE_EXCLUDE]
+
+
+_PURE_PATHS = _pure_paths()
+_PURE_IDS = [path.relative_to(_SRC).as_posix() for path in _PURE_PATHS]
+
+
 # ---- The real packages on main: every guard must be green ----
 
 
-@pytest.mark.parametrize("package", _PURE_CORE)
-def test_pure_core_imports_stay_within_the_allowlist(package: str) -> None:
+@pytest.mark.parametrize("path", _PURE_PATHS, ids=_PURE_IDS)
+def test_should_keep_pure_modules_within_the_import_allowlist(path: Path) -> None:
     bad = [
         f"{path.relative_to(_SRC)} imports {module}"
-        for path in sorted((_SRC / package).rglob("*.py"))
         for module in _runtime_imports(path)
         if not _import_allowed(module)
     ]
     assert bad == []
 
 
-@pytest.mark.parametrize("package", _PURE_CORE)
-def test_pure_core_has_no_clock_or_rng(package: str) -> None:
-    bad = [
-        v for path in sorted((_SRC / package).rglob("*.py")) for v in _clock_rng_violations(path)
-    ]
-    assert bad == []
+@pytest.mark.parametrize("path", _PURE_PATHS, ids=_PURE_IDS)
+def test_should_keep_pure_modules_free_of_clock_and_rng(path: Path) -> None:
+    assert _clock_rng_violations(path) == []
 
 
 @pytest.mark.parametrize(("package", "forbidden"), sorted(_FORBIDDEN.items()))
@@ -141,6 +158,18 @@ def test_should_respect_the_layering_dependency_rule(
     package: str, forbidden: tuple[str, ...]
 ) -> None:
     assert _denylist_violations(package, forbidden) == []
+
+
+def test_should_guard_the_contract_layer_and_pure_smartmoney_metrics() -> None:
+    guarded = set(_PURE_IDS)
+    assert {
+        "common/types.py",
+        "common/ports.py",
+        "common/ids.py",
+        "common/venue.py",
+        "smartmoney/metrics.py",
+    } <= guarded
+    assert "common/logging.py" not in guarded  # composition/adapter layer stays excluded
 
 
 # ---- The guards themselves: red on an injected violation, allowing the legitimate patterns ----
