@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, col, select
 
 from pythia.common import (
@@ -920,14 +920,21 @@ class VenueQuoteRepository:
         ).all()
         return [_from_db_venue_quote(row) for row in rows]
 
-    def retrieve_for_markets(self, market_ids: list[str]) -> dict[str, list[VenueQuote]]:
-        """Batch fetch all quotes for the given markets — no asof filter (caller filters)."""
-        if not market_ids:
+    def retrieve_for_markets(
+        self, asof_by_market: dict[str, datetime]
+    ) -> dict[str, list[VenueQuote]]:
+        """Batch fetch quotes per market, each filtered to its own asof in SQL (point-in-time)."""
+        if not asof_by_market:
             return {}
+        conditions = [
+            and_(
+                col(models.VenueQuote.market_id) == uuid.UUID(mid),
+                col(models.VenueQuote.ts) <= asof,
+            )
+            for mid, asof in asof_by_market.items()
+        ]
         rows = self._session.exec(
-            select(models.VenueQuote)
-            .where(col(models.VenueQuote.market_id).in_([uuid.UUID(mid) for mid in market_ids]))
-            .order_by(col(models.VenueQuote.ts))
+            select(models.VenueQuote).where(or_(*conditions)).order_by(col(models.VenueQuote.ts))
         ).all()
         result: dict[str, list[VenueQuote]] = {}
         for row in rows:
