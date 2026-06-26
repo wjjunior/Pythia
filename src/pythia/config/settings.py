@@ -114,6 +114,7 @@ class Settings(BaseSettings):
     model_max_attempts: int = 2
     recalibration_method: RecalibrationMethod = "platt"
     recalibration_min_n: int = 50
+    recalibration_interval_seconds: int = 86_400  # slow cadence: maps move only as resolutions land
     dispute_risk_lookback: int = 90
 
     # Calibration gate (§8.5) — a category clears only on measured calibration; invalid-rate cap

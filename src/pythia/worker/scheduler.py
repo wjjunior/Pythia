@@ -16,6 +16,7 @@ from pythia.ingestion.evidence import EvidenceTransport
 from pythia.ingestion.falcon import FalconPort
 from pythia.ingestion.venues import VenueClient
 from pythia.orchestration import run_open_markets
+from pythia.services.calibration import RecalibrationService
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
 from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
 from pythia.worker.smartmoney_ingest import run_detection, run_roster_review
@@ -70,6 +71,20 @@ def resolution_tick(
 ) -> None:
     with session_factory() as session:
         resolution_ingest_tick(session, settings, crawler)
+
+
+def recalibration_tick(
+    session_factory: SessionFactory, settings: Settings, clock: Callable[[], datetime]
+) -> None:
+    # Refit per-category p_model→p_calibrated maps as of now (resolutions strictly before it). The
+    # map's fit_asof = now; the pipeline applies it only to snapshots with ts >= now (PYT-111).
+    with session_factory() as session:
+        stored = RecalibrationService(session).fit_and_store(
+            clock(),
+            method=settings.recalibration_method,
+            min_n=settings.recalibration_min_n,
+        )
+    _log.info("recalibration_fit_tick", categories=len(stored))
 
 
 def smartmoney_detection_tick(
@@ -144,6 +159,13 @@ def build_scheduler(
             "interval",
             seconds=interval_seconds,
             id="resolution-ingest",
+            next_run_time=now,
+        )
+        scheduler.add_job(
+            lambda: recalibration_tick(session_factory, settings, clock),
+            "interval",
+            seconds=settings.recalibration_interval_seconds,
+            id="recalibration-fit",
             next_run_time=now,
         )
     if session_factory is not None and settings is not None and falcon is not None:
