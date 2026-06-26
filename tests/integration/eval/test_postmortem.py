@@ -39,7 +39,14 @@ def _uid(name: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
 
 
-def _seed_estimate(session: Session, name: str, *, p_model: float, confidence: float) -> Estimate:
+def _seed_estimate(
+    session: Session,
+    name: str,
+    *,
+    p_model: float,
+    confidence: float,
+    p_model_calibrated: float | None = None,
+) -> Estimate:
     market_id = _uid(name)
     snapshot_id = _uid(f"{name}-snap")
     MarketRepository(session).upsert(
@@ -64,6 +71,7 @@ def _seed_estimate(session: Session, name: str, *, p_model: float, confidence: f
             market_id=market_id,
             snapshot_id=snapshot_id,
             p_model=p_model,
+            p_model_calibrated=p_model_calibrated,
             confidence=confidence,
             lower=max(0.0, p_model - 0.1),
             upper=min(1.0, p_model + 0.1),
@@ -132,6 +140,23 @@ def test_detect_category_drift_uses_the_configured_window(session: Session) -> N
     service = PostmortemService(session, _settings())  # default postmortem_drift_window = 20
     assert service.detect_category_drift([0.1] * 20 + [-0.05] * 20)  # was ahead, now behind
     assert not service.detect_category_drift([0.1] * 40)  # steadily ahead of the market
+
+
+def test_should_measure_the_committed_forecast_for_surprise_and_brier(session: Session) -> None:
+    # PYT-112: raw 0.7 is a calibrated loss (not surprising), but the committed (recalibrated) 0.95
+    # IS a confident miss. The surprise trigger and the stored Brier must measure the committed
+    # forecast the system acted on — not the raw estimator output.
+    estimate = _seed_estimate(
+        session, "committed-surprise", p_model=0.7, confidence=0.9, p_model_calibrated=0.95
+    )
+    service = PostmortemService(session, _settings())
+
+    postmortem = service.review_resolution(
+        estimate, _fresh_evidence(), category="politics", outcome=0, ambiguous=False, asof=AT
+    )
+
+    assert postmortem is not None  # fires on the committed 0.95, not the raw 0.7
+    assert postmortem.brier == pytest.approx((0.95 - 0) ** 2)  # committed Brier, not raw 0.49
 
 
 def test_calibrated_loss_writes_nothing(session: Session) -> None:

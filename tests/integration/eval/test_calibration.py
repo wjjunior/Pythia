@@ -325,6 +325,18 @@ def test_should_exclude_a_committed_forecast_whose_map_was_fit_after_the_snapsho
     assert politics.brier_system == pytest.approx((0.8 - 1) ** 2)  # the clean committed forecast
 
 
+def test_should_measure_the_committed_forecast_in_drift_deltas(session: Session) -> None:
+    # PYT-112: the drift signal must measure the committed (recalibrated) forecast, not raw p_model.
+    # Raw 0.2 → delta 0.25 - 0.64; committed 0.8 → delta 0.25 - 0.04.
+    _market(session, "drift", "politics")
+    _snapshot(session, "drift", 0.5)
+    _estimate(session, "drift", 0.2, p_model_calibrated=0.8)
+    _resolution(session, "drift", 1)
+
+    deltas = CalibrationService(session, settings=_settings()).category_brier_deltas("politics")
+    assert deltas == [pytest.approx(0.25 - 0.04)]
+
+
 def test_reliability_curve_is_produced(session: Session) -> None:
     _resolved_market(session, "r1", "politics", q=0.5, p_model=0.2, outcome=0)
     _resolved_market(session, "r2", "politics", q=0.5, p_model=0.85, outcome=1)
