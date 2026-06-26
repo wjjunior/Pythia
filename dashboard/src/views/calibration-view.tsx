@@ -29,6 +29,8 @@ import {
   COHORT_LABELS,
   COHORT_MIN_N,
   COHORT_SLICES,
+  gateBlockedReasons,
+  gateState,
   OVERALL_COHORT,
 } from "@/lib/ranking"
 import type { CohortCalibration, ReliabilityBin } from "@/lib/types"
@@ -133,6 +135,7 @@ export function CalibrationView() {
       <QueryState query={calibration}>
         {(report) => {
           const reliability = reliabilityData(report.reliability)
+          const gateByCategory = new Map(report.gates.map((gate) => [gate.category, gate]))
           return (
             <div className="flex flex-col gap-4">
               <Card>
@@ -153,11 +156,13 @@ export function CalibrationView() {
                           <TableHead className="text-right">Δ</TableHead>
                           <TableHead className="text-right">invalid-rate</TableHead>
                           <TableHead>Verdict</TableHead>
+                          <TableHead>Gate</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {report.categories.map((category) => {
                           const verdict = VERDICT[calibrationVerdict(category)]
+                          const gate = gateByCategory.get(category.category)
                           return (
                             <TableRow key={category.category}>
                               <TableCell className="font-medium">{category.category}</TableCell>
@@ -176,6 +181,15 @@ export function CalibrationView() {
                               </TableCell>
                               <TableCell>
                                 <Badge variant={verdict.variant}>{verdict.label}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                {gateState(gate) === "cleared" ? (
+                                  <Badge variant="positive">cleared</Badge>
+                                ) : (
+                                  <Badge variant="muted" title={gateBlockedReasons(gate)}>
+                                    gated
+                                  </Badge>
+                                )}
                               </TableCell>
                             </TableRow>
                           )

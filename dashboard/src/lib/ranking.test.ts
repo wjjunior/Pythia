@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import { calibrationVerdict, cohortConfidence, COHORT_MIN_N, exposureSeverity } from "./ranking"
-import type { CategoryCalibration } from "./types"
+import {
+  calibrationVerdict,
+  cohortConfidence,
+  COHORT_MIN_N,
+  exposureSeverity,
+  gateBlockedReasons,
+  gateState,
+} from "./ranking"
+import type { CategoryCalibration, GateDecision } from "./types"
 
 const category = (delta: number): CategoryCalibration => ({
   category: "c",
@@ -31,6 +38,29 @@ describe("cohortConfidence", () => {
     expect(cohortConfidence(COHORT_MIN_N - 1)).toBe("low")
     expect(cohortConfidence(COHORT_MIN_N)).toBe("ok")
     expect(cohortConfidence(COHORT_MIN_N + 50)).toBe("ok")
+  })
+})
+
+const gate = (cleared: boolean, reasons: GateDecision["reasons"]): GateDecision => ({
+  category: "politics",
+  cleared,
+  reasons,
+})
+
+describe("gateState", () => {
+  it("is cleared only when the gate cleared; absent ⇒ gated", () => {
+    expect(gateState(gate(true, []))).toBe("cleared")
+    expect(gateState(gate(false, ["no_brier_edge"]))).toBe("gated")
+    expect(gateState(undefined)).toBe("gated")
+  })
+})
+
+describe("gateBlockedReasons", () => {
+  it("labels the gate reasons; absent ⇒ no resolved markets", () => {
+    expect(gateBlockedReasons(gate(false, ["insufficient_n", "no_brier_edge"]))).toBe(
+      "not enough resolved n, no Brier edge vs market",
+    )
+    expect(gateBlockedReasons(undefined)).toBe("no resolved markets yet")
   })
 })
 

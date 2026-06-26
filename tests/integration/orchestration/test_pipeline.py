@@ -341,6 +341,20 @@ def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> N
     assert result.estimate.p_model_calibrated == pytest.approx(0.7)
 
 
+def test_pipeline_gates_a_category_with_a_map_that_fails_the_brier_gate(session: Session) -> None:
+    # PYT-101: an active recalibration map exists (n_fit=100 ≥ min_n) — the OLD data-sufficiency
+    # proxy would mark the category calibrated. But it has NOT cleared the §8.5 Brier gate (no
+    # resolved markets), so paper_only must stay True: market superiority, not map existence.
+    market, snapshot = _seed(session)
+    RecalibrationRepository(session).save(
+        "politics",
+        CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.4, 0.6]}),
+        n_fit=100,
+    )
+    result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.decision.paper_only is True
+
+
 def test_pipeline_sizes_down_a_high_invalid_rate_category(session: Session) -> None:
     market, snapshot = _seed(session)  # politics, UMA source → base P_resol 0.6
     _seed_disputes(session, "politics", ambiguous=2, valid=2, resolved_at=ASOF - timedelta(days=5))

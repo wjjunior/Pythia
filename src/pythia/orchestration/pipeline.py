@@ -38,6 +38,7 @@ from pythia.db.repositories import (
     SourceRepository,
     VenueQuoteRepository,
 )
+from pythia.eval.service import CalibrationService, gate_thresholds_from_settings
 from pythia.portfolio.service import PortfolioService
 from pythia.risk import (
     ExposureState,
@@ -164,7 +165,7 @@ class Pipeline:
         # The deterministic layer sizes on the recalibrated, market-distrust-adjusted forecast.
         # Persist that committed p_model on the estimate so the calibration verdict measures the
         # forecast the system actually acts on, not the raw estimator output (PYT-100, §4.9).
-        scored, category_calibrated = self._recalibrated(market.category, critiqued)
+        scored, _recalibrated = self._recalibrated(market.category, critiqued)
         scored = self._distrust_market_disagreement(scored, snapshot)
         committed = critiqued.model_copy(update={"p_model_calibrated": scored.p_model})
         self._estimates.add(committed)
@@ -185,6 +186,10 @@ class Pipeline:
 
         graded_p_resol, resolution_gated = self._resolution_risk(market, snapshot)
         p_corr = self._venue_p_corr(market, snapshot)
+        # `paper_only` is driven by the §8.5 gate (market superiority over min-n), not by the mere
+        # existence of a recalibration map — a category with a map that fails the Brier gate stays
+        # gated (PYT-101). The category being scored is unresolved, so it is never in the gate set.
+        category_cleared = self._category_cleared(market.category)
         score = self._score(scored, snapshot, graded_p_resol, p_corr)
         self._scores.add(score)
         _log.info(
@@ -203,7 +208,7 @@ class Pipeline:
                     "opportunity_score": score.opportunity_score,
                     "edge_net": score.edge_net,
                     "p_calibrated": scored.p_model,
-                    "category_calibrated": category_calibrated,
+                    "category_cleared": category_cleared,
                 },
             )
         )
@@ -216,7 +221,7 @@ class Pipeline:
             capital.available_capital,
             exposure,
             limits,
-            category_calibrated,
+            category_cleared,
             resolution_gated,
         )
         _log.info(
@@ -278,6 +283,17 @@ class Pipeline:
         if n_fit < self._settings.recalibration_min_n:
             return estimate, False
         return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
+
+    def _category_cleared(self, category: str) -> bool:
+        # Has this category cleared the §8.5 gate (Brier(system) < Brier(market) by margin over
+        # min-n, EV honest, resolution quality ok)? Drives `paper_only`. Measured on the committed
+        # forecast (PYT-100) over only resolved markets, so the market being scored is never in it.
+        service = CalibrationService(self._session, settings=self._settings)
+        thresholds = gate_thresholds_from_settings(self._settings)
+        return any(
+            decision.category == category and decision.cleared
+            for decision in service.gate_status(thresholds)
+        )
 
     def _distrust_market_disagreement(
         self, estimate: Estimate, snapshot: MarketSnapshot

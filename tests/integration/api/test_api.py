@@ -705,6 +705,10 @@ def test_calibration_reports_categories(client: TestClient, session: Session) ->
     body = client.get("/api/calibration").json()
     assert body["categories"][0]["category"] == "politics"
     assert body["categories"][0]["n"] == 1
+    # PYT-101: the §8.5 gate is surfaced per category; n=1 is below gate_min_n so it is not cleared.
+    gate = next(g for g in body["gates"] if g["category"] == "politics")
+    assert gate["cleared"] is False
+    assert "insufficient_n" in gate["reasons"]
 
 
 def _resolve_market(session: Session, *, outcome: int = 1) -> None:

@@ -20,6 +20,7 @@ from pythia.common import (
     TrackedTrader,
     TraderEntry,
 )
+from pythia.eval.gate import GateDecision
 from pythia.eval.models import CategoryCalibration, CohortCalibration, EvCalibration, ReliabilityBin
 
 
@@ -78,6 +79,9 @@ class CalibrationResponse(BaseModel):
     reliability: list[ReliabilityBin]
     ev: EvCalibration | None
     cohorts: list[CohortCalibration]
+    # The §8.5 gate per category: cleared iff Brier(system) beats the market by margin over min-n,
+    # EV honest, resolution ok. The Brier/n/invalid components live in `categories` (join by name).
+    gates: list[GateDecision]
 
 
 class CostResponse(BaseModel):
