@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from structlog.testing import capture_logs
 
 from pythia.agents import ModelRouter, OpenRouterLLMPort, StubLLMPort
 from pythia.common import (
@@ -202,3 +203,14 @@ def test_single_best_vs_ensemble_is_a_ranked_harness_axis() -> None:
     assert costs["ensemble"] > costs["single"]
     ranked = [config.brier_per_dollar for config in report.configs]
     assert ranked == sorted(ranked, reverse=True)
+
+
+def test_zero_cost_config_warns_so_inf_does_not_silently_top() -> None:
+    # PYT-118/R-11: a config that beats the market at zero measured cost scores +inf and would top
+    # the ranking; config_report must warn so that win is never silent.
+    dataset = [_case(0.5, 1)]
+    results = [CaseResult(p_model=0.9, cost_usd=0.0, latency_ms=1.0)]  # beats the market, no cost
+    with capture_logs() as logs:
+        report = config_report("free", dataset, results)
+    assert any(entry["event"] == "harness_zero_cost" for entry in logs)
+    assert math.isinf(report.brier_per_dollar) and report.brier_per_dollar > 0

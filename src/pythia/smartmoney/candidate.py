@@ -129,6 +129,9 @@ class PipelineCandidateEvaluator:
         return market.id
 
     def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+        # Evaluate-now (§5.5, R-12): score the market's CURRENT snapshot, never the historical
+        # trigger price. ``asof`` is the trigger time, recorded on the candidate / logged for audit
+        # only — a historical-asof replay would instead source latest_for_market_asof(asof).
         snapshot = self._snapshots.latest_for_market(market_id)
         if snapshot is None:
             _log.info("candidate_skipped_no_snapshot", market_id=market_id)

@@ -3,8 +3,10 @@
 ``build_scorecard`` is pure. ``SelectionHarness`` reviews each wallet at an ``asof`` — sourcing its
 per-resolution returns/categories and its pipeline-agreement through seams that must only use data
 resolved **before** ``asof`` (no lookahead, §3.5) — and persists the scorecard. The real seams wire
-Falcon P&L (returns) and a held-out replay of the wallet's resolved entries through the v1 pipeline
-(``agree_rate``, ``agreed_bpd``); both stay behind the Protocols so the harness is testable offline.
+Falcon P&L (returns) and a held-out replay of the wallet's resolved entries through the v1
+estimate→critic→score path — a directional approximation (neutral risk penalties, no fee/slippage/
+recalibration; see ``scoring.py``), not a sized-PnL replay — yielding ``agree_rate``/``agreed_bpd``;
+both stay behind the Protocols so the harness is testable offline.
 """
 
 from collections.abc import Sequence
@@ -129,7 +131,8 @@ class TraderReturns(Protocol):
 
 class AgreementEvaluator(Protocol):
     def agreement(self, trader: TrackedTrader, asof: datetime) -> tuple[float, float]:
-        """(agree_rate, agreed_bpd): replay resolved entries through the pipeline, point-in-time."""
+        """(agree_rate, agreed_bpd): replay resolved entries through the estimate→critic→score path
+        (a directional approximation, not the sized pipeline), point-in-time."""
         ...
 
 

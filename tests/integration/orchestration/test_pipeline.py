@@ -41,6 +41,7 @@ from pythia.eval.recalibration import CalibrationMap
 from pythia.orchestration import Pipeline, PipelineRunStatus
 from pythia.rag import EvidenceStore, StubEmbeddingPort
 from pythia.risk import RiskReason
+from pythia.smartmoney.evidence import SMART_MONEY_SOURCE_ID
 
 pytestmark = pytest.mark.integration
 
@@ -435,3 +436,22 @@ def test_pipeline_marks_the_run_failed_on_error(session: Session) -> None:
     assert len(runs) == 1
     assert runs[0].status == PipelineRunStatus.FAILED
     assert runs[0].finished_at is not None
+
+
+def test_flow_evidence_synthetic_source_does_not_break_source_reliability(session: Session) -> None:
+    # PYT-118/R-13: smart-money flow evidence carries SMART_MONEY_SOURCE_ID with no `sources` row;
+    # the source-reliability join must skip it gracefully — it never enters the deterministic path.
+    pipeline = _pipeline(session, StubLLMPort())
+    news_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "news-src"))
+    SourceRepository(session).upsert(Source(id=news_id, name="news", kind="news", reliability=0.8))
+    flow = Evidence(
+        id="ev-flow",
+        market_id="m",
+        source_id=SMART_MONEY_SOURCE_ID,
+        observed_at=ASOF,
+        content="flow",
+    )
+    real = Evidence(id="ev-news", market_id="m", source_id=news_id, observed_at=ASOF, content="x")
+
+    assert pipeline._source_reliability([flow]) == 0.0  # synthetic-only → gracefully 0, no crash
+    assert pipeline._source_reliability([flow, real]) == pytest.approx(0.8)  # synthetic skipped
