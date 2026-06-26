@@ -5,9 +5,10 @@ a margin over a significant number of resolutions, with EV honest (realized ≈ 
 resolution quality acceptable. This decision is the prerequisite to real-money execution (PYT-58);
 the module deliberately never wires it. Thresholds enter as a parameter, not from config.
 
-"Stable, not lucky" is approximated by a large min_n plus a positive Brier margin; a statistical
-significance test (a confidence interval on the Brier delta) and per-category EV are future
-refinements that need the per-market paired briers exposed.
+EV-honesty is judged per category (PYT-114): ``ev`` is that category's own realized-vs-predicted EV,
+never a system-wide figure, so a category cannot clear on honesty borrowed from others. "Stable, not
+lucky" is approximated by a large min_n plus a positive Brier margin; a significance test (a
+confidence interval on the Brier delta) is the remaining future refinement.
 """
 
 from dataclasses import dataclass

@@ -9,7 +9,7 @@ from sqlmodel import Session
 from pythia.common import Side, TradeStatus
 from pythia.config import Settings
 from pythia.db import models
-from pythia.eval.gate import GateReason
+from pythia.eval.gate import GateReason, GateThresholds
 from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
 
 pytestmark = pytest.mark.integration
@@ -106,6 +106,50 @@ def _resolved_market(
     _snapshot(session, name, q)
     _estimate(session, name, p_model)
     _resolution(session, name, outcome, ambiguous=ambiguous)
+
+
+def _trade(session: Session, name: str, *, side: Side, entry: float, p_model: float) -> None:
+    session.add(
+        models.PaperTrade(
+            id=_uid(f"{name}-trade"),
+            market_id=_uid(name),
+            estimate_id=_uid(f"{name}-est-{p_model}-None"),
+            side=side,
+            entry_price=entry,
+            size=100.0,
+            status=TradeStatus.RESOLVED,
+            opened_at=_TS,
+            resolved_at=_TS + timedelta(days=10),
+            pnl=0.0,
+        )
+    )
+    session.commit()
+
+
+def test_gate_ev_honesty_is_per_category_not_borrowed(session: Session) -> None:
+    # politics is honest on its OWN trade (p_win 0.96 ≈ the win); sports is over-confident (p_win
+    # 0.50, lost). The two blend to a dishonest system-wide EV — but per category, politics must
+    # clear the EV pillar while sports fails it, which a single global EV could never produce.
+    _resolved_market(session, "p1", "politics", q=0.5, p_model=0.96, outcome=1)
+    _trade(session, "p1", side=Side.YES, entry=0.5, p_model=0.96)
+    _resolved_market(session, "s1", "sports", q=0.9, p_model=0.5, outcome=0)
+    _trade(session, "s1", side=Side.YES, entry=0.5, p_model=0.5)
+    session.commit()
+
+    svc = CalibrationService(session, settings=_settings())
+    report = svc.report()
+    assert report.ev is not None
+    # the blended, system-wide EV reads dishonest — what the old global gate fed to both categories
+    assert abs(report.ev.mean_predicted - report.ev.mean_realized) > 0.05
+
+    # Permissive on every pillar but EV, so EV-honesty alone decides each category.
+    thresholds = GateThresholds(min_n=1, brier_margin=0.0, ev_tolerance=0.05, max_invalid_rate=1.0)
+    decisions = {d.category: d for d in svc.gate_status(thresholds)}
+
+    assert GateReason.EV_NOT_HONEST not in decisions["politics"].reasons  # honest on its OWN EV
+    assert decisions["politics"].cleared is True
+    assert decisions["sports"].reasons == (GateReason.EV_NOT_HONEST,)  # fails only on its OWN EV
+    assert decisions["sports"].cleared is False
 
 
 def test_per_category_brier_with_n_excluding_ambiguous(session: Session) -> None:

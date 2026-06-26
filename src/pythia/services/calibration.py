@@ -106,8 +106,9 @@ def _committed(estimate: models.Estimate) -> float:
 class CalibrationReport:
     categories: list[CategoryCalibration]
     reliability: list[ReliabilityBin]
-    ev: EvCalibration | None
+    ev: EvCalibration | None  # system-wide, for the dashboard honesty panel
     cohorts: list[CohortCalibration]
+    ev_by_category: dict[str, EvCalibration]  # the §8.5 gate's per-category EV-honesty pillar
 
 
 def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
@@ -117,6 +118,21 @@ def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
         ev_tolerance=settings.gate_ev_tolerance,
         max_invalid_rate=settings.max_category_invalid_rate,
     )
+
+
+def _global_ev(samples: list[tuple[str, float, float]]) -> EvCalibration | None:
+    if not samples:
+        return None
+    return ev_predicted_vs_realized([p for _c, p, _r in samples], [r for _c, _p, r in samples])
+
+
+def _ev_by_category(samples: list[tuple[str, float, float]]) -> dict[str, EvCalibration]:
+    grouped: dict[str, tuple[list[float], list[float]]] = {}
+    for category, predicted, realized in samples:
+        bucket = grouped.setdefault(category, ([], []))
+        bucket[0].append(predicted)
+        bucket[1].append(realized)
+    return {category: ev_predicted_vs_realized(p, r) for category, (p, r) in grouped.items()}
 
 
 class CalibrationService:
@@ -135,10 +151,14 @@ class CalibrationService:
         return self._assemble(by_category, by_cohort, outcomes, n_bins)
 
     def gate_status(self, thresholds: GateThresholds) -> list[GateDecision]:
-        # The §8.5 gate per category; ev is system-wide today (per-category EV is a future
-        # refinement). A category clears only on measured calibration — never wires execution.
+        # The §8.5 gate per category, each judged on its OWN EV-honesty (PYT-114) — a category can
+        # no longer clear the EV pillar on honesty borrowed from other categories. Clearing rests on
+        # measured calibration only; this never wires execution.
         report = self.report()
-        return [evaluate_gate(category, report.ev, thresholds) for category in report.categories]
+        return [
+            evaluate_gate(category, report.ev_by_category.get(category.category), thresholds)
+            for category in report.categories
+        ]
 
     def _assemble(
         self,
@@ -150,11 +170,13 @@ class CalibrationService:
         forecasts = [p_model for samples in records.values() for (p_model, _q, _o) in samples]
         observed = [outcome for samples in records.values() for (_p, _q, outcome) in samples]
         invalid_counts = ResolutionRepository(self._session).invalid_counts_by_category()
+        ev_samples = self._ev_samples(outcomes)
         return CalibrationReport(
             categories=calibration_by_category(records, invalid_counts),
             reliability=reliability_bins(forecasts, observed, n_bins) if forecasts else [],
-            ev=self._ev(outcomes),
+            ev=_global_ev(ev_samples),
             cohorts=calibration_by_cohort(by_cohort),
+            ev_by_category=_ev_by_category(ev_samples),
         )
 
     def records(self) -> _Records:
@@ -257,16 +279,17 @@ class CalibrationService:
         ).all()
         return {row.id: row.yes_price for row in rows if row.id is not None}
 
-    def _ev(self, outcomes: dict[uuid.UUID, int]) -> EvCalibration | None:
+    def _ev_samples(self, outcomes: dict[uuid.UUID, int]) -> list[tuple[str, float, float]]:
+        """(category, predicted_ev, realized_ev) for each resolved paper trade."""
         if not outcomes:
-            return None
+            return []
         trades = self._session.exec(
             select(models.PaperTrade)
             .where(col(models.PaperTrade.market_id).in_(list(outcomes)))
             .where(models.PaperTrade.status == TradeStatus.RESOLVED)
         ).all()
         if not trades:
-            return None
+            return []
         p_models = {
             row.id: _committed(row)
             for row in self._session.exec(
@@ -275,17 +298,18 @@ class CalibrationService:
                 )
             ).all()
         }
-        predicted: list[float] = []
-        realized: list[float] = []
+        categories = _categories_of(self._session, [trade.market_id for trade in trades])
+        samples: list[tuple[str, float, float]] = []
         for trade in trades:
             side = Side(trade.side)
             outcome = outcomes[trade.market_id]
             p_model = p_models[trade.estimate_id]
             p_win = p_model if side == Side.YES else 1.0 - p_model
             won = (side == Side.YES and outcome == 1) or (side == Side.NO and outcome == 0)
-            predicted.append(p_win - trade.entry_price)
-            realized.append((1.0 if won else 0.0) - trade.entry_price)
-        return ev_predicted_vs_realized(predicted, realized)
+            predicted = p_win - trade.entry_price
+            realized = (1.0 if won else 0.0) - trade.entry_price
+            samples.append((categories[trade.market_id], predicted, realized))
+        return samples
 
 
 class RecalibrationService:
