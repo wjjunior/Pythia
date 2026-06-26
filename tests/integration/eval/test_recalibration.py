@@ -10,7 +10,7 @@ from sqlmodel import Session
 from pythia.db import models
 from pythia.db.repositories import RecalibrationRepository
 from pythia.eval.recalibration import CalibrationMap
-from pythia.eval.service import RecalibrationService
+from pythia.services.calibration import RecalibrationService
 
 pytestmark = pytest.mark.integration
 

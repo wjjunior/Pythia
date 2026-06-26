@@ -9,9 +9,9 @@ from fastapi import APIRouter, HTTPException
 
 from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import GrowthCurvePointView, SimulationResponse
-from pythia.eval.service import CalibrationService
 from pythia.eval.simulation.montecarlo import simulate
-from pythia.portfolio.service import PortfolioService
+from pythia.services.calibration import CalibrationService
+from pythia.services.portfolio import PortfolioService
 
 router = APIRouter(tags=["simulation"])
 

@@ -36,6 +36,11 @@ def migrated_engine() -> Iterator[Engine]:
 def session(migrated_engine: Engine) -> Iterator[Session]:
     with Session(migrated_engine) as db_session:
         yield db_session
+    # Per-test reset. We TRUNCATE only the root/independent tables; CASCADE clears every
+    # FK-dependent table transitively (e.g. markets → market_snapshots, estimates, scores,
+    # resolutions, evidence, paper_trades, venue_quotes, postmortems, improvement_candidates,
+    # cohort_memberships, estimate_members, pipeline_runs, cost_events). Listing the roots keeps
+    # this stable as child tables are added — the CASCADE assumption is the contract.
     with migrated_engine.begin() as connection:
         connection.execute(
             text(

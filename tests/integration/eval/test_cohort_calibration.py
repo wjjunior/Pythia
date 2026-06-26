@@ -11,9 +11,9 @@ from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import AuditRepository, ScoreRepository
 from pythia.eval.cohorts import Cohort
-from pythia.eval.service import CalibrationService
 from pythia.orchestration import OutOfCohortError, ReviewGate
 from pythia.paper import PaperLedger
+from pythia.services.calibration import CalibrationService
 
 pytestmark = pytest.mark.integration
 

@@ -38,8 +38,6 @@ from pythia.db.repositories import (
     SourceRepository,
     VenueQuoteRepository,
 )
-from pythia.eval.service import CalibrationService, gate_thresholds_from_settings
-from pythia.portfolio.service import PortfolioService
 from pythia.risk import (
     ExposureState,
     RiskDecision,
@@ -59,6 +57,8 @@ from pythia.scoring import (
     resolution_penalty,
 )
 from pythia.scoring.divergence import divergence, divergence_penalty, latest_prices_per_venue
+from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
+from pythia.services.portfolio import PortfolioService
 
 DEFAULT_RESEARCH_K = 8
 NEUTRAL_PENALTY = 1.0

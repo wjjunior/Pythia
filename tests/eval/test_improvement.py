@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pythia.eval.improvement as improvement_module
 import pythia.eval.postmortem as postmortem_module
-import pythia.eval.service as service_module
+import pythia.services.postmortem as service_module
 from pythia.common import CandidateStatus, FailureClass, ImprovementAction
 from pythia.eval.harness.models import Ablation, ConfigReport
 from pythia.eval.improvement import adoption_decision, requires_review, suggested_action

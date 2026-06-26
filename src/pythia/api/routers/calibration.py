@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import CalibrationResponse
-from pythia.eval.service import CalibrationService, gate_thresholds_from_settings
+from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
 
 router = APIRouter(tags=["calibration"])
 

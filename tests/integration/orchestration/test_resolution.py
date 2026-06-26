@@ -25,9 +25,9 @@ from pythia.db.repositories import (
     PostmortemRepository,
     SnapshotRepository,
 )
-from pythia.eval.service import CalibrationService
 from pythia.orchestration import ResolutionService
 from pythia.paper import PaperLedger
+from pythia.services.calibration import CalibrationService
 
 pytestmark = pytest.mark.integration
 
