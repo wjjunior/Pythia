@@ -365,6 +365,7 @@ class Pipeline:
             confidence=estimate.confidence,
             source_reliability=self._source_reliability(evidence),
             p_resol_severity=1.0 - score.p_resol,
+            opportunity_score=score.opportunity_score,
             category_calibrated=category_calibrated,
             resolution_gated=resolution_gated,
         )
