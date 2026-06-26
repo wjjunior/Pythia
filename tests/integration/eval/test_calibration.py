@@ -217,6 +217,44 @@ def test_gate_status_blocks_a_category_with_insufficient_evidence(session: Sessi
     assert GateReason.INSUFFICIENT_N in politics.reasons  # n=1 << gate_min_n=50
 
 
+def test_should_floor_the_gate_min_n_at_the_recalibration_min_n() -> None:
+    # PYT-121: below recalibration_min_n a category runs the raw estimator, so the §8.5 gate must
+    # never clear it. The gate's effective min_n is therefore the larger of the two knobs, whatever
+    # an operator sets — the coupling can't be broken by splitting the thresholds apart.
+    shared = gate_thresholds_from_settings(
+        Settings(_env_file=None, database_url="x", gate_min_n=50, recalibration_min_n=50)
+    )
+    lower_gate = gate_thresholds_from_settings(
+        Settings(_env_file=None, database_url="x", gate_min_n=2, recalibration_min_n=50)
+    )
+    higher_gate = gate_thresholds_from_settings(
+        Settings(_env_file=None, database_url="x", gate_min_n=80, recalibration_min_n=50)
+    )
+
+    assert shared.min_n == 50
+    assert lower_gate.min_n == 50  # floored at recalibration_min_n, not the lower gate_min_n
+    assert higher_gate.min_n == 80  # a stricter gate is still honoured
+
+
+def test_should_keep_a_category_below_recalibration_min_n_paper_gated_when_gate_min_n_is_lower(
+    session: Session,
+) -> None:
+    # A category below recalibration_min_n is sized on the raw estimator, so it must stay
+    # paper-gated even when gate_min_n alone would admit it (n=2 ≥ gate_min_n=2, < 50).
+    _resolved_market(session, "p1", "politics", q=0.6, p_model=0.8, outcome=1)
+    _resolved_market(session, "p2", "politics", q=0.6, p_model=0.8, outcome=1)
+    session.commit()
+
+    thresholds = gate_thresholds_from_settings(
+        Settings(_env_file=None, database_url="x", gate_min_n=2, recalibration_min_n=50)
+    )
+    decisions = CalibrationService(session, settings=_settings()).gate_status(thresholds)
+
+    politics = next(decision for decision in decisions if decision.category == "politics")
+    assert GateReason.INSUFFICIENT_N in politics.reasons  # n=2 ≥ gate_min_n=2, < recal_min_n=50
+    assert politics.cleared is False
+
+
 def test_blended_report_uses_the_venue_baseline(session: Session) -> None:
     _resolved_market(session, "p1", "politics", q=0.5, p_model=0.9, outcome=1)
     session.add(
