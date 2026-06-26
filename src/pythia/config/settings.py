@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pythia.common.types import RecalibrationMethod
@@ -61,13 +61,15 @@ class Settings(BaseSettings):
     candidate_daily_cap: int = 20
 
     # Trader selection & roster lifecycle (v2 §4.2/§4.3, Appendix)
-    tracked_traders_max: int = 10
+    tracked_traders_max: int = Field(default=10, ge=0)  # TOTAL non-retired roster cap
+    active_traders_max: int = Field(default=5, ge=0)  # active deploy slots, <= tracked
     trader_trial_min_resolved: int = 20
     trader_promote_score: float = 0.5
     trader_promote_agree: float = 0.0
     trader_demote_score: float = 0.0
     trader_demote_agree: float = -1.0
     trader_drawdown_floor: float = 1.0
+    trader_bench_ttl_seconds: int = Field(default=1_209_600, ge=0)  # benched-too-long ⇒ retire
     roster_review_interval_seconds: int = 86_400
     market_class_allow: str = "politics,sports,macro,world affairs"
     smart_money_evidence_enabled: bool = False
@@ -141,6 +143,15 @@ class Settings(BaseSettings):
     log_json: bool = True
     logfire_token: SecretStr | None = None
     environment: str = "dev"
+
+    @model_validator(mode="after")
+    def _active_slots_within_roster(self) -> "Settings":
+        if self.active_traders_max > self.tracked_traders_max:
+            raise ValueError(
+                f"active_traders_max ({self.active_traders_max}) exceeds tracked_traders_max "
+                f"({self.tracked_traders_max}); active slots cannot outnumber the tracked roster"
+            )
+        return self
 
     @property
     def cross_venue_source_list(self) -> list[str]:

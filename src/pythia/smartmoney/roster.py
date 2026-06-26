@@ -8,7 +8,7 @@ new wallets from the Falcon leaderboard as ``trial``.
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from pythia.common import RosterEvent, TrackedTrader, TraderScorecard, TraderState
@@ -22,12 +22,14 @@ _log = get_logger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class RosterPolicy:
-    max_traders: int
+    max_traders: int  # active deploy slots
+    roster_max: int  # total non-retired roster cap (trial + active + benched)
     promote_score: float
     promote_agree: float
     demote_score: float
     demote_agree: float
     drawdown_floor: float
+    bench_ttl: timedelta  # benched this long without recovery ⇒ retire (frees a roster slot)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +45,9 @@ def _finite(value: float | None) -> float | None:
     return value if value is not None and math.isfinite(value) else None
 
 
-def _snapshot(card: TraderScorecard) -> dict[str, Any]:
+def _snapshot(card: TraderScorecard | None) -> dict[str, Any]:
+    if card is None:
+        return {}
     return {
         "trader_score": _finite(card.trader_score),
         "agreed_bpd": _finite(card.agreed_bpd),
@@ -63,12 +67,14 @@ def plan_transitions(
     traders: list[TrackedTrader],
     scorecards: dict[str, TraderScorecard],
     policy: RosterPolicy,
+    *,
+    asof: datetime,
 ) -> list[RosterTransition]:
     """Pure: the audited promote / demote / retire / evict decisions for one review (§4.3)."""
     state: dict[str, TraderState] = {t.id: t.state for t in traders}
     transitions: list[RosterTransition] = []
 
-    def move(trader_id: str, to: TraderState, reason: str, card: TraderScorecard) -> None:
+    def move(trader_id: str, to: TraderState, reason: str, card: TraderScorecard | None) -> None:
         if state[trader_id] is to:
             return
         transitions.append(
@@ -126,6 +132,35 @@ def plan_transitions(
             move(
                 trader.id, TraderState.ACTIVE, f"promoted (evicting): {card.trader_score:.3f}", card
             )
+
+    # 4. Retire benched wallets that aged past the TTL without recovering (didn't re-promote above).
+    for trader in traders:
+        if trader.state is not TraderState.BENCHED or state[trader.id] is not TraderState.BENCHED:
+            continue
+        if asof - trader.state_since >= policy.bench_ttl:
+            days = (asof - trader.state_since).days
+            move(
+                trader.id,
+                TraderState.RETIRED,
+                f"retired: benched {days}d (stale)",
+                scorecards.get(trader.id),
+            )
+
+    # 5. Bound the total roster: retire the weakest trial/benched over the cap (never an active).
+    live = [tid for tid, st in state.items() if st is not TraderState.RETIRED]
+    overflow = len(live) - policy.roster_max
+    if overflow > 0:
+        evictable = sorted(
+            (tid for tid in live if state[tid] in _PROMOTABLE),
+            key=lambda tid: scorecards[tid].trader_score if tid in scorecards else float("-inf"),
+        )
+        for tid in evictable[:overflow]:
+            move(
+                tid,
+                TraderState.RETIRED,
+                f"retired: roster over cap ({policy.roster_max})",
+                scorecards.get(tid),
+            )
     return transitions
 
 
@@ -152,10 +187,17 @@ class RosterManager:
                 "roster_transition", trader_id=tr.trader_id, to=tr.to_state.value, reason=tr.reason
             )
 
-    def discover(self, falcon: FalconPort, *, at: datetime, limit: int) -> list[TrackedTrader]:
-        """Seed leaderboard wallets we don't already track as trial (§4.3)."""
+    def discover(
+        self, falcon: FalconPort, *, at: datetime, limit: int, capacity: int
+    ) -> list[TrackedTrader]:
+        """Seed up to ``capacity`` untracked leaderboard wallets as trial (§4.3); a full roster
+        (``capacity <= 0``) adds none and never calls the venue."""
+        if capacity <= 0:
+            return []
         added: list[TrackedTrader] = []
         for top in falcon.list_top_traders(limit=limit):
+            if len(added) >= capacity:
+                break
             if self._traders.get_by_wallet(top.address) is not None:
                 continue
             trader = self._traders.add(

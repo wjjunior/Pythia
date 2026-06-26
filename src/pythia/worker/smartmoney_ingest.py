@@ -114,9 +114,16 @@ def run_roster_review(
     """One roster-review tick: discover → score → transition → backfill on tracking start."""
     traders_repo = TrackedTraderRepo(session)
     manager = RosterManager(traders_repo, RosterEventRepo(session))
+    policy = roster_policy(settings)
     llm = _guarded_llm(session, settings)
     try:
-        added = manager.discover(falcon, at=now, limit=settings.tracked_traders_max)
+        non_retired = [t for t in traders_repo.list() if t.state is not TraderState.RETIRED]
+        added = manager.discover(
+            falcon,
+            at=now,
+            limit=policy.roster_max,
+            capacity=max(0, policy.roster_max - len(non_retired)),
+        )
         harness = build_selection_harness(
             session,
             falcon=falcon,
@@ -124,7 +131,8 @@ def run_roster_review(
             evidence=EvidenceStore(session, make_embedder(settings)),
             settings=settings,
         )
-        cards = harness.review(traders_repo.list(), asof=now)
+        roster = non_retired + added  # discoveries enter as trial, i.e. non-retired
+        cards = harness.review(roster, asof=now)
     except LiveVenueAccessError:
         _log.warning("smartmoney_geo_block", tick="roster_review")
         return
@@ -132,7 +140,7 @@ def run_roster_review(
         _log.warning("smartmoney_review_budget_halt")
         return
     scorecards = {card.trader_id: card for card in cards}
-    transitions = plan_transitions(traders_repo.list(), scorecards, roster_policy(settings))
+    transitions = plan_transitions(roster, scorecards, policy, asof=now)
     manager.apply(transitions, at=now)
     _log.info(
         "smartmoney_roster_review_tick",

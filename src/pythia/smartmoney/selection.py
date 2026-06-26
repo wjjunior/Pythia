@@ -8,7 +8,7 @@ Falcon P&L (returns) and a held-out replay of the wallet's resolved entries thro
 """
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol
 
 import numpy as np
@@ -50,12 +50,14 @@ def selection_policy(settings: Settings) -> SelectionPolicy:
 
 def roster_policy(settings: Settings) -> RosterPolicy:
     return RosterPolicy(
-        max_traders=settings.tracked_traders_max,
+        max_traders=settings.active_traders_max,
+        roster_max=settings.tracked_traders_max,
         promote_score=settings.trader_promote_score,
         promote_agree=settings.trader_promote_agree,
         demote_score=settings.trader_demote_score,
         demote_agree=settings.trader_demote_agree,
         drawdown_floor=settings.trader_drawdown_floor,
+        bench_ttl=timedelta(seconds=settings.trader_bench_ttl_seconds),
     )
 
 
