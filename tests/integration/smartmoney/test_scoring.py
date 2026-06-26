@@ -11,8 +11,19 @@ from pathlib import Path
 import pytest
 from sqlmodel import Session
 
-from pythia.agents import EstimationAgent, StubLLMPort
-from pythia.common import Market, MarketSnapshot, TrackedTrader, TraderEntry, TraderState
+from pythia.agents import StubLLMPort
+from pythia.common import (
+    CriticVerdict,
+    Estimate,
+    EstimationContext,
+    Evidence,
+    Market,
+    MarketSnapshot,
+    ResolutionProposal,
+    TrackedTrader,
+    TraderEntry,
+    TraderState,
+)
 from pythia.config import Settings
 from pythia.db.repositories import MarketRepository, ResolutionRepository, SnapshotRepository
 from pythia.db.smartmoney import TrackedTraderRepo, TraderEntryRepo
@@ -40,8 +51,46 @@ def _falcon() -> FalconClient:
     return FalconClient(FixtureFalconTransport(_FIXTURES))
 
 
-def _estimator(session: Session) -> EstimationAgent:
-    return EstimationAgent(StubLLMPort(), EvidenceStore(session, StubEmbeddingPort()))
+def _evidence(session: Session) -> EvidenceStore:
+    return EvidenceStore(session, StubEmbeddingPort())
+
+
+class _CriticControlledLLM:
+    """Stub estimator with a configurable critic verdict, to exercise the agreement gate."""
+
+    def __init__(self, *, p_model: float, lookahead_leak: bool, adjusted_confidence: float) -> None:
+        self._p_model = p_model
+        self._leak = lookahead_leak
+        self._adjusted = adjusted_confidence
+        self._stub = StubLLMPort()
+
+    def estimate(self, ctx: EstimationContext) -> Estimate:
+        return Estimate(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"est-{ctx.snapshot.id}")),
+            market_id=ctx.market.id,
+            snapshot_id=ctx.snapshot.id,
+            p_model=self._p_model,
+            confidence=0.9,
+            lower=0.0,
+            upper=1.0,
+            rationale="t",
+            evidence_ids=[],
+            model_name="fake",
+        )
+
+    def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
+        return CriticVerdict(
+            adjusted_confidence=self._adjusted,
+            objections=[],
+            lookahead_leak=self._leak,
+            notes="",
+        )
+
+    def discover(self, markets: list[Market], limit: int) -> list[str]:
+        return self._stub.discover(markets, limit)
+
+    def grade_resolution(self, market: Market, evidence: list[Evidence]) -> ResolutionProposal:
+        return self._stub.grade_resolution(market, evidence)
 
 
 def _seed_resolved_entry(
@@ -119,12 +168,44 @@ def test_agreement_replays_only_resolved_before_asof(session: Session) -> None:
         session, trader.id, name="0xB", resolved_at=_ASOF + timedelta(days=1), side=_WINNING
     )
 
-    agree_rate, agreed_bpd = PipelineAgreementEvaluator(session, _estimator(session)).agreement(
-        trader, _ASOF
+    evaluator = PipelineAgreementEvaluator(
+        session, StubLLMPort(), _evidence(session), min_confidence=_settings().min_confidence
     )
+    agree_rate, agreed_bpd = evaluator.agreement(trader, _ASOF)
 
     assert agree_rate in (0.0, 1.0)  # exactly one entry replayed → agreed or not, never a fraction
     assert isinstance(agreed_bpd, float)
+
+
+def test_should_count_agreement_when_critic_keeps_confidence(session: Session) -> None:
+    trader = _trader(session)
+    _seed_resolved_entry(
+        session, trader.id, name="0xA", resolved_at=_ASOF - timedelta(days=1), side=_WINNING
+    )
+    # p_model 0.9 vs market 0.5 → positive edge_net; critic keeps confidence above min_confidence.
+    llm = _CriticControlledLLM(p_model=0.9, lookahead_leak=False, adjusted_confidence=0.9)
+    evaluator = PipelineAgreementEvaluator(session, llm, _evidence(session), min_confidence=0.5)
+
+    agree_rate, agreed_bpd = evaluator.agreement(trader, _ASOF)
+
+    assert agree_rate == 1.0
+    assert agreed_bpd == pytest.approx((0.5 - 1) ** 2 - (0.9 - 1) ** 2)
+
+
+def test_should_drop_agreement_when_critic_flags_lookahead(session: Session) -> None:
+    trader = _trader(session)
+    _seed_resolved_entry(
+        session, trader.id, name="0xA", resolved_at=_ASOF - timedelta(days=1), side=_WINNING
+    )
+    # Same positive edge, but the critic flags a lookahead leak → confidence 0 → the live system
+    # would not act, so the entry must not count toward agreement.
+    llm = _CriticControlledLLM(p_model=0.9, lookahead_leak=True, adjusted_confidence=0.9)
+    evaluator = PipelineAgreementEvaluator(session, llm, _evidence(session), min_confidence=0.5)
+
+    agree_rate, agreed_bpd = evaluator.agreement(trader, _ASOF)
+
+    assert agree_rate == 0.0
+    assert agreed_bpd == 0.0
 
 
 def test_harness_writes_a_point_in_time_scorecard(session: Session) -> None:
@@ -137,7 +218,11 @@ def test_harness_writes_a_point_in_time_scorecard(session: Session) -> None:
     )
 
     harness = build_selection_harness(
-        session, falcon=_falcon(), estimator=_estimator(session), settings=_settings()
+        session,
+        falcon=_falcon(),
+        llm=StubLLMPort(),
+        evidence=_evidence(session),
+        settings=_settings(),
     )
     cards = harness.review([trader], asof=_ASOF)
 
