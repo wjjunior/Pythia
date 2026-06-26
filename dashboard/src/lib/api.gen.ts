@@ -123,6 +123,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calibration/recalibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recalibration
+         * @description Per-category raw vs recalibrated Brier on the live applied maps (not a holdout).
+         */
+        get: operations["recalibration_api_calibration_recalibration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/simulation": {
         parameters: {
             query?: never;
@@ -482,6 +502,8 @@ export interface components {
             critic_notes?: string | null;
             /** P Model Calibrated */
             p_model_calibrated?: number | null;
+            /** P Model Calibrated Fit Asof */
+            p_model_calibrated_fit_asof?: string | null;
             /** Members */
             members?: components["schemas"]["MemberForecast"][];
         };
@@ -706,6 +728,15 @@ export interface components {
             closes_in_days: number | null;
             /** Resolves In Days */
             resolves_in_days: number | null;
+        };
+        /** RecalibrationReport */
+        RecalibrationReport: {
+            /** Brier Raw */
+            brier_raw: number;
+            /** Brier Recalibrated */
+            brier_recalibrated: number;
+            /** N */
+            n: number;
         };
         /** ReliabilityBin */
         ReliabilityBin: {
@@ -1197,6 +1228,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recalibration_api_calibration_recalibration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["RecalibrationReport"];
+                    };
                 };
             };
         };

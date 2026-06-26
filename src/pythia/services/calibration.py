@@ -25,6 +25,7 @@ from pythia.db.repositories import (
 from pythia.eval.cohorts import Cohort, cohort_policy, cohorts_for
 from pythia.eval.functions import (
     brier,
+    brier_score,
     calibration_by_category,
     calibration_by_cohort,
     ev_predicted_vs_realized,
@@ -355,6 +356,26 @@ class RecalibrationService:
             cmap = recalibrate(train, test[0][2], method=method, min_n=min_n)
             reports[category] = compare_brier([(p, o) for p, o, _ in test], cmap)
         return reports
+
+    def live_report(self) -> dict[str, RecalibrationReport]:
+        """Raw vs committed Brier per category on the maps applied (live, not a holdout)."""
+        resolutions = self._resolutions()
+        latest = _latest_estimate_per_market(self._session, list(resolutions))
+        categories = _categories_of(self._session, list(latest))
+        rows: dict[str, list[tuple[float, float, int]]] = {}
+        for market_id, estimate in latest.items():
+            outcome, _resolved_at = resolutions[market_id]
+            rows.setdefault(categories[market_id], []).append(
+                (estimate.p_model, _committed(estimate), outcome)
+            )
+        return {
+            category: RecalibrationReport(
+                brier_raw=brier_score([raw for raw, _c, _o in e], [o for _r, _c, o in e]),
+                brier_recalibrated=brier_score([c for _r, c, _o in e], [o for _r, _c, o in e]),
+                n=len(e),
+            )
+            for category, e in rows.items()
+        }
 
     def _samples_by_category(self) -> dict[str, list[Sample]]:
         resolutions = self._resolutions()

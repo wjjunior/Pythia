@@ -711,6 +711,28 @@ def test_calibration_reports_categories(client: TestClient, session: Session) ->
     assert "insufficient_n" in gate["reasons"]
 
 
+def test_recalibration_reports_live_raw_vs_recalibrated(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)  # estimate p_model=0.7, politics
+    estimate = session.get(models.Estimate, uuid.UUID(ESTIMATE_ID))
+    assert estimate is not None
+    estimate.p_model_calibrated = 0.9  # the applied map's committed forecast
+    session.add(estimate)
+    session.add(
+        models.Resolution(
+            market_id=uuid.UUID(MARKET_ID), outcome=1, resolved_at=TS + timedelta(days=10)
+        )
+    )
+    session.commit()
+    body = client.get("/api/calibration/recalibration").json()
+    assert body["politics"]["n"] == 1
+    assert body["politics"]["brier_raw"] == pytest.approx((0.7 - 1) ** 2)  # raw estimator: 0.09
+    assert body["politics"]["brier_recalibrated"] == pytest.approx(
+        (0.9 - 1) ** 2
+    )  # committed: 0.01
+
+
 def _resolve_market(session: Session, *, outcome: int = 1) -> None:
     session.add(
         models.Resolution(

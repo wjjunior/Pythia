@@ -6,7 +6,12 @@ from fastapi import APIRouter
 
 from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import CalibrationResponse
-from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
+from pythia.eval.models import RecalibrationReport
+from pythia.services.calibration import (
+    CalibrationService,
+    RecalibrationService,
+    gate_thresholds_from_settings,
+)
 
 router = APIRouter(tags=["calibration"])
 
@@ -32,3 +37,9 @@ def calibration(
         cohorts=report.cohorts,
         gates=gates,
     )
+
+
+@router.get("/api/calibration/recalibration")
+def recalibration(session: SessionDep) -> dict[str, RecalibrationReport]:
+    """Per-category raw vs recalibrated Brier on the live applied maps (not a holdout)."""
+    return RecalibrationService(session).live_report()
