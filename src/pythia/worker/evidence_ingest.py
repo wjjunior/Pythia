@@ -33,7 +33,7 @@ def _make_transport(name: str, settings: Settings) -> EvidenceTransport | None:
             return None
         from pythia.ingestion.evidence.newsapi import NewsApiTransport
 
-        return NewsApiTransport(settings.newsapi_key)
+        return NewsApiTransport(settings.newsapi_key.get_secret_value())
     _log.warning("unknown_evidence_source_skipped", source=name)
     return None
 

@@ -41,7 +41,9 @@ def _make_client(name: str, settings: Settings) -> tuple[Venue, VenueClient] | N
 
         return (
             Venue.METACULUS,
-            VenueClient(MetaculusHttpTransport(settings.metaculus_api_key), to_candidate),
+            VenueClient(
+                MetaculusHttpTransport(settings.metaculus_api_key.get_secret_value()), to_candidate
+            ),
         )
     _log.warning("unknown_venue_skipped", venue=name)
     return None

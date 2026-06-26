@@ -537,7 +537,9 @@ def make_llm_port(
     correlation_id: str | None = None,
 ) -> LLMPort:
     if settings.openrouter_api_key:
-        transport = HttpxChatTransport(settings.openrouter_api_key, settings.openrouter_base_url)
+        transport = HttpxChatTransport(
+            settings.openrouter_api_key.get_secret_value(), settings.openrouter_base_url
+        )
         router = ModelRouter(
             strategy=settings.model_routing_strategy, max_price=settings.max_price_per_call
         )

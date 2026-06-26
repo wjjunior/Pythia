@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pythia.common.types import RecalibrationMethod
@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     embedding_provider: str | None = None
     embedding_model: str | None = None
-    embedding_api_key: str | None = None
+    embedding_api_key: SecretStr | None = None
     embedding_base_url: str | None = None
-    openrouter_api_key: str | None = None
+    openrouter_api_key: SecretStr | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     model_routing: str | None = None
     model_routing_strategy: RoutingStrategy = "static"
@@ -53,11 +53,11 @@ class Settings(BaseSettings):
     polymarket_api_base: str = "https://gamma-api.polymarket.com"
     kalshi_api_base: str | None = None
     metaculus_api_base: str | None = None
-    metaculus_api_key: str | None = None
+    metaculus_api_key: SecretStr | None = None
 
     # Falcon (smart-money analytics, v2 §3.1/§4.5). Offline via fixtures when token unset.
     falcon_api_base: str | None = None
-    falcon_api_token: str | None = None
+    falcon_api_token: SecretStr | None = None
     candidate_daily_cap: int = 20
 
     # Trader selection & roster lifecycle (v2 §4.2/§4.3, Appendix)
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     backfill_max_positions: int = 20
     cross_venue_sources: str = ""
     evidence_sources: str = ""
-    newsapi_key: str | None = None
+    newsapi_key: SecretStr | None = None
     crawl_interval_seconds: int = 300
     crawl_close_within_days: int | None = None
     crawl_volume_min: float | None = 1000.0
@@ -141,7 +141,7 @@ class Settings(BaseSettings):
     # Observability (§3.10, §8.4) — JSON logs everywhere; Logfire sends only when a token is set
     log_level: LogLevel = "INFO"
     log_json: bool = True
-    logfire_token: str | None = None
+    logfire_token: SecretStr | None = None
     environment: str = "dev"
 
     @model_validator(mode="after")

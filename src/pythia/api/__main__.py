@@ -13,7 +13,9 @@ def main() -> None:
         service="api",
         level=settings.log_level,
         json_logs=settings.log_json,
-        logfire_token=settings.logfire_token,
+        logfire_token=(
+            settings.logfire_token.get_secret_value() if settings.logfire_token else None
+        ),
         environment=settings.environment,
     )
     uvicorn.run(app, host="0.0.0.0", port=8000)
