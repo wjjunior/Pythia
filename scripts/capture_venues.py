@@ -25,14 +25,14 @@ _LIMIT = 12
 
 
 def _capture_manifold() -> None:
-    markets = ManifoldHttpTransport(limit=25).fetch()
+    markets = ManifoldHttpTransport(use_live=True, limit=25).fetch()
     binary = [m for m in markets if manifold.to_candidate(m) is not None][:_LIMIT]
     _write("manifold_markets.json", binary)
 
 
 def _capture_kalshi() -> None:
     print("⚠️  Kalshi is geo-restricted — enable the VPN before continuing (§8.6).")
-    markets = KalshiHttpTransport(limit=25).fetch()[:_LIMIT]
+    markets = KalshiHttpTransport(use_live=True, limit=25).fetch()[:_LIMIT]
     _write("kalshi_markets.json", {"markets": markets})
 
 
@@ -41,7 +41,7 @@ def _capture_metaculus() -> None:
     if not key:
         print("· skipping Metaculus: METACULUS_API_KEY not set (approved API access required).")
         return
-    questions = MetaculusHttpTransport(key, limit=_LIMIT).fetch()
+    questions = MetaculusHttpTransport(key.get_secret_value(), use_live=True, limit=_LIMIT).fetch()
     _write(
         "metaculus_questions.json",
         {
