@@ -22,4 +22,9 @@ def calibration(
     categories = report.categories
     if category is not None:
         categories = [item for item in categories if item.category == category]
-    return CalibrationResponse(categories=categories, reliability=report.reliability, ev=report.ev)
+    return CalibrationResponse(
+        categories=categories,
+        reliability=report.reliability,
+        ev=report.ev,
+        cohorts=report.cohorts,
+    )

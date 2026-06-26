@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 class Cohort(StrEnum):
     FAST_7D = "fast_7d"
     MIDBAND = "midband"
+    OVERALL = "overall"
 
 
 @dataclass(frozen=True, slots=True)

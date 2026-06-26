@@ -7,7 +7,7 @@ forecasts in [0, 1]) is assumed from the boundary.
 
 from collections.abc import Mapping, Sequence
 
-from pythia.eval.models import CategoryCalibration, EvCalibration, ReliabilityBin
+from pythia.eval.models import CategoryCalibration, CohortCalibration, EvCalibration, ReliabilityBin
 
 
 def brier(forecast: float, outcome: int) -> float:
@@ -80,6 +80,23 @@ def calibration_by_category(
             )
         )
     return result
+
+
+def calibration_by_cohort(
+    by_cohort: dict[str, list[tuple[float, float, int]]],
+) -> list[CohortCalibration]:
+    out: list[CohortCalibration] = []
+    for cohort, samples in by_cohort.items():
+        if not samples:
+            continue
+        bs = brier_score([p for p, _q, _o in samples], [o for _p, _q, o in samples])
+        bm = brier_score([q for _p, q, _o in samples], [o for _p, _q, o in samples])
+        out.append(
+            CohortCalibration(
+                cohort=cohort, brier_system=bs, brier_market=bm, delta=bm - bs, n=len(samples)
+            )
+        )
+    return out
 
 
 def ev_predicted_vs_realized(
