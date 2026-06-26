@@ -105,3 +105,117 @@ def test_market_class_ok_requires_a_research_amenable_majority() -> None:
     assert market_class_ok(["politics", "sports", "politics"], _POLICY) is True
     assert market_class_ok(["politics", "crypto", "crypto"], _POLICY) is False  # 1/3 < 0.6
     assert market_class_ok([], _POLICY) is False
+
+
+# --- Scalper hard-floor invariants (PYT-105/F-16): the -inf floors hold for ALL finite inputs, not
+# just the worked examples. With the other terms finite, a floor is the only source of -inf. ---
+
+_FINITE = st.floats(allow_nan=False, allow_infinity=False, min_value=-1e6, max_value=1e6)
+_BELOW_CAP = st.floats(
+    min_value=-50.0, max_value=_POLICY.skew_hard_cap, exclude_max=True, allow_nan=False
+)
+_AT_OR_ABOVE_CAP = st.floats(min_value=_POLICY.skew_hard_cap, max_value=50.0, allow_nan=False)
+
+
+@given(
+    skew=_BELOW_CAP,
+    edge=_FINITE,
+    agree=_FINITE,
+    cov=_FINITE,
+)
+def test_skew_below_hard_cap_always_floors_to_neg_inf(
+    skew: float, edge: float, agree: float, cov: float
+) -> None:
+    score = trader_score(
+        risk_adj_edge=edge,
+        agreed_bpd=agree,
+        coverage=cov,
+        n_resolved=_POLICY.min_resolved,  # passes the n floor, so skew is the only trip
+        market_class_ok=True,
+        skew=skew,
+        policy=_POLICY,
+    )
+    assert score == float("-inf")
+
+
+@given(
+    n=st.integers(min_value=0, max_value=_POLICY.min_resolved - 1),
+    edge=_FINITE,
+    agree=_FINITE,
+    cov=_FINITE,
+    skew=_AT_OR_ABOVE_CAP,
+)
+def test_below_min_resolved_always_floors_to_neg_inf(
+    n: int, edge: float, agree: float, cov: float, skew: float
+) -> None:
+    score = trader_score(
+        risk_adj_edge=edge,
+        agreed_bpd=agree,
+        coverage=cov,
+        n_resolved=n,
+        market_class_ok=True,
+        skew=skew,  # at or above the cap, so n is the only trip
+        policy=_POLICY,
+    )
+    assert score == float("-inf")
+
+
+@given(
+    n=st.integers(min_value=_POLICY.min_resolved, max_value=500),
+    edge=_FINITE,
+    agree=_FINITE,
+    cov=_FINITE,
+    skew=_AT_OR_ABOVE_CAP,
+)
+def test_market_class_failure_always_floors_to_neg_inf(
+    n: int, edge: float, agree: float, cov: float, skew: float
+) -> None:
+    score = trader_score(
+        risk_adj_edge=edge,
+        agreed_bpd=agree,
+        coverage=cov,
+        n_resolved=n,
+        market_class_ok=False,  # the only trip
+        skew=skew,
+        policy=_POLICY,
+    )
+    assert score == float("-inf")
+
+
+@given(
+    n=st.integers(min_value=_POLICY.min_resolved, max_value=500),
+    edge=_FINITE,
+    agree=_FINITE,
+    cov=_FINITE,
+    skew=_AT_OR_ABOVE_CAP,
+)
+def test_passing_every_floor_is_the_finite_weighted_blend(
+    n: int, edge: float, agree: float, cov: float, skew: float
+) -> None:
+    score = trader_score(
+        risk_adj_edge=edge,
+        agreed_bpd=agree,
+        coverage=cov,
+        n_resolved=n,
+        market_class_ok=True,
+        skew=skew,
+        policy=_POLICY,
+    )
+    assert math.isfinite(score)
+    assert score == pytest.approx(
+        _POLICY.w_edge * edge + _POLICY.w_agree * agree + _POLICY.w_cov * cov
+    )
+
+
+@given(
+    pos=st.lists(st.floats(min_value=0.01, max_value=5.0, allow_nan=False), min_size=2, max_size=8),
+    neg=st.lists(
+        st.floats(min_value=-5.0, max_value=-0.01, allow_nan=False), min_size=1, max_size=8
+    ),
+)
+def test_sortino_ignores_upside_dispersion(pos: list[float], neg: list[float]) -> None:
+    # Downside-only: concentrating the gains onto one resolution (same mean, same losses) leaves
+    # Sortino unchanged — upside spread is invisible to it, the asymmetry that defeats the scalper.
+    base = pos + neg
+    concentrated = [sum(pos), *([0.0] * (len(pos) - 1)), *neg]
+    assert sortino(base) == pytest.approx(sortino(concentrated))
