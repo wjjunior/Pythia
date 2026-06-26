@@ -1,6 +1,4 @@
 // Pure derived state for the views. Business logic lives here, never in components (§ coding rule 8).
-import type { CategoryCalibration } from "./types"
-
 export const EXPOSURE_WARN = 0.6
 export const EXPOSURE_HIGH = 0.9
 
@@ -11,15 +9,30 @@ export const CALIBRATION_MIN_WIN_MULTIPLE = 1.2
 // The recommended (edge) side must also be the side the model expects to win — no penny longshots.
 export const CALIBRATION_MIN_WIN_PROBABILITY = 0.5
 
+// Cohort calibration display (PYT-98). `overall` is the headline (all resolved markets); the slices
+// are labeled subsets that OVERLAP and never sum to overall.
+export const OVERALL_COHORT = "overall"
+export const COHORT_SLICES = ["fast_7d", "midband"] as const
+export const COHORT_LABELS: Record<string, string> = {
+  overall: "Overall",
+  fast_7d: "Fast (≤7d)",
+  midband: "Mid-band price",
+}
+// Below this n a cohort's Brier is too noisy to read as a calibration claim — flag, don't mislead.
+export const COHORT_MIN_N = 30
+
 export type CalibrationVerdict = "system" | "market" | "tie"
 export type ExposureSeverity = "ok" | "warn" | "high"
+export type CohortConfidence = "ok" | "low"
 
 // delta = brier_market − brier_system: positive ⇒ the system is better calibrated than the market.
-export const calibrationVerdict = (category: CategoryCalibration): CalibrationVerdict => {
-  if (category.delta > 0) return "system"
-  if (category.delta < 0) return "market"
+export const calibrationVerdict = (item: { delta: number }): CalibrationVerdict => {
+  if (item.delta > 0) return "system"
+  if (item.delta < 0) return "market"
   return "tie"
 }
+
+export const cohortConfidence = (n: number): CohortConfidence => (n < COHORT_MIN_N ? "low" : "ok")
 
 export const exposureSeverity = (fraction: number): ExposureSeverity => {
   if (fraction >= EXPOSURE_HIGH) return "high"
