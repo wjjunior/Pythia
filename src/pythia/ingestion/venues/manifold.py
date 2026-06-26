@@ -25,11 +25,12 @@ def to_candidate(raw: dict[str, Any]) -> VenueCandidate | None:
 
 
 class ManifoldHttpTransport:
-    def __init__(self, *, limit: int = 100) -> None:
+    def __init__(self, *, use_live: bool = False, limit: int = 100) -> None:
+        self._use_live = use_live
         self._limit = limit
 
     def fetch(self) -> list[dict[str, Any]]:
         data: list[dict[str, Any]] = fetch_json(
-            MARKETS_URL, venue=VENUE.value, params={"limit": self._limit}
+            MARKETS_URL, venue=VENUE.value, use_live=self._use_live, params={"limit": self._limit}
         )
         return data

@@ -151,7 +151,9 @@ def test_httpx_open_crawl_requests_soonest_resolving_liquid_markets_paginated(
         return _FakeResponse(pages[idx] if idx < len(pages) else [])
 
     monkeypatch.setattr(httpx, "get", fake_get)
-    transport = HttpxTransport("https://gamma", limit=100, volume_min=1000.0, max_markets=500)
+    transport = HttpxTransport(
+        "https://gamma", use_live=True, limit=100, volume_min=1000.0, max_markets=500
+    )
     out = transport.fetch_markets(
         closed=False, end_date_max="2026-07-01T00:00:00", end_date_min="2026-06-24T00:00:00"
     )
@@ -176,11 +178,24 @@ def test_httpx_resolution_crawl_is_a_single_unordered_request(
         return _FakeResponse([{"x": 1}])
 
     monkeypatch.setattr(httpx, "get", fake_get)
-    HttpxTransport("https://gamma").fetch_markets(closed=True)
+    HttpxTransport("https://gamma", use_live=True).fetch_markets(closed=True)
 
     assert len(calls) == 1
     assert calls[0]["closed"] == "true"
     assert "order" not in calls[0] and "end_date_min" not in calls[0] and "offset" not in calls[0]
+
+
+def test_httpx_transport_refuses_a_live_call_when_use_live_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # §8.6 defense-in-depth (PYT-115): the guard refuses BEFORE any network call, independent of the
+    # worker entrypoint gate — httpx.get must never run with the flag off.
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("live HTTP call made with USE_LIVE_VENUES off")
+
+    monkeypatch.setattr(httpx, "get", _boom)
+    with pytest.raises(LiveVenueAccessError):
+        HttpxTransport("https://gamma", use_live=False).fetch_markets()
 
 
 def test_poll_drops_a_market_with_mismatched_outcomes_and_prices() -> None:

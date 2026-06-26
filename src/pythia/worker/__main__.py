@@ -46,6 +46,7 @@ def main() -> None:
     crawler = MarketCrawler(
         HttpxTransport(
             settings.polymarket_api_base,
+            use_live=settings.use_live_venues,
             volume_min=settings.crawl_volume_min,
             max_markets=settings.crawl_max_markets,
         ),

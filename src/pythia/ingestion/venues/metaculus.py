@@ -42,8 +42,9 @@ def to_candidate(raw: dict[str, Any]) -> VenueCandidate | None:
 class MetaculusHttpTransport:
     """Live transport: posts list → per-question detail (which carries the aggregation)."""
 
-    def __init__(self, api_key: str, *, limit: int = 20) -> None:
+    def __init__(self, api_key: str, *, use_live: bool = False, limit: int = 20) -> None:
         self._api_key = api_key
+        self._use_live = use_live
         self._limit = limit
 
     def _headers(self) -> dict[str, str]:
@@ -57,6 +58,7 @@ class MetaculusHttpTransport:
         posts = fetch_json(
             POSTS_URL,
             venue=VENUE.value,
+            use_live=self._use_live,
             headers=self._headers(),
             params={
                 "statuses": "open",
@@ -69,7 +71,10 @@ class MetaculusHttpTransport:
         for post in posts.get("results", []):
             question_id = post["question"]["id"]
             detail = fetch_json(
-                f"{QUESTIONS_URL}/{question_id}/", venue=VENUE.value, headers=self._headers()
+                f"{QUESTIONS_URL}/{question_id}/",
+                venue=VENUE.value,
+                use_live=self._use_live,
+                headers=self._headers(),
             )
             questions.append(
                 {
