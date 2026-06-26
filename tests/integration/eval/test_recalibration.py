@@ -29,6 +29,7 @@ def _resolved(
     outcome: int,
     *,
     resolved_at: datetime,
+    ambiguous: bool = False,
 ) -> None:
     session.add(
         models.Market(
@@ -63,7 +64,11 @@ def _resolved(
         )
     )
     session.commit()
-    session.add(models.Resolution(market_id=_uid(name), outcome=outcome, resolved_at=resolved_at))
+    session.add(
+        models.Resolution(
+            market_id=_uid(name), outcome=outcome, resolved_at=resolved_at, ambiguous=ambiguous
+        )
+    )
     session.commit()
 
 
@@ -140,6 +145,18 @@ def test_fit_and_store_below_min_n_stores_identity(session: Session) -> None:
     cmap, n_fit = loaded
     assert cmap.method == "identity"
     assert n_fit == 4
+
+
+def test_should_exclude_ambiguous_resolutions_from_training(session: Session) -> None:
+    _seed_politics(session)  # 4 non-ambiguous resolutions, all before asof
+    _resolved(
+        session, "amb", "politics", 0.5, 0, resolved_at=_TS + timedelta(days=5), ambiguous=True
+    )
+    RecalibrationService(session).fit_and_store(_TS + timedelta(days=100), method="platt", min_n=4)
+    loaded = RecalibrationRepository(session).active_for_category("politics")
+    assert loaded is not None
+    _cmap, n_fit = loaded
+    assert n_fit == 4  # the ambiguous resolution is excluded from the fit
 
 
 def test_evaluate_reports_raw_vs_recalibrated_per_category(session: Session) -> None:
