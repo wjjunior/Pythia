@@ -14,7 +14,12 @@ from pythia.ingestion.falcon import (
     HttpxFalconTransport,
     make_falcon_client,
 )
-from pythia.ingestion.falcon.client import FalconDataset
+from pythia.ingestion.falcon.client import (
+    _FALCON_AGENT_IDS,
+    FalconDataset,
+    FalconDatasetUnconfigured,
+    _merge_agent_ids,
+)
 from pythia.ingestion.market_crawler import LiveVenueAccessError, TransientTransportError
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "falcon"
@@ -193,3 +198,46 @@ def test_httpx_transport_refuses_a_live_call_when_use_live_is_off(
     transport = HttpxFalconTransport("https://falcon.example", "t", {"top_traders": 579})
     with pytest.raises(LiveVenueAccessError):
         transport.retrieve("top_traders", {})
+
+
+def test_default_agent_ids_are_the_confirmed_catalog() -> None:
+    # PYT-131: the confirmed live ids. orderbook (572) is held until get_orderbook sends the
+    # required time-range; open_positions has no Falcon endpoint (derived from trades in PYT-132).
+    assert _FALCON_AGENT_IDS == {
+        "top_traders": 579,
+        "trader_trades": 556,
+        "market": 574,
+        "trader_pnl": 569,
+    }
+
+
+def test_merge_agent_ids_empty_returns_the_defaults() -> None:
+    assert _merge_agent_ids({}) == _FALCON_AGENT_IDS
+
+
+def test_merge_agent_ids_patches_a_single_id_over_the_defaults() -> None:
+    merged = _merge_agent_ids({"trader_trades": 999})
+    assert merged["trader_trades"] == 999  # operator override wins
+    assert merged["market"] == 574 and merged["top_traders"] == 579  # other defaults intact
+
+
+def test_merge_agent_ids_rejects_an_unknown_dataset() -> None:
+    with pytest.raises(ValueError, match="unknown Falcon dataset"):
+        _merge_agent_ids({"not_a_dataset": 1})
+
+
+def test_unconfigured_dataset_raises_a_distinct_typed_error_not_transient() -> None:
+    # A missing agent_id is a permanent capability gap, not a Falcon-down blip — so it must NOT be a
+    # TransientTransportError (which logs at warning every call and floods the worker).
+    transport = HttpxFalconTransport(
+        "https://falcon.example/api/v2/semantic/retrieve/parameterized", "t", {"top_traders": 579}
+    )
+    with pytest.raises(FalconDatasetUnconfigured):
+        transport.retrieve("open_positions", {})
+    assert not issubclass(FalconDatasetUnconfigured, TransientTransportError)
+
+
+def test_client_is_fail_soft_on_an_unconfigured_dataset() -> None:
+    client = FalconClient(_RaisingTransport(FalconDatasetUnconfigured("open_positions")))
+    assert client.get_open_positions("0xabc") == []
+    assert client.get_market("0xabc") is None

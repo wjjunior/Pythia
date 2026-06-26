@@ -31,3 +31,21 @@ def test_extreme_price_share_cap_outside_the_unit_interval_is_rejected() -> None
         Settings(_env_file=None, database_url=_DB, trader_extreme_price_share_cap=1.5)
     with pytest.raises(ValidationError):
         Settings(_env_file=None, database_url=_DB, trader_extreme_price_share_cap=-0.1)
+
+
+def test_falcon_agent_id_overrides_default_to_empty() -> None:
+    assert Settings(_env_file=None, database_url=_DB).falcon_agent_id_overrides == {}
+
+
+def test_falcon_agent_id_overrides_parse_a_dataset_id_map() -> None:
+    # PYT-131: lets the operator correct a rotated Falcon agent_id from .env without a redeploy.
+    settings = Settings(
+        _env_file=None, database_url=_DB, falcon_agent_ids="trader_trades:556, market:574"
+    )
+    assert settings.falcon_agent_id_overrides == {"trader_trades": 556, "market": 574}
+
+
+def test_falcon_agent_ids_missing_colon_is_rejected() -> None:
+    settings = Settings(_env_file=None, database_url=_DB, falcon_agent_ids="trader_trades")
+    with pytest.raises(ValueError, match="expected 'dataset:id'"):
+        _ = settings.falcon_agent_id_overrides

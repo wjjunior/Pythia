@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
+from typing import Any, Literal, Protocol, TypeVar, get_args, runtime_checkable
 
 import httpx
 
@@ -40,6 +40,12 @@ _log = get_logger(__name__)
 FalconDataset = Literal[
     "top_traders", "trader_pnl", "trader_trades", "market", "orderbook", "open_positions"
 ]
+_FALCON_DATASETS: tuple[FalconDataset, ...] = get_args(FalconDataset)
+
+
+class FalconDatasetUnconfigured(Exception):
+    """A dataset has no agent_id — a permanent capability gap, not a transient Falcon failure."""
+
 
 _PNL_LOOKBACK_DAYS = 30
 _DEFAULT_PERIOD = "7d"
@@ -132,8 +138,8 @@ class HttpxFalconTransport:
 
     def retrieve(self, dataset: FalconDataset, params: dict[str, Any]) -> Any:
         agent_id = self._agent_ids.get(dataset)
-        if agent_id is None:  # unknown agent_id → no data (fail-soft), not a KeyError crash
-            raise TransientTransportError(f"no Falcon agent_id configured for '{dataset}'")
+        if agent_id is None:  # no agent_id → a capability gap, not a Falcon-down blip
+            raise FalconDatasetUnconfigured(dataset)
         if dataset == "orderbook":  # flat response, no envelope / pagination
             return self._post({"agent_id": agent_id, "params": params})
         results: list[dict[str, Any]] = []
@@ -167,6 +173,9 @@ class FalconClient:
     def _soft(self, dataset: FalconDataset, params: dict[str, Any], default: T) -> Any | T:
         try:
             return self._t.retrieve(dataset, params)
+        except FalconDatasetUnconfigured:  # no agent_id → quiet no-op (announced once at startup)
+            _log.debug("falcon_dataset_unconfigured", dataset=dataset)
+            return default
         except TransientTransportError as exc:  # Falcon down → no data, never a crash (§9)
             _log.warning("falcon_unavailable", dataset=dataset, error=str(exc))
             return default
@@ -215,9 +224,31 @@ class FalconClient:
         return [OpenPosition.model_validate(row) for row in _results(raw)] if raw else []
 
 
-# agent_id per dataset for the live gateway; top-traders confirmed (579), the rest pending the
-# reachability check (§3.1). The live path is only built when a token + USE_LIVE_VENUES are set.
-_FALCON_AGENT_IDS: dict[FalconDataset, int] = {"top_traders": 579}
+# agent_id per dataset for the live gateway, confirmed from the Falcon API docs (§3.1). orderbook
+# (572) is held until get_orderbook sends the documented start_time/end_time (else a live 4xx);
+# open_positions has no Falcon endpoint — it is derived from trades (PYT-132). Override any id via
+# FALCON_AGENT_IDS. The live path is built only when a token + USE_LIVE_VENUES are set.
+_FALCON_AGENT_IDS: dict[FalconDataset, int] = {
+    "top_traders": 579,
+    "trader_trades": 556,
+    "market": 574,
+    "trader_pnl": 569,
+}
+
+
+def _merge_agent_ids(overrides: Mapping[str, int]) -> dict[FalconDataset, int]:
+    """Merge operator overrides over the confirmed defaults; an unknown dataset fails fast."""
+    unknown = set(overrides) - set(_FALCON_DATASETS)
+    if unknown:
+        raise ValueError(
+            f"unknown Falcon dataset override(s): {sorted(unknown)}; "
+            f"valid: {sorted(_FALCON_DATASETS)}"
+        )
+    merged: dict[FalconDataset, int] = dict(_FALCON_AGENT_IDS)
+    for dataset in _FALCON_DATASETS:
+        if dataset in overrides:
+            merged[dataset] = overrides[dataset]
+    return merged
 
 
 def make_falcon_client(
@@ -226,13 +257,15 @@ def make_falcon_client(
     token: str | None,
     use_live: bool,
     fixtures_dir: Path | None = None,
-    agent_ids: Mapping[FalconDataset, int] | None = None,
+    agent_ids: Mapping[str, int] | None = None,
 ) -> FalconClient:
     """Live transport only when explicitly enabled and credentialed; otherwise offline fixtures."""
     if use_live and token and base_url:
-        return FalconClient(
-            HttpxFalconTransport(base_url, token, agent_ids or _FALCON_AGENT_IDS, use_live=use_live)
-        )
+        resolved = _merge_agent_ids(agent_ids or {})
+        unconfigured = [d for d in _FALCON_DATASETS if d not in resolved]
+        if unconfigured:
+            _log.info("falcon_datasets_unconfigured", datasets=unconfigured)
+        return FalconClient(HttpxFalconTransport(base_url, token, resolved, use_live=use_live))
     if fixtures_dir is None:
         raise ValueError("fixtures_dir is required for the offline Falcon transport")
     return FalconClient(FixtureFalconTransport(fixtures_dir))

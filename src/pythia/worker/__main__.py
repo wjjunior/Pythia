@@ -22,6 +22,7 @@ def _falcon(settings: Settings) -> FalconClient | None:
         base_url=settings.falcon_api_base,
         token=settings.falcon_api_token.get_secret_value(),
         use_live=settings.use_live_venues,
+        agent_ids=settings.falcon_agent_id_overrides,
     )
 
 
