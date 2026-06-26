@@ -340,6 +340,8 @@ export interface components {
             ev: components["schemas"]["EvCalibration"] | null;
             /** Cohorts */
             cohorts: components["schemas"]["CohortCalibration"][];
+            /** Gates */
+            gates: components["schemas"]["GateDecision"][];
         };
         /** CandidateFeedItem */
         CandidateFeedItem: {
@@ -533,6 +535,20 @@ export interface components {
             /** Absolute Total */
             absolute_total: number;
         };
+        /** GateDecision */
+        GateDecision: {
+            /** Category */
+            category: string;
+            /** Cleared */
+            cleared: boolean;
+            /** Reasons */
+            reasons: components["schemas"]["GateReason"][];
+        };
+        /**
+         * GateReason
+         * @enum {string}
+         */
+        GateReason: "insufficient_n" | "no_brier_edge" | "ev_not_honest" | "poor_resolution";
         /** GrowthCurvePointView */
         GrowthCurvePointView: {
             /** Kelly Mult */

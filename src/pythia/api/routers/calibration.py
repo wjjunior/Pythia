@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import CalibrationResponse
-from pythia.eval.service import CalibrationService
+from pythia.eval.service import CalibrationService, gate_thresholds_from_settings
 
 router = APIRouter(tags=["calibration"])
 
@@ -20,12 +20,15 @@ def calibration(
 ) -> CalibrationResponse:
     svc = CalibrationService(session, settings=settings)
     report = svc.blended_report() if baseline == "blended" else svc.report()
+    gates = svc.gate_status(gate_thresholds_from_settings(settings))
     categories = report.categories
     if category is not None:
         categories = [item for item in categories if item.category == category]
+        gates = [gate for gate in gates if gate.category == category]
     return CalibrationResponse(
         categories=categories,
         reliability=report.reliability,
         ev=report.ev,
         cohorts=report.cohorts,
+        gates=gates,
     )
