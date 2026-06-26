@@ -5,24 +5,22 @@ from fastapi import APIRouter
 from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import CapitalState, PaperPortfolio
 from pythia.db.repositories import PaperTradeRepository
-from pythia.portfolio import available_capital, exposure_fraction
+from pythia.portfolio import exposure_fraction
+from pythia.services.portfolio import PortfolioService
 
 router = APIRouter(tags=["paper"])
 
 
 @router.get("/api/paper/positions")
 def paper_positions(session: SessionDep, settings: SettingsDep) -> PaperPortfolio:
-    repo = PaperTradeRepository(session)
-    realized = repo.realized_pnl()
-    locked = repo.locked_in_open()
-    total_capital = settings.bankroll_paper + realized
+    capital = PortfolioService(session, settings).capital()
     return PaperPortfolio(
-        positions=repo.list_open(),
+        positions=PaperTradeRepository(session).list_open(),
         capital=CapitalState(
-            starting_bankroll=settings.bankroll_paper,
-            realized_pnl=realized,
-            locked_in_open=locked,
-            available_capital=available_capital(settings.bankroll_paper, realized, locked),
-            exposure_fraction=exposure_fraction(locked, total_capital),
+            starting_bankroll=capital.starting_bankroll,
+            realized_pnl=capital.realized_pnl,
+            locked_in_open=capital.locked_in_open,
+            available_capital=capital.available_capital,
+            exposure_fraction=exposure_fraction(capital.locked_in_open, capital.total_capital),
         ),
     )
