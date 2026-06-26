@@ -1,8 +1,11 @@
 """Pure forecast aggregation (§5.4): combine diverse member estimates into one p_model.
 
 No I/O, no clock — aggregation is deterministic given the member list (a §4.6-style invariant).
-`median` cancels outliers; `weighted` is a calibration-weighted mean (equal weights until per-model
-track records exist).
+The production ensemble path uses ``median`` (it cancels an outlier member). The ``weighted`` method
+is an explicit-weight mean kept for the harness and a future calibration-weighting wiring; it is
+**unwired in production (PYT-125)** — no caller derives per-model weights (there is no per-model
+Brier track record to weight on yet), so it is *not* calibration-weighted today and the live verdict
+is always the median.
 """
 
 import statistics

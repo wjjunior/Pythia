@@ -110,7 +110,8 @@ class Settings(BaseSettings):
     growth_sim_seed: int = 42
 
     # Forecast aggregation & recalibration
-    aggregation_method: AggregationMethod = "median"
+    # Ensemble aggregation is median-only (PYT-125): calibration-weighting is deferred until
+    # per-model track records exist, so no operator-tunable aggregation method is exposed.
     ensemble_size: int = 1
     model_max_attempts: int = 2
     recalibration_method: RecalibrationMethod = "platt"
