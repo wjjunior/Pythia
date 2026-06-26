@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from structlog.testing import capture_logs
 
 from pythia.agents import (
@@ -512,3 +514,32 @@ def test_estimate_raises_typed_error_on_malformed_envelope() -> None:
     port = OpenRouterLLMPort(_FakeTransport([{"choices": []}]), ModelRouter())
     with pytest.raises(LLMResponseError):
         port.estimate(_ctx())
+
+
+_OUT_OF_RANGE = st.floats(min_value=-5.0, max_value=5.0, allow_nan=False, allow_infinity=False)
+
+
+@given(p_model=_OUT_OF_RANGE, confidence=_OUT_OF_RANGE, lower=_OUT_OF_RANGE, upper=_OUT_OF_RANGE)
+def test_should_clamp_out_of_range_probabilities_at_parse(
+    p_model: float, confidence: float, lower: float, upper: float
+) -> None:
+    content = json.dumps(
+        {
+            "p_model": p_model,
+            "confidence": confidence,
+            "lower": lower,
+            "upper": upper,
+            "rationale": "r",
+        }
+    )
+    response: dict[str, Any] = {
+        "model": "m",
+        "provider": "p",
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "cost": 0.0},
+    }
+    estimate = OpenRouterLLMPort(_FakeTransport([response]), ModelRouter()).estimate(_ctx())
+    assert 0.0 <= estimate.p_model <= 1.0
+    assert 0.0 <= estimate.confidence <= 1.0
+    assert 0.0 <= estimate.lower <= 1.0
+    assert 0.0 <= estimate.upper <= 1.0

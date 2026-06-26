@@ -19,7 +19,6 @@ from pythia.agents import (
     BudgetExceeded,
     BudgetGuard,
     CachingLLMPort,
-    EstimationAgent,
     make_llm_port,
 )
 from pythia.common import LLMPort, TrackedTrader, TraderState
@@ -118,15 +117,21 @@ def run_roster_review(
     policy = roster_policy(settings)
     llm = _guarded_llm(session, settings)
     try:
-        live = sum(1 for t in traders_repo.list() if t.state is not TraderState.RETIRED)
+        non_retired = [t for t in traders_repo.list() if t.state is not TraderState.RETIRED]
         added = manager.discover(
-            falcon, at=now, limit=policy.roster_max, capacity=max(0, policy.roster_max - live)
+            falcon,
+            at=now,
+            limit=policy.roster_max,
+            capacity=max(0, policy.roster_max - len(non_retired)),
         )
-        estimator = EstimationAgent(llm, EvidenceStore(session, make_embedder(settings)))
         harness = build_selection_harness(
-            session, falcon=falcon, estimator=estimator, settings=settings
+            session,
+            falcon=falcon,
+            llm=llm,
+            evidence=EvidenceStore(session, make_embedder(settings)),
+            settings=settings,
         )
-        roster = [t for t in traders_repo.list() if t.state is not TraderState.RETIRED]
+        roster = non_retired + added  # discoveries enter as trial, i.e. non-retired
         cards = harness.review(roster, asof=now)
     except LiveVenueAccessError:
         _log.warning("smartmoney_geo_block", tick="roster_review")
