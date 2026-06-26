@@ -9,6 +9,7 @@ their repos expose no update path. ``trader_entries`` insert is idempotent on
 import uuid
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from pythia.common import (
@@ -298,6 +299,15 @@ class CandidateSignalRepo:
             .limit(limit)
         ).all()
         return [_from_db_candidate(row) for row in rows]
+
+    def count_evaluated_since(self, since: datetime) -> int:
+        # Candidates actually run through the pipeline since ``since`` — the shared daily-cap tally.
+        return self._session.exec(
+            select(func.count())
+            .select_from(models.CandidateSignal)
+            .where(models.CandidateSignal.status == CandidateSignalStatus.EVALUATED.value)
+            .where(col(models.CandidateSignal.created_at) >= since)
+        ).one()
 
     def has_market_trigger(self, market_id: str, *, since: datetime | None = None) -> bool:
         # A market is smart-money-triggered if any candidate signal attributes it (§3.2 guard).

@@ -4,12 +4,25 @@ from pythia.common.logging import configure_logging, get_logger
 from pythia.config import Settings, get_settings
 from pythia.db.session import session_scope
 from pythia.ingestion import HttpxTransport, MarketCrawler
+from pythia.ingestion.falcon import FalconClient, make_falcon_client
 from pythia.rag.embeddings import make_embedder
 from pythia.worker.evidence_ingest import build_evidence_transports
 from pythia.worker.scheduler import build_scheduler, make_persist_sink
 from pythia.worker.venue_ingest import build_venue_clients
 
 _log = get_logger(__name__)
+
+
+def _falcon(settings: Settings) -> FalconClient | None:
+    # Smart-money runs only when Falcon is credentialed (the worker is USE_LIVE_VENUES-gated).
+    if not (settings.falcon_api_base and settings.falcon_api_token):
+        _log.info("smartmoney_disabled", reason="FALCON_API_BASE/TOKEN unset")
+        return None
+    return make_falcon_client(
+        base_url=settings.falcon_api_base,
+        token=settings.falcon_api_token,
+        use_live=settings.use_live_venues,
+    )
 
 
 def _configure(settings: Settings) -> None:
@@ -39,6 +52,7 @@ def main() -> None:
     venue_clients = build_venue_clients(settings)
     evidence_transports = build_evidence_transports(settings)
     embedder = make_embedder(settings)
+    falcon = _falcon(settings)
     scheduler = build_scheduler(
         crawler,
         make_persist_sink(session_scope),
@@ -48,6 +62,7 @@ def main() -> None:
         embedder=embedder,
         evidence_transports=evidence_transports,
         settings=settings,
+        falcon=falcon,
     )
     _log.info(
         "worker_start",
