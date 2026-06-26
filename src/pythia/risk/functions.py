@@ -14,6 +14,10 @@ from pythia.risk.models import (
 
 def gate_reasons(proposal: TradeProposal, limits: RiskLimits) -> tuple[RiskReason, ...]:
     reasons: list[RiskReason] = []
+    # No silent bets (§4.6): any zeroed penalty collapses opportunity_score, so a non-positive
+    # score means a catastrophic quality dimension — never size it.
+    if proposal.opportunity_score <= 0.0:
+        reasons.append(RiskReason.ZERO_OPPORTUNITY)
     if proposal.confidence < limits.min_confidence:
         reasons.append(RiskReason.MIN_CONFIDENCE)
     if proposal.source_reliability < limits.min_source_reliability:

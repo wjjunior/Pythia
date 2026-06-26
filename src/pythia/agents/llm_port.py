@@ -50,6 +50,11 @@ class _EstimationPayload(BaseModel):
     upper: float
     rationale: str
 
+    @field_validator("p_model", "confidence", "lower", "upper")
+    @classmethod
+    def _clamp_to_unit(cls, value: float) -> float:
+        return min(1.0, max(0.0, value))
+
 
 class _CritiquePayload(BaseModel):
     adjusted_confidence: float | None = None

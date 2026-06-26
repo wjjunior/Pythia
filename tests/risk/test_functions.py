@@ -32,6 +32,7 @@ PROPOSAL = TradeProposal(
     confidence=0.8,
     source_reliability=0.7,
     p_resol_severity=0.2,
+    opportunity_score=0.5,
     category_calibrated=True,
 )
 

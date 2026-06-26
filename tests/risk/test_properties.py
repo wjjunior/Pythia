@@ -1,11 +1,14 @@
 """Hypothesis property tests for the risk gate (§4.6 invariant 5: hard caps dominate)."""
 
+from dataclasses import replace
+
 from hypothesis import given
 from hypothesis import strategies as st
 
 from pythia.risk import (
     ExposureState,
     RiskLimits,
+    RiskReason,
     TradeProposal,
     evaluate,
 )
@@ -35,6 +38,7 @@ exposure_st = st.builds(
     weekly_total=nonneg,
     absolute_total=nonneg,
 )
+signed_unit = st.floats(min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False)
 proposal_st = st.builds(
     TradeProposal,
     proposed_size=nonneg,
@@ -43,6 +47,7 @@ proposal_st = st.builds(
     confidence=unit,
     source_reliability=unit,
     p_resol_severity=unit,
+    opportunity_score=signed_unit,
     category_calibrated=st.booleans(),
 )
 
@@ -85,3 +90,14 @@ def test_paper_only_mirrors_category_calibration(
 ) -> None:
     decision = evaluate(proposal, limits, exposure)
     assert decision.paper_only == (not proposal.category_calibrated)
+
+
+# Invariant 6 — no silent bets: any penalty == 0 ⇒ opportunity_score == 0 ⇒ approved_size == 0.
+@given(proposal_st, limits_st, exposure_st)
+def test_non_positive_opportunity_forces_zero_size(
+    proposal: TradeProposal, limits: RiskLimits, exposure: ExposureState
+) -> None:
+    decision = evaluate(replace(proposal, opportunity_score=0.0), limits, exposure)
+    assert decision.approved_size == 0.0
+    assert decision.vetoed
+    assert RiskReason.ZERO_OPPORTUNITY in decision.reasons

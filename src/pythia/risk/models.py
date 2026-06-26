@@ -6,6 +6,7 @@ from enum import Enum
 
 
 class RiskReason(Enum):
+    ZERO_OPPORTUNITY = "zero_opportunity"
     MIN_CONFIDENCE = "min_confidence"
     MIN_SOURCE_RELIABILITY = "min_source_reliability"
     MAX_P_RESOL_SEVERITY = "max_p_resol_severity"
@@ -47,6 +48,7 @@ class TradeProposal:
     confidence: float
     source_reliability: float
     p_resol_severity: float
+    opportunity_score: float
     category_calibrated: bool
     resolution_gated: bool = False
 
