@@ -12,6 +12,7 @@ from pythia.common import (
     CandidateSignal,
     CandidateSignalStatus,
     CandidateSource,
+    Evidence,
     Market,
     RosterEvent,
     TrackedTrader,
@@ -28,6 +29,8 @@ from pythia.db.smartmoney import (
     TraderEntryRepo,
     TraderScorecardRepo,
 )
+from pythia.orchestration.runner import _RepoTriggeredMarkets
+from pythia.smartmoney.evidence import SMART_MONEY_SOURCE_ID, SmartMoneyEvidencePort
 
 pytestmark = pytest.mark.integration
 
@@ -259,6 +262,76 @@ def test_has_market_trigger_detects_attribution(session: Session) -> None:
     )
     assert repo.has_market_trigger(market) is True
     assert repo.has_market_trigger(other) is False
+
+
+def test_has_market_trigger_sees_an_over_cap_queued_trigger(session: Session) -> None:
+    # PYT-117/R-8: an over-cap QUEUED trigger now carries its market_id, so the guard counts it
+    # (previously market_id was None, making it invisible to the §3.2 double-count guard).
+    market = _seed_market(session, "mkt-queued")
+    repo = CandidateSignalRepo(session)
+    repo.enqueue(
+        CandidateSignal(
+            id=_uid("cs-queued-only"),
+            market_id=market,
+            asof=_TS,
+            trader_ids=[_uid("t")],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.QUEUED,
+            created_at=_TS,
+        )
+    )
+    assert repo.has_market_trigger(market) is True
+
+
+class _EmptyBase:
+    def retrieve(self, market_id: str, asof: datetime, k: int) -> list[Evidence]:
+        return []
+
+
+class _FlowStub:
+    def active_on_market(self, market_id: str, *, asof: datetime) -> list[TraderEntry]:
+        return [
+            TraderEntry(
+                id=_uid(f"flow-{market_id}"),
+                trader_id=_uid("t"),
+                external_market="0xext",
+                market_id=market_id,
+                side="YES",
+                ts=asof,
+                is_increase=True,
+            )
+        ]
+
+
+def test_queued_trigger_blocks_smart_money_evidence_end_to_end(session: Session) -> None:
+    # PYT-117/R-8 end-to-end through the runner is_triggered wiring, evidence feature ON: a market
+    # whose only smart-money signal is a still-QUEUED trigger must not also receive flow evidence.
+    triggered = _seed_market(session, "mkt-q-trig")
+    untriggered = _seed_market(session, "mkt-q-untrig")
+    CandidateSignalRepo(session).enqueue(
+        CandidateSignal(
+            id=_uid("cs-q"),
+            market_id=triggered,
+            asof=_TS,
+            trader_ids=[_uid("t")],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.QUEUED,  # over-cap, not evaluated — yet a real trigger
+            created_at=_TS,
+        )
+    )
+    port = SmartMoneyEvidencePort(
+        _EmptyBase(),
+        flow=_FlowStub(),
+        triggers=_RepoTriggeredMarkets(session),
+        enabled=True,
+    )
+
+    # Control: an untriggered market still receives flow → the mechanism is live (non-vacuous).
+    untrig = port.retrieve(untriggered, _TS, 8)
+    assert any(e.source_id == SMART_MONEY_SOURCE_ID for e in untrig)
+    # The QUEUED-triggered market does not — the deferred trigger closes the double-count window.
+    trig = port.retrieve(triggered, _TS, 8)
+    assert not any(e.source_id == SMART_MONEY_SOURCE_ID for e in trig)
 
 
 def test_roster_event_is_append_only(session: Session) -> None:

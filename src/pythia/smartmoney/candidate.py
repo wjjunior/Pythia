@@ -39,10 +39,28 @@ class CandidateEvaluator(Protocol):
         snapshot, which for a freshly-detected entry is ~the trigger time."""
         ...
 
+    def resolve(self, external_market: str) -> str | None:
+        """Resolve the Falcon market to our tracked market_id *without* running the pipeline, so an
+        over-cap (QUEUED) candidate still records the market it triggered (§3.2 guard)."""
+        ...
+
+    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+        """Run the v1 pipeline for an already-resolved market; True if it ran (drains the queue)."""
+        ...
+
 
 class CandidateStore(Protocol):
     def get(self, signal_id: str) -> CandidateSignal | None: ...
     def enqueue(self, signal: CandidateSignal) -> CandidateSignal: ...
+
+
+class QueuedStore(Protocol):
+    def list_by_status(self, status: CandidateSignalStatus) -> list[CandidateSignal]: ...
+    def set_status(self, signal_id: str, status: CandidateSignalStatus) -> CandidateSignal: ...
+
+
+class CandidateRepo(CandidateStore, QueuedStore, Protocol):
+    """A store that both enqueues new candidates and drains the queue."""
 
 
 def enqueue_candidates(
@@ -69,13 +87,16 @@ def enqueue_candidates(
         if store.get(signal_id) is not None:
             continue  # already enqueued this (market, asof) — idempotent, no re-evaluation
 
-        market_id: str | None = None
-        status = CandidateSignalStatus.QUEUED  # over the daily cap → deferred
         if budget > 0:
             market_id = evaluator.evaluate(external_market, asof, trader_ids)
             status = CandidateSignalStatus.EVALUATED if market_id else CandidateSignalStatus.SKIPPED
             if market_id is not None:
                 budget -= 1
+        else:
+            # Over the daily cap → deferred. Still resolve the market so the QUEUED trigger blocks
+            # double-counting as evidence (§3.2); an untracked market can never run → SKIPPED.
+            market_id = evaluator.resolve(external_market)
+            status = CandidateSignalStatus.QUEUED if market_id else CandidateSignalStatus.SKIPPED
         signals.append(
             store.enqueue(
                 CandidateSignal(
@@ -100,25 +121,57 @@ class PipelineCandidateEvaluator:
         self._snapshots = SnapshotRepository(session)
         self._pipeline = pipeline
 
-    def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
+    def resolve(self, external_market: str) -> str | None:
         market = self._markets.get_by_external_id(external_market)
         if market is None:
             _log.info("candidate_skipped_untracked_market", external_market=external_market)
             return None
-        snapshot = self._snapshots.latest_for_market(market.id)
+        return market.id
+
+    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+        snapshot = self._snapshots.latest_for_market(market_id)
         if snapshot is None:
-            _log.info("candidate_skipped_no_snapshot", market_id=market.id)
-            return None
+            _log.info("candidate_skipped_no_snapshot", market_id=market_id)
+            return False
+        market = self._markets.get(market_id)
+        if market is None:
+            return False
         _log.info(
             "candidate_evaluated",
-            market_id=market.id,
+            market_id=market_id,
             asof=asof.isoformat(),
             trader_count=len(trader_ids),
         )
         self._pipeline.run(
             market, snapshot
         )  # verdict persisted, as a crawler-sourced market (§5.2)
-        return market.id
+        return True
+
+    def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
+        market_id = self.resolve(external_market)
+        if market_id is None:
+            return None
+        return market_id if self.run_market(market_id, asof, trader_ids) else None
+
+
+def drain_queued(
+    *, store: QueuedStore, evaluator: CandidateEvaluator, budget: int
+) -> list[CandidateSignal]:
+    """Re-evaluate over-cap QUEUED candidates oldest-first under the remaining daily budget (R-9).
+
+    The daily cap is a hard ceiling, so this only runs when a tick leaves budget unspent; an
+    untracked QUEUED candidate (no market_id) is left in place for a later, tracking-aware tick.
+    """
+    drained: list[CandidateSignal] = []
+    for queued in store.list_by_status(CandidateSignalStatus.QUEUED):  # repo orders oldest-first
+        if budget <= 0:
+            break
+        if queued.market_id is None:
+            continue
+        if evaluator.run_market(queued.market_id, queued.asof, queued.trader_ids):
+            drained.append(store.set_status(queued.id, CandidateSignalStatus.EVALUATED))
+            budget -= 1
+    return drained
 
 
 def detect_and_enqueue(
@@ -127,19 +180,20 @@ def detect_and_enqueue(
     falcon: FalconPort,
     since: datetime,
     entry_repo: TraderEntryRepo,
-    store: CandidateStore,
+    store: CandidateRepo,
     evaluator: CandidateEvaluator,
     daily_cap: int,
     evaluated_today: int,
     now: datetime,
 ) -> list[CandidateSignal]:
-    """Detect each active wallet's new entries, then enqueue deduped candidates (one tick of §5)."""
+    """Detect each active wallet's new entries, enqueue deduped candidates, then drain the backlog
+    with any budget those new candidates left unspent (one tick of §5)."""
     triggers: list[TraderEntry] = []
     for trader in traders:
         triggers.extend(
             detect_new_entries(trader, falcon.get_trader_trades(trader.wallet, since), entry_repo)
         )
-    return enqueue_candidates(
+    new = enqueue_candidates(
         triggers,
         store=store,
         evaluator=evaluator,
@@ -147,3 +201,8 @@ def detect_and_enqueue(
         evaluated_today=evaluated_today,
         created_at=now,
     )
+    used = sum(1 for signal in new if signal.status is CandidateSignalStatus.EVALUATED)
+    drained = drain_queued(
+        store=store, evaluator=evaluator, budget=max(0, daily_cap - evaluated_today - used)
+    )
+    return new + drained

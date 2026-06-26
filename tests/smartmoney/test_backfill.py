@@ -67,6 +67,12 @@ class _FakeEvaluator:
         self.calls.append((external_market, asof, tuple(trader_ids)))
         return f"mkt:{external_market}"
 
+    def resolve(self, external_market: str) -> str | None:
+        return f"mkt:{external_market}"
+
+    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+        return True
+
 
 def _sweep(
     positions: list[OpenPosition],
