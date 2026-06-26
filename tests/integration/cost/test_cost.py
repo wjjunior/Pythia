@@ -6,10 +6,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from pythia.agents import BudgetExceeded, BudgetGuard, ModelRouter, OpenRouterLLMPort
 from pythia.common import CostEvent, EstimationContext, Market, MarketSnapshot
+from pythia.common.logging import bind_correlation, clear_correlation
 from pythia.db import models
 from pythia.db.repositories import CostRepository
 
@@ -208,3 +209,27 @@ def test_daily_budget_cap_halts_calls(session: Session) -> None:
     guard = BudgetGuard(repo, run_cap=1000.0, daily_cap=0.05)
     with pytest.raises(BudgetExceeded):
         guard.check()
+
+
+def test_should_persist_all_four_cost_tags_from_the_adapter_path(session: Session) -> None:
+    # F-10: the four tags must reach cost_events from the adapter's response path, not a hand-built
+    # row. A regression dropping any tag in _record_call must fail this test.
+    correlation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt128-corr"))
+    bind_correlation(correlation_id)
+    try:
+        port = OpenRouterLLMPort(
+            _FakeTransport(_estimate_response(0.01)),
+            ModelRouter(),
+            cost_sink=CostRepository(session).record,
+        )
+        port.estimate(_ctx())
+    finally:
+        clear_correlation()
+
+    rows = session.exec(select(models.CostEvent)).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.agent == "estimation"  # the calling agent, from the adapter
+    assert row.provider == "p"  # from the response, not the "openrouter" default
+    assert row.model  # router-selected model, populated
+    assert row.correlation_id == correlation_id  # bound run context, threaded through _record_call
