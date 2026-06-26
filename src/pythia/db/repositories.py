@@ -6,6 +6,7 @@ append-only (no update path); sources upsert by name. Contract ids are used as p
 
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -184,6 +185,16 @@ class SnapshotRepository:
         ).first()
         return _from_db_snapshot(row) if row is not None else None
 
+    def latest_for_market_asof(self, market_id: str, *, asof: datetime) -> MarketSnapshot | None:
+        # Point-in-time: the freshest snapshot NOT after asof — the price as the trader saw it.
+        row = self._session.exec(
+            select(models.MarketSnapshot)
+            .where(models.MarketSnapshot.market_id == uuid.UUID(market_id))
+            .where(col(models.MarketSnapshot.ts) <= asof)
+            .order_by(col(models.MarketSnapshot.ts).desc())
+        ).first()
+        return _from_db_snapshot(row) if row is not None else None
+
 
 class SourceRepository:
     def __init__(self, session: Session) -> None:
@@ -345,6 +356,13 @@ class RecalibrationRepository:
         ).all()
 
 
+@dataclass(frozen=True, slots=True)
+class ResolutionOutcome:
+    outcome: int
+    resolved_at: datetime
+    ambiguous: bool
+
+
 class ResolutionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -382,6 +400,16 @@ class ResolutionRepository:
     def exists(self, market_id: str) -> bool:
         row_id = uuid.UUID(deterministic_id("resolution", market_id))
         return self._session.get(models.Resolution, row_id) is not None
+
+    def get_for_market(self, market_id: str) -> ResolutionOutcome | None:
+        row = self._session.get(
+            models.Resolution, uuid.UUID(deterministic_id("resolution", market_id))
+        )
+        if row is None:
+            return None
+        return ResolutionOutcome(
+            outcome=row.outcome, resolved_at=row.resolved_at, ambiguous=row.ambiguous
+        )
 
     def invalid_counts_by_category(self) -> dict[str, int]:
         rows = self._session.exec(
