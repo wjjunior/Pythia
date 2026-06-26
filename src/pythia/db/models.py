@@ -36,6 +36,13 @@ def _id() -> Any:
 
 class Market(SQLModel, table=True):
     __tablename__ = "markets"
+    __table_args__ = (
+        CheckConstraint(
+            "resolution_source_type IS NULL OR "
+            "resolution_source_type IN ('chainlink', 'clean_binary', 'subjective_uma')",
+            name="markets_resolution_source_type_check",
+        ),
+    )
 
     id: uuid.UUID | None = _id()
     external_id: str = Field(sa_column=Column(Text, nullable=False, unique=True))
