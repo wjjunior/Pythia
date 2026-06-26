@@ -7,6 +7,7 @@ forecasts in [0, 1]) is assumed from the boundary.
 
 from collections.abc import Mapping, Sequence
 
+from pythia.eval.cohorts import Cohort
 from pythia.eval.models import CategoryCalibration, CohortCalibration, EvCalibration, ReliabilityBin
 
 
@@ -96,7 +97,7 @@ def calibration_by_cohort(
                 cohort=cohort, brier_system=bs, brier_market=bm, delta=bm - bs, n=len(samples)
             )
         )
-    return out
+    return sorted(out, key=lambda c: (c.cohort == Cohort.OVERALL.value, c.cohort))
 
 
 def ev_predicted_vs_realized(

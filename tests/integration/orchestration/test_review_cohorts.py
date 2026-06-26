@@ -62,6 +62,7 @@ def _seed(
     *,
     tag: str,
     close_time: datetime,
+    yes_price: float = YES_PRICE,
 ) -> tuple[str, str, str]:
     """Insert market + snapshot + estimate + score + risk-decision."""
     market_id = _market_id(tag)
@@ -83,7 +84,7 @@ def _seed(
             id=snapshot_id,
             market_id=market_id,
             ts=SNAPSHOT_TS,
-            yes_price=YES_PRICE,
+            yes_price=yes_price,
             spread=SPREAD,
             volume=1.0,
             liquidity=1.0,
@@ -192,6 +193,28 @@ def test_filter_rejects_out_of_cohort_when_enabled(session: Session) -> None:
         select(models.PaperTrade).where(models.PaperTrade.market_id == uuid.UUID(market_id))
     ).all()
     assert trades == []
+
+
+def test_overall_filter_accepts_any_market(session: Session) -> None:
+    """Filter ON with Cohort.OVERALL → no-op; a market in NO cohort is still approved."""
+    # 30-day horizon, 0.95 price: outside fast_7d and midband, but filter is OVERALL → accept all
+    close_time = SNAPSHOT_TS + timedelta(days=30)
+    _market_id_val, _snap_id, estimate_id = _seed(
+        session,
+        tag="overall-filter",
+        close_time=close_time,
+        yes_price=0.95,
+    )
+
+    settings = _settings(
+        cohort_trade_filter_enabled=True,
+        cohort_trade_filter=Cohort.OVERALL,
+    )
+    # Must NOT raise OutOfCohortError — OVERALL is a no-op filter
+    trade = _gate(session, settings=settings).approve(
+        estimate_id, side=Side.YES, size=100.0, at=SNAPSHOT_TS
+    )
+    assert trade is not None
 
 
 def test_filter_off_is_unchanged(session: Session) -> None:

@@ -45,7 +45,7 @@ class ResolutionService:
         self._evidence = EvidenceRepository(session)
         self._audit = AuditRepository(session)
         self._ledger = ledger
-        self._calibration = CalibrationService(session)
+        self._calibration = CalibrationService(session, settings=settings)
         self._postmortem = PostmortemService(session, settings, attribution=attribution)
         self._on_calibration_changed = on_calibration_changed
 

@@ -26,7 +26,7 @@ from pythia.common import (
 )
 from pythia.common.ids import deterministic_id
 from pythia.common.venue import blended_baseline, latest_prices_per_venue
-from pythia.config import Settings, get_settings
+from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
     ImprovementCandidateRepository,
@@ -122,9 +122,9 @@ def gate_thresholds_from_settings(settings: Settings) -> GateThresholds:
 
 
 class CalibrationService:
-    def __init__(self, session: Session, *, settings: Settings | None = None) -> None:
+    def __init__(self, session: Session, *, settings: Settings) -> None:
         self._session = session
-        self._settings = settings or get_settings()
+        self._settings = settings
 
     def report(self, *, n_bins: int = DEFAULT_RELIABILITY_BINS) -> CalibrationReport:
         outcomes = self._resolved_outcomes()

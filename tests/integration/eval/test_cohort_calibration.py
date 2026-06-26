@@ -305,3 +305,18 @@ def test_trade_filter_does_not_restrict_the_measured_number(session: Session) ->
     for cat in baseline_cats:
         assert baseline_cats[cat].n == after_cats[cat].n
         assert baseline_cats[cat].brier_system == pytest.approx(after_cats[cat].brier_system)
+
+
+def test_cohort_order_is_deterministic_overall_last(session: Session) -> None:
+    """Cohort list is alphabetically sorted with 'overall' pinned last."""
+    _seed_three_cohort_groups(session)
+
+    settings = Settings(_env_file=None, database_url="x")
+    report = CalibrationService(session, settings=settings).report()
+    cohort_names = [c.cohort for c in report.cohorts]
+
+    # overall must be last
+    assert cohort_names[-1] == Cohort.OVERALL.value
+    # real cohorts must be alphabetically sorted
+    real_cohorts = cohort_names[:-1]
+    assert real_cohorts == sorted(real_cohorts)

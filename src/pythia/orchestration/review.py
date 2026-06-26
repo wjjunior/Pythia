@@ -114,6 +114,7 @@ class ReviewGate:
         cohorts, asof = self._compute_cohorts(estimate)
         if (
             self._settings.cohort_trade_filter_enabled
+            and self._settings.cohort_trade_filter is not Cohort.OVERALL
             and self._settings.cohort_trade_filter not in cohorts
         ):
             raise OutOfCohortError(estimate_id)
