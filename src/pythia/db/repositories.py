@@ -236,6 +236,7 @@ def _to_db_estimate(estimate: Estimate) -> models.Estimate:
         snapshot_id=uuid.UUID(estimate.snapshot_id),
         p_model=estimate.p_model,
         p_model_calibrated=estimate.p_model_calibrated,
+        p_model_calibrated_fit_asof=estimate.p_model_calibrated_fit_asof,
         confidence=estimate.confidence,
         lower=estimate.lower,
         upper=estimate.upper,
@@ -253,6 +254,7 @@ def _from_db_estimate(row: models.Estimate) -> Estimate:
         snapshot_id=str(row.snapshot_id),
         p_model=row.p_model,
         p_model_calibrated=row.p_model_calibrated,
+        p_model_calibrated_fit_asof=row.p_model_calibrated_fit_asof,
         confidence=row.confidence,
         lower=row.lower,
         upper=row.upper,
@@ -329,7 +331,7 @@ class RecalibrationRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def save(self, category: str, cmap: CalibrationMap, n_fit: int) -> None:
+    def save(self, category: str, cmap: CalibrationMap, n_fit: int, *, fit_asof: datetime) -> None:
         for row in self._active_rows(category):
             row.active = False
             self._session.add(row)
@@ -340,16 +342,20 @@ class RecalibrationRepository:
                 method=cmap.method,
                 params=dict(cmap.params),
                 n_fit=n_fit,
+                fit_asof=fit_asof,
                 active=True,
             )
         )
         self._session.commit()
 
-    def active_for_category(self, category: str) -> tuple[CalibrationMap, int] | None:
+    def active_for_category(
+        self, category: str
+    ) -> tuple[CalibrationMap, int, datetime | None] | None:
         row = next(iter(self._active_rows(category)), None)
         if row is None:
             return None
-        return CalibrationMap(method=as_method(row.method), params=row.params), row.n_fit
+        cmap = CalibrationMap(method=as_method(row.method), params=row.params)
+        return cmap, row.n_fit, row.fit_asof
 
     def _active_rows(self, category: str) -> Sequence[models.RecalibrationModel]:
         return self._session.exec(

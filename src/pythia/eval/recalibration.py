@@ -140,6 +140,12 @@ def fit(method: Method, p_models: Sequence[float], outcomes: Sequence[int]) -> C
     return CalibrationMap(method="identity", params={})
 
 
+def map_is_point_in_time(fit_asof: datetime | None, asof: datetime) -> bool:
+    """A map is safe to apply only if it was fit at or before `asof` — else it embeds resolutions
+    the forecast could not have seen (replay/backtest lookahead). No fit_asof ⇒ never applied."""
+    return fit_asof is not None and fit_asof <= asof
+
+
 def select_method(n: int, configured: RecalibrationMethod, min_n: int) -> Method:
     if n < min_n:
         return "identity"

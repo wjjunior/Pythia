@@ -60,6 +60,7 @@ def _estimate(
     *,
     created_at: datetime | None = None,
     p_model_calibrated: float | None = None,
+    p_model_calibrated_fit_asof: datetime | None = None,
 ) -> None:
     row = models.Estimate(
         id=_uid(f"{name}-est-{p_model}-{created_at}"),
@@ -67,6 +68,7 @@ def _estimate(
         snapshot_id=_uid(f"{name}-snap"),
         p_model=p_model,
         p_model_calibrated=p_model_calibrated,
+        p_model_calibrated_fit_asof=p_model_calibrated_fit_asof,
         confidence=0.5,
         lower=0.0,
         upper=1.0,
@@ -293,6 +295,34 @@ def test_should_exclude_post_snapshot_quote_from_blended_baseline(session: Sessi
     # The quote postdates the estimate's snapshot (ts=_TS) so it cannot enter the baseline; the
     # blended market price stays q_market=0.5, not (0.5 + 0.8) / 2.
     assert blended.brier_market == pytest.approx((0.5 - 1) ** 2)
+
+
+def test_should_exclude_a_committed_forecast_whose_map_was_fit_after_the_snapshot(
+    session: Session,
+) -> None:
+    # PYT-111 (AC2): a committed forecast whose recalibration map was fit AFTER the estimate's
+    # snapshot is replay lookahead — the verdict drops it. A clean sibling market stays measured.
+    _market(session, "ok", "politics")
+    _snapshot(session, "ok", 0.5)  # snapshot ts = _TS
+    _estimate(session, "ok", 0.8, p_model_calibrated=0.8, p_model_calibrated_fit_asof=_TS)
+    _resolution(session, "ok", 1)
+
+    _market(session, "leak", "politics")
+    _snapshot(session, "leak", 0.5)
+    _estimate(
+        session,
+        "leak",
+        0.3,
+        p_model_calibrated=0.9,
+        p_model_calibrated_fit_asof=_TS + timedelta(days=1),  # fit after the snapshot → lookahead
+    )
+    _resolution(session, "leak", 1)
+
+    politics = {
+        c.category: c for c in CalibrationService(session, settings=_settings()).report().categories
+    }["politics"]
+    assert politics.n == 1  # only the clean market; the lookahead-committed forecast is excluded
+    assert politics.brier_system == pytest.approx((0.8 - 1) ** 2)  # the clean committed forecast
 
 
 def test_reliability_curve_is_produced(session: Session) -> None:

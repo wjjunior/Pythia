@@ -124,6 +124,11 @@ class Estimate(SQLModel, table=True):
     # The committed (recalibrated) forecast the deterministic layer sizes on (PYT-100); nullable for
     # pre-PYT-100 rows. The verdict measures this; raw p_model is kept as an estimator diagnostic.
     p_model_calibrated: float | None = Field(default=None, sa_column=Column(Double, nullable=True))
+    # The fit-asof of the map applied to p_model_calibrated (PYT-111); NULL = raw, no map. Lets the
+    # verdict refuse a committed forecast whose map was fit after the snapshot (replay lookahead).
+    p_model_calibrated_fit_asof: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
     confidence: float = Field(sa_column=Column(Double, nullable=False))
     lower: float = Field(sa_column=Column(Double, nullable=False))
     upper: float = Field(sa_column=Column(Double, nullable=False))
@@ -176,6 +181,11 @@ class RecalibrationModel(SQLModel, table=True):
     method: str = Field(sa_column=Column(Text, nullable=False))
     params: dict[str, Any] = Field(sa_column=Column(JSONB, nullable=False))
     n_fit: int = Field(sa_column=Column(Integer, nullable=False))
+    # The logical asof the map was fit on, distinct from fitted_at (wall-clock write time); the
+    # pipeline applies a map only when fit_asof <= snapshot.ts (PYT-111).
+    fit_asof: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
     fitted_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),

@@ -10,6 +10,7 @@ from pythia.eval.recalibration import (
     CalibrationMap,
     compare_brier,
     fit,
+    map_is_point_in_time,
     recalibrate,
     select_method,
 )
@@ -114,3 +115,20 @@ def test_should_fall_back_from_isotonic_to_platt_below_isotonic_min_n() -> None:
     assert select_method(50, "isotonic", 50) == "platt"
     assert select_method(ISOTONIC_MIN_N - 1, "isotonic", 50) == "platt"
     assert select_method(ISOTONIC_MIN_N, "isotonic", 50) == "isotonic"
+
+
+@given(fit_offset_days=st.integers(min_value=-30, max_value=30))
+def test_should_apply_a_map_only_when_fit_asof_is_at_or_before_the_snapshot(
+    fit_offset_days: int,
+) -> None:
+    fit_asof = _T0 + timedelta(days=fit_offset_days)
+    # A map fit after the snapshot embeds resolutions the forecast could not have seen → lookahead.
+    assert map_is_point_in_time(fit_asof, _T0) == (fit_asof <= _T0)
+
+
+def test_should_apply_a_map_fit_exactly_at_the_snapshot() -> None:
+    assert map_is_point_in_time(_T0, _T0) is True  # boundary is <=, not < (a slip fails here)
+
+
+def test_should_not_apply_a_map_without_a_fit_asof() -> None:
+    assert map_is_point_in_time(None, _T0) is False
