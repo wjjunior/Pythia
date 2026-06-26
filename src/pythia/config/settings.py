@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pythia.common.types import RecalibrationMethod
@@ -61,15 +61,15 @@ class Settings(BaseSettings):
     candidate_daily_cap: int = 20
 
     # Trader selection & roster lifecycle (v2 §4.2/§4.3, Appendix)
-    tracked_traders_max: int = 10  # TOTAL non-retired roster cap (trial + active + benched)
-    active_traders_max: int = 5  # of those, how many hold an active deploy slot (<= tracked)
+    tracked_traders_max: int = Field(default=10, ge=0)  # TOTAL non-retired roster cap
+    active_traders_max: int = Field(default=5, ge=0)  # active deploy slots, <= tracked
     trader_trial_min_resolved: int = 20
     trader_promote_score: float = 0.5
     trader_promote_agree: float = 0.0
     trader_demote_score: float = 0.0
     trader_demote_agree: float = -1.0
     trader_drawdown_floor: float = 1.0
-    trader_bench_ttl_seconds: int = 1_209_600  # benched 14d without recovery ⇒ retire (free a slot)
+    trader_bench_ttl_seconds: int = Field(default=1_209_600, ge=0)  # benched-too-long ⇒ retire
     roster_review_interval_seconds: int = 86_400
     market_class_allow: str = "politics,sports,macro,world affairs"
     smart_money_evidence_enabled: bool = False
