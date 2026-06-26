@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     tracked_traders_max: int = Field(default=10, ge=0)  # TOTAL non-retired roster cap
     active_traders_max: int = Field(default=5, ge=0)  # active deploy slots, <= tracked
     trader_trial_min_resolved: int = 20
-    trader_extreme_price_share_cap: float = 0.5  # extreme-price entry share cap (scalper guard)
+    trader_extreme_price_share_cap: float = Field(default=0.5, ge=0.0, le=1.0)  # scalper guard
     trader_promote_score: float = 0.5
     trader_promote_agree: float = 0.0
     trader_demote_score: float = 0.0
