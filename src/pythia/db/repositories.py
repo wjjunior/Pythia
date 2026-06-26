@@ -186,6 +186,10 @@ class SnapshotRepository:
         ).first()
         return _from_db_snapshot(row) if row is not None else None
 
+    def get(self, snapshot_id: str) -> MarketSnapshot | None:
+        row = self._session.get(models.MarketSnapshot, uuid.UUID(snapshot_id))
+        return _from_db_snapshot(row) if row is not None else None
+
     def latest_for_market_asof(self, market_id: str, *, asof: datetime) -> MarketSnapshot | None:
         # Point-in-time: the freshest snapshot NOT after asof — the price as the trader saw it.
         row = self._session.exec(
