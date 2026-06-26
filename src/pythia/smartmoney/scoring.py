@@ -5,8 +5,8 @@ Fills the two seams `SelectionHarness` (PYT-91) left as Protocols:
 - `FalconTraderReturns` — per-resolution **realized returns** + categories for a wallet's increasing
   entries whose market resolved **before `asof`** (our `resolutions` are the no-lookahead gate and
   the category source); win/lose comes from Falcon's resolved `winning_outcome` (§4.2 from-Falcon).
-- `PipelineAgreementEvaluator` — **pipeline agreement**: replay a lightweight estimate+score at each
-  entry's point-in-time snapshot; `agree_rate` is how often we independently flagged +EV, and
+- `PipelineAgreementEvaluator` — **pipeline agreement**: replay the live estimate+critic+score at
+  each entry's point-in-time snapshot; `agree_rate` is how often we independently flagged +EV, and
   `agreed_bpd` is the dollar-weighted Brier *improvement vs the market price* on the agreed subset
   (positive ⇒ our forecast beat the market as a predictor — the headline calibration edge).
 
@@ -19,8 +19,8 @@ from datetime import datetime
 
 from sqlmodel import Session
 
-from pythia.agents import EstimationAgent
-from pythia.common import TrackedTrader
+from pythia.agents import DEFAULT_EVIDENCE_K, CriticAgent
+from pythia.common import EstimationContext, EvidencePort, LLMPort, TrackedTrader
 from pythia.config import Settings
 from pythia.db.repositories import MarketRepository, ResolutionRepository, SnapshotRepository
 from pythia.db.smartmoney import TraderEntryRepo, TraderScorecardRepo
@@ -99,12 +99,24 @@ class FalconTraderReturns:
 
 
 class PipelineAgreementEvaluator:
-    def __init__(self, session: Session, estimator: EstimationAgent) -> None:
+    def __init__(
+        self,
+        session: Session,
+        llm: LLMPort,
+        evidence: EvidencePort,
+        *,
+        min_confidence: float,
+        k: int = DEFAULT_EVIDENCE_K,
+    ) -> None:
         self._entries = TraderEntryRepo(session)
         self._resolutions = ResolutionRepository(session)
         self._markets = MarketRepository(session)
         self._snapshots = SnapshotRepository(session)
-        self._estimator = estimator
+        self._llm = llm
+        self._critic = CriticAgent(llm)
+        self._evidence = evidence
+        self._min_confidence = min_confidence
+        self._k = k
 
     def agreement(self, trader: TrackedTrader, asof: datetime) -> tuple[float, float]:
         samples: list[AgreementSample] = []
@@ -120,9 +132,15 @@ class PipelineAgreementEvaluator:
             snapshot = self._snapshots.latest_for_market_asof(entry.market_id, asof=entry.ts)
             if snapshot is None:
                 continue  # no point-in-time price at entry time — cannot replay
-            estimate = self._estimator.estimate(market, snapshot)
+            # Replay the live estimate→critic path (§3.3): the mandatory critic lowers confidence on
+            # lookahead/weak sources, so agreement counts only entries the system would commit to.
+            evidence = self._evidence.retrieve(market.id, snapshot.ts, self._k)
+            estimate = self._llm.estimate(
+                EstimationContext(market=market, snapshot=snapshot, evidence=evidence)
+            )
+            critiqued = self._critic.review(estimate, evidence)
             score = build_score(
-                estimate,
+                critiqued,
                 snapshot.yes_price,
                 spread=snapshot.spread,
                 fee=0.0,
@@ -134,8 +152,8 @@ class PipelineAgreementEvaluator:
             )
             samples.append(
                 AgreementSample(
-                    agreed=score.edge_net > 0.0,
-                    p_model=estimate.p_model,
+                    agreed=score.edge_net > 0.0 and critiqued.confidence >= self._min_confidence,
+                    p_model=critiqued.p_model,
                     market_price=snapshot.yes_price,
                     outcome=res.outcome,
                     weight=entry.size_usd if entry.size_usd and entry.size_usd > 0.0 else 1.0,
@@ -145,12 +163,17 @@ class PipelineAgreementEvaluator:
 
 
 def build_selection_harness(
-    session: Session, *, falcon: FalconPort, estimator: EstimationAgent, settings: Settings
+    session: Session,
+    *,
+    falcon: FalconPort,
+    llm: LLMPort,
+    evidence: EvidencePort,
+    settings: Settings,
 ) -> SelectionHarness:
     """Compose the harness with the live returns + pipeline-agreement seams (§5.3)."""
     return SelectionHarness(
         TraderScorecardRepo(session),
         FalconTraderReturns(session, falcon),
-        PipelineAgreementEvaluator(session, estimator),
+        PipelineAgreementEvaluator(session, llm, evidence, min_confidence=settings.min_confidence),
         selection_policy(settings),
     )

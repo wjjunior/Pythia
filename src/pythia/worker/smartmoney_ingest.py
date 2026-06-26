@@ -19,7 +19,6 @@ from pythia.agents import (
     BudgetExceeded,
     BudgetGuard,
     CachingLLMPort,
-    EstimationAgent,
     make_llm_port,
 )
 from pythia.common import LLMPort, TrackedTrader, TraderState
@@ -118,9 +117,12 @@ def run_roster_review(
     llm = _guarded_llm(session, settings)
     try:
         added = manager.discover(falcon, at=now, limit=settings.tracked_traders_max)
-        estimator = EstimationAgent(llm, EvidenceStore(session, make_embedder(settings)))
         harness = build_selection_harness(
-            session, falcon=falcon, estimator=estimator, settings=settings
+            session,
+            falcon=falcon,
+            llm=llm,
+            evidence=EvidenceStore(session, make_embedder(settings)),
+            settings=settings,
         )
         cards = harness.review(traders_repo.list(), asof=now)
     except LiveVenueAccessError:
