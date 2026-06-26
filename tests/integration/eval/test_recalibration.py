@@ -30,6 +30,7 @@ def _resolved(
     *,
     resolved_at: datetime,
     ambiguous: bool = False,
+    p_model_calibrated: float | None = None,
 ) -> None:
     session.add(
         models.Market(
@@ -55,6 +56,7 @@ def _resolved(
             market_id=_uid(name),
             snapshot_id=_uid(f"{name}-snap"),
             p_model=p_model,
+            p_model_calibrated=p_model_calibrated,
             confidence=0.5,
             lower=0.0,
             upper=1.0,
@@ -176,3 +178,31 @@ def test_evaluate_reports_raw_vs_recalibrated_per_category(session: Session) -> 
     # holdout: 4 eligible → train on the earliest 2, evaluate on the latest 2.
     assert reports["politics"].n == 2
     assert reports["politics"].brier_recalibrated <= reports["politics"].brier_raw
+
+
+def test_live_report_measures_the_applied_map_not_a_holdout(session: Session) -> None:
+    # The applied map turned a badly-calibrated raw 0.2 into a committed 0.8 on a YES outcome:
+    # live_report grades the forecast the system actually committed to, reflecting the live map.
+    _resolved(
+        session,
+        "lr1",
+        "politics",
+        0.2,
+        1,
+        resolved_at=_TS + timedelta(days=1),
+        p_model_calibrated=0.8,
+    )
+    reports = RecalibrationService(session).live_report()
+    assert set(reports) == {"politics"}
+    report = reports["politics"]
+    assert report.n == 1
+    assert report.brier_raw == pytest.approx((0.2 - 1) ** 2)  # raw estimator: 0.64
+    assert report.brier_recalibrated == pytest.approx((0.8 - 1) ** 2)  # committed (live map): 0.04
+
+
+def test_live_report_falls_back_to_raw_where_no_map_was_applied(session: Session) -> None:
+    # No map applied (p_model_calibrated NULL) ⇒ committed == raw ⇒ the two Briers coincide.
+    _resolved(session, "lr2", "sports", 0.3, 0, resolved_at=_TS + timedelta(days=1))
+    report = RecalibrationService(session).live_report()["sports"]
+    assert report.n == 1
+    assert report.brier_raw == report.brier_recalibrated == pytest.approx(0.3**2)
