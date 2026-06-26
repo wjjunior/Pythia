@@ -334,6 +334,7 @@ class TraderScorecard(_Frozen):
     sortino: float | None = None
     skew: float | None = None
     max_drawdown: float | None = None
+    extreme_price_share: float | None = None
     agree_rate: float | None = None
     agreed_bpd: float | None = None
     raw: dict[str, Any] | None = None

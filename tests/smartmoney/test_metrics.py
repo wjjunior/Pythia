@@ -8,6 +8,7 @@ from hypothesis import strategies as st
 
 from pythia.smartmoney.metrics import (
     SelectionPolicy,
+    extreme_price_share,
     market_class_ok,
     max_drawdown,
     risk_adj_edge,
@@ -19,6 +20,7 @@ from pythia.smartmoney.metrics import (
 _POLICY = SelectionPolicy(
     min_resolved=20,
     skew_hard_cap=-1.0,
+    extreme_price_share_cap=0.5,
     w_edge=1.0,
     w_agree=1.0,
     w_cov=0.5,
@@ -61,6 +63,7 @@ def test_scalper_profile_is_hard_capped_by_negative_skew() -> None:
         n_resolved=len(scalper),
         market_class_ok=True,
         skew=skew,
+        extreme_price_share=0.0,
         policy=_POLICY,
     )
     assert score == float("-inf")  # never promotable despite a 96% win rate (AC-S5)
@@ -78,6 +81,7 @@ def test_a_balanced_profile_scores_finite() -> None:
         n_resolved=len(healthy),
         market_class_ok=True,
         skew=skew,
+        extreme_price_share=0.0,
         policy=_POLICY,
     )
     assert math.isfinite(score)
@@ -92,6 +96,7 @@ def test_trader_score_hard_floors() -> None:
             n_resolved=n_resolved,
             market_class_ok=market_class_ok,
             skew=skew,
+            extreme_price_share=0.0,
             policy=_POLICY,
         )
 
@@ -133,6 +138,7 @@ def test_skew_below_hard_cap_always_floors_to_neg_inf(
         n_resolved=_POLICY.min_resolved,  # passes the n floor, so skew is the only trip
         market_class_ok=True,
         skew=skew,
+        extreme_price_share=0.0,
         policy=_POLICY,
     )
     assert score == float("-inf")
@@ -155,6 +161,7 @@ def test_below_min_resolved_always_floors_to_neg_inf(
         n_resolved=n,
         market_class_ok=True,
         skew=skew,  # at or above the cap, so n is the only trip
+        extreme_price_share=0.0,
         policy=_POLICY,
     )
     assert score == float("-inf")
@@ -177,6 +184,7 @@ def test_market_class_failure_always_floors_to_neg_inf(
         n_resolved=n,
         market_class_ok=False,  # the only trip
         skew=skew,
+        extreme_price_share=0.0,
         policy=_POLICY,
     )
     assert score == float("-inf")
@@ -199,12 +207,57 @@ def test_passing_every_floor_is_the_finite_weighted_blend(
         n_resolved=n,
         market_class_ok=True,
         skew=skew,
+        extreme_price_share=0.0,
         policy=_POLICY,
     )
     assert math.isfinite(score)
     assert score == pytest.approx(
         _POLICY.w_edge * edge + _POLICY.w_agree * agree + _POLICY.w_cov * cov
     )
+
+
+def test_extreme_price_share_is_the_fraction_of_entries_at_the_tails() -> None:
+    assert extreme_price_share([]) == 0.0
+    assert extreme_price_share([0.4, 0.5, 0.6]) == 0.0
+    assert extreme_price_share([0.95, 0.5, 0.05, 0.5]) == pytest.approx(0.5)  # 2 of 4 at the tails
+
+
+def test_extreme_price_concentration_above_the_cap_is_unpromotable() -> None:
+    # A wallet whose entries cluster at extreme prices is a convergence scalper — never promotable,
+    # even with benign skew and a strong edge (AC-S5).
+    score = trader_score(
+        risk_adj_edge=5.0,
+        agreed_bpd=1.0,
+        coverage=1.0,
+        n_resolved=30,
+        market_class_ok=True,
+        skew=0.0,
+        extreme_price_share=0.9,
+        policy=_POLICY,
+    )
+    assert score == float("-inf")
+
+
+_ABOVE_SHARE_CAP = st.floats(
+    min_value=_POLICY.extreme_price_share_cap, max_value=1.0, exclude_min=True, allow_nan=False
+)
+
+
+@given(share=_ABOVE_SHARE_CAP, edge=_FINITE, agree=_FINITE, cov=_FINITE)
+def test_extreme_price_share_above_cap_always_floors_to_neg_inf(
+    share: float, edge: float, agree: float, cov: float
+) -> None:
+    score = trader_score(
+        risk_adj_edge=edge,
+        agreed_bpd=agree,
+        coverage=cov,
+        n_resolved=_POLICY.min_resolved,
+        market_class_ok=True,
+        skew=0.0,  # above the skew cap, so the price-share is the only trip
+        extreme_price_share=share,
+        policy=_POLICY,
+    )
+    assert score == float("-inf")
 
 
 @given(

@@ -11,6 +11,7 @@ _TS = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 _POLICY = SelectionPolicy(
     min_resolved=20,
     skew_hard_cap=-1.0,
+    extreme_price_share_cap=0.5,
     w_edge=1.0,
     w_agree=1.0,
     w_cov=0.5,
@@ -32,6 +33,7 @@ def test_build_scorecard_hard_caps_a_scalper() -> None:
         asof=_TS,
         returns=[0.05] * 25 + [-1.2],
         categories=["politics"] * 26,
+        entry_prices=[0.5] * 26,
         agree_rate=0.8,
         agreed_bpd=0.3,
         policy=_POLICY,
@@ -48,12 +50,31 @@ def test_build_scorecard_is_finite_for_a_balanced_wallet() -> None:
         asof=_TS,
         returns=[0.1, -0.05, 0.2, -0.1, 0.15, -0.08] * 5,
         categories=["politics"] * 30,
+        entry_prices=[0.5] * 30,
         agree_rate=0.6,
         agreed_bpd=0.2,
         policy=_POLICY,
     )
     assert math.isfinite(card.trader_score)
     assert card.sortino is not None and card.max_drawdown is not None and card.roi is not None
+    assert card.extreme_price_share == 0.0  # all entries mid-price
+
+
+def test_build_scorecard_hard_caps_an_extreme_price_scalper() -> None:
+    # Benign returns/skew, but every entry is at a near-certain price → convergence scalper (AC-S5).
+    card = build_scorecard(
+        scorecard_id="x",
+        trader_id="t",
+        asof=_TS,
+        returns=[0.1, -0.05, 0.2, -0.1, 0.15, -0.08] * 5,
+        categories=["politics"] * 30,
+        entry_prices=[0.97] * 30,
+        agree_rate=0.6,
+        agreed_bpd=0.2,
+        policy=_POLICY,
+    )
+    assert card.extreme_price_share == 1.0
+    assert card.trader_score == float("-inf")  # never promotable despite a healthy return profile
 
 
 def test_build_scorecard_with_no_resolutions_is_unpromotable() -> None:
@@ -63,6 +84,7 @@ def test_build_scorecard_with_no_resolutions_is_unpromotable() -> None:
         asof=_TS,
         returns=[],
         categories=[],
+        entry_prices=[],
         agree_rate=0.0,
         agreed_bpd=0.0,
         policy=_POLICY,
@@ -74,9 +96,11 @@ class _Returns:
     def __init__(self, data: list[tuple[datetime, float, str]]) -> None:
         self._data = data
 
-    def resolved(self, trader: TrackedTrader, asof: datetime) -> tuple[list[float], list[str]]:
+    def resolved(
+        self, trader: TrackedTrader, asof: datetime
+    ) -> tuple[list[float], list[str], list[float]]:
         before = [(r, c) for (ts, r, c) in self._data if ts < asof]  # no lookahead
-        return [r for r, _ in before], [c for _, c in before]
+        return [r for r, _ in before], [c for _, c in before], [0.5] * len(before)
 
 
 class _Agreement:
