@@ -2,6 +2,7 @@ from pythia.agents.cost import (
     BudgetExceeded,
     BudgetGuard,
     CachingLLMPort,
+    PriceCeilingExceeded,
     evidence_hash,
 )
 from pythia.agents.critic import CriticAgent, apply_verdict
@@ -42,6 +43,7 @@ __all__ = [
     "LLMResponseError",
     "ModelRouter",
     "OpenRouterLLMPort",
+    "PriceCeilingExceeded",
     "ResolutionAgent",
     "StubLLMPort",
     "UnknownAgentError",

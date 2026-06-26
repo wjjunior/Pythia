@@ -28,6 +28,14 @@ class BudgetExceeded(RuntimeError):
     """A per-run or daily cost cap was reached; new model calls are halted."""
 
 
+class PriceCeilingExceeded(RuntimeError):
+    """A model call's measured cost exceeded the per-call max_price ceiling (§5.1, AC-9).
+
+    Client-side enforcement: the over-ceiling response is rejected (never parsed) rather than
+    trusting OpenRouter's advisory ``provider.max_price`` hint to have prevented it.
+    """
+
+
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
