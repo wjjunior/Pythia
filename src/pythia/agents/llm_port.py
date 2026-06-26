@@ -12,7 +12,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from pythia.agents.aggregation import aggregate
-from pythia.agents.cost import BudgetExceeded
+from pythia.agents.cost import BudgetExceeded, PriceCeilingExceeded
 from pythia.agents.router import CriticDiversityError, ModelRouter
 from pythia.common import (
     CostEvent,
@@ -344,12 +344,30 @@ class OpenRouterLLMPort:
                 except Exception as exc:  # transport failure: fail over to the next model
                     last_error = exc
                     break
-                self._record_call(agent, task, model, response, latency_ms)
+                cost_usd = self._record_call(agent, task, model, response, latency_ms)
+                ceiling = self._router.max_price
+                if ceiling is not None and cost_usd > ceiling:
+                    # Client-side max_price enforcement (AC-9): OpenRouter's provider.max_price is
+                    # only advisory, so reject the over-ceiling response and fail over to a cheaper
+                    # model in the slate rather than trust it.
+                    last_error = PriceCeilingExceeded(
+                        f"{model} cost ${cost_usd:.4f} exceeds the ${ceiling} per-call ceiling"
+                    )
+                    _log.warning(
+                        "llm_price_ceiling_exceeded",
+                        agent=agent,
+                        model=model,
+                        cost_usd=cost_usd,
+                        max_price=ceiling,
+                    )
+                    break
                 try:
                     return _parse_payload(response, schema), model
                 except LLMResponseError as exc:  # bad JSON: retry this model, then the next
                     last_error = exc
                     _log.warning("llm_unparseable", agent=agent, model=model, error=str(exc))
+        if isinstance(last_error, PriceCeilingExceeded):
+            raise last_error  # the whole slate priced over the ceiling — surface it
         raise LLMResponseError(
             f"{schema.__name__} failed across {len(candidates)} model(s): {last_error}"
         )
@@ -367,7 +385,7 @@ class OpenRouterLLMPort:
 
     def _record_call(
         self, agent: str, task: str, model: str, response: dict[str, Any], latency_ms: int
-    ) -> None:
+    ) -> float:
         usage = response.get("usage", {})
         details = usage.get("prompt_tokens_details", {}) or {}
         provider = response.get("provider")
@@ -393,22 +411,22 @@ class OpenRouterLLMPort:
             cost_usd=cost_usd,
             latency_ms=latency_ms,
         )
-        if self._cost_sink is None:
-            return
-        self._cost_sink(
-            CostEvent(
-                agent=agent,
-                task=task,
-                provider=provider,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-                cost_usd=cost_usd,
-                latency_ms=latency_ms,
-                correlation_id=current_correlation_id() or self._correlation_id,
+        if self._cost_sink is not None:
+            self._cost_sink(
+                CostEvent(
+                    agent=agent,
+                    task=task,
+                    provider=provider,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cached_tokens=cached_tokens,
+                    cost_usd=cost_usd,
+                    latency_ms=latency_ms,
+                    correlation_id=current_correlation_id() or self._correlation_id,
+                )
             )
-        )
+        return cost_usd
 
     def estimate(self, ctx: EstimationContext) -> Estimate:
         if self._router.strategy == "ensemble":

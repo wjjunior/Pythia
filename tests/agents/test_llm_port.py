@@ -16,6 +16,7 @@ from pythia.agents import (
     LLMResponseError,
     ModelRouter,
     OpenRouterLLMPort,
+    PriceCeilingExceeded,
     StubLLMPort,
     make_llm_port,
 )
@@ -160,6 +161,29 @@ def test_estimate_emits_llm_call_log_with_cost_fields() -> None:
     assert call["input_tokens"] == 1200
     assert call["output_tokens"] == 300
     assert "latency_ms" in call
+
+
+def test_max_price_ceiling_rejects_an_over_ceiling_call() -> None:
+    # PYT-124/AC-9: OpenRouter's provider.max_price is advisory; a single-model slate whose call
+    # measures over the ceiling must be rejected client-side, not trusted.
+    router = ModelRouter(slates={"estimation": ["minimax/minimax-m3"]}, max_price=0.5)
+    port = OpenRouterLLMPort(_FakeTransport([_estimate_response(cost=0.9)]), router)
+    with pytest.raises(PriceCeilingExceeded):
+        port.estimate(_ctx())
+
+
+def test_max_price_ceiling_fails_over_to_a_cheaper_model() -> None:
+    # An over-ceiling model is skipped; the next in-ceiling model in the slate produces the verdict.
+    router = ModelRouter(slates={"estimation": ["pricey/m1", "cheap/m2"]}, max_price=0.5)
+    transport = _FakeTransport(
+        [
+            _estimate_response(model="pricey/m1", cost=0.9),  # over the ceiling → skipped
+            _estimate_response(model="cheap/m2", cost=0.1),  # under → used
+        ]
+    )
+    estimate = OpenRouterLLMPort(transport, router).estimate(_ctx())
+    assert estimate.model_name == "cheap/m2"  # the cheaper model produced the verdict
+    assert [call["model"] for call in transport.calls] == ["pricey/m1", "cheap/m2"]  # failed over
 
 
 def test_missing_cost_warns_instead_of_measuring_zero_silently() -> None:
