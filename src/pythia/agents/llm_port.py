@@ -28,7 +28,6 @@ from pythia.common import (
 from pythia.common.ids import deterministic_id
 from pythia.common.logging import current_correlation_id, get_logger
 from pythia.config import Settings
-from pythia.config.settings import AggregationMethod
 
 CostSink = Callable[[CostEvent], None]
 
@@ -302,7 +301,6 @@ class OpenRouterLLMPort:
         budget_check: Callable[[], None] | None = None,
         correlation_id: str | None = None,
         ensemble_size: int = 1,
-        aggregation_method: AggregationMethod = "median",
         escalate_threshold: float = 0.5,
         model_max_attempts: int = 2,
         clock: Callable[[], float] = time.monotonic,
@@ -313,7 +311,6 @@ class OpenRouterLLMPort:
         self._budget_check = budget_check
         self._correlation_id = correlation_id
         self._ensemble_size = ensemble_size
-        self._aggregation_method = aggregation_method
         self._escalate_threshold = escalate_threshold
         self._model_max_attempts = model_max_attempts
         self._clock = clock
@@ -486,7 +483,7 @@ class OpenRouterLLMPort:
                 continue
         if not estimates:
             return self._run_estimation(ctx)
-        forecast = aggregate(estimates, self._aggregation_method)
+        forecast = aggregate(estimates)  # median only (PYT-125); see aggregation.py
         members = [
             MemberForecast(model=member.model_name, p_member=member.p_model) for member in estimates
         ]
@@ -498,7 +495,7 @@ class OpenRouterLLMPort:
             confidence=forecast.confidence,
             lower=forecast.lower,
             upper=forecast.upper,
-            rationale=f"ensemble {self._aggregation_method} of {len(members)} members",
+            rationale=f"ensemble median of {len(members)} members",
             evidence_ids=[evidence.id for evidence in ctx.evidence],
             model_name="ensemble",
             members=members,
@@ -570,7 +567,6 @@ def make_llm_port(
             budget_check=budget_check,
             correlation_id=correlation_id,
             ensemble_size=settings.ensemble_size,
-            aggregation_method=settings.aggregation_method,
             escalate_threshold=settings.min_confidence,
             model_max_attempts=settings.model_max_attempts,
         )
