@@ -7,7 +7,7 @@ and writes an append-only `audit_event` at every step under one `pipeline_run`.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from sqlmodel import Session
@@ -38,6 +38,7 @@ from pythia.db.repositories import (
     SourceRepository,
     VenueQuoteRepository,
 )
+from pythia.eval.recalibration import map_is_point_in_time
 from pythia.risk import (
     ExposureState,
     RiskDecision,
@@ -165,9 +166,11 @@ class Pipeline:
         # The deterministic layer sizes on the recalibrated, market-distrust-adjusted forecast.
         # Persist that committed p_model on the estimate so the calibration verdict measures the
         # forecast the system actually acts on, not the raw estimator output (PYT-100, §4.9).
-        scored, _recalibrated = self._recalibrated(market.category, critiqued)
+        scored, fit_asof = self._recalibrated(market.category, critiqued, snapshot.ts)
         scored = self._distrust_market_disagreement(scored, snapshot)
-        committed = critiqued.model_copy(update={"p_model_calibrated": scored.p_model})
+        committed = critiqued.model_copy(
+            update={"p_model_calibrated": scored.p_model, "p_model_calibrated_fit_asof": fit_asof}
+        )
         self._estimates.add(committed)
         self._members.add_many(committed.id, committed.members)
         _log.info("critic_verdict", confidence=critiqued.confidence)
@@ -275,14 +278,17 @@ class Pipeline:
         _log.info("pipeline_run_finish")
         return PipelineResult(run_id=run_id, estimate=None, score=None, decision=decision)
 
-    def _recalibrated(self, category: str, estimate: Estimate) -> tuple[Estimate, bool]:
+    def _recalibrated(
+        self, category: str, estimate: Estimate, asof: datetime
+    ) -> tuple[Estimate, datetime | None]:
         active = self._recalibration.active_for_category(category)
         if active is None:
-            return estimate, False
-        cmap, n_fit = active
-        if n_fit < self._settings.recalibration_min_n:
-            return estimate, False
-        return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), True
+            return estimate, None
+        cmap, n_fit, fit_asof = active
+        # Below min-n stays raw (§4.9); a map fit after the snapshot is replay lookahead (PYT-111).
+        if n_fit < self._settings.recalibration_min_n or not map_is_point_in_time(fit_asof, asof):
+            return estimate, None
+        return estimate.model_copy(update={"p_model": cmap.apply(estimate.p_model)}), fit_asof
 
     def _category_cleared(self, category: str) -> bool:
         # Has this category cleared the §8.5 gate (Brier(system) < Brier(market) by margin over

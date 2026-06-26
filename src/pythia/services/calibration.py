@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import or_
 from sqlmodel import Session, col, select
 
 from pythia.common import RecalibrationMethod, Side, TradeStatus
@@ -49,7 +50,9 @@ def _latest_estimate_per_market(
 ) -> dict[uuid.UUID, models.Estimate]:
     if not market_ids:
         return {}
-    # Anti-lookahead: drop estimates on a post-resolution snapshot, then keep the latest per market.
+    # Anti-lookahead: drop estimates on a post-resolution snapshot, and drop any committed forecast
+    # whose recalibration map was fit after the snapshot (replay lookahead, PYT-111); then keep the
+    # latest surviving estimate per market.
     rows = session.exec(
         select(models.Estimate)
         .join(
@@ -62,6 +65,12 @@ def _latest_estimate_per_market(
         )
         .where(col(models.Estimate.market_id).in_(market_ids))
         .where(col(models.MarketSnapshot.ts) <= col(models.Resolution.resolved_at))
+        .where(
+            or_(
+                col(models.Estimate.p_model_calibrated_fit_asof).is_(None),
+                col(models.Estimate.p_model_calibrated_fit_asof) <= col(models.MarketSnapshot.ts),
+            )
+        )
         .distinct(col(models.Estimate.market_id))
         .order_by(
             col(models.Estimate.market_id),
@@ -302,7 +311,7 @@ class RecalibrationService:
         for category, samples in self._samples_by_category().items():
             cmap = recalibrate(samples, asof, method=method, min_n=min_n)
             n_fit = sum(1 for _p, _o, resolved_at in samples if resolved_at < asof)
-            repository.save(category, cmap, n_fit)
+            repository.save(category, cmap, n_fit, fit_asof=asof)
             stored[category] = cmap.method
         return stored
 

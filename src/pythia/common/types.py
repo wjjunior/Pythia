@@ -140,6 +140,9 @@ class Estimate(_Frozen):
     # The recalibrated forecast the deterministic layer sizes on (PYT-100). ``None`` means raw
     # ``p_model`` is the committed value (no active recalibration map, or a pre-PYT-100 row).
     p_model_calibrated: Prob | None = None
+    # The fit-asof of the map that produced ``p_model_calibrated`` (PYT-111); ``None`` when raw. The
+    # verdict refuses a committed forecast whose map was fit after the snapshot (replay lookahead).
+    p_model_calibrated_fit_asof: datetime | None = None
     members: list[MemberForecast] = Field(default_factory=list)
 
 

@@ -314,6 +314,7 @@ def test_pipeline_scores_on_the_recalibrated_probability(session: Session) -> No
         "politics",
         CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.55, 0.65]}),
         n_fit=100,
+        fit_asof=ASOF - timedelta(days=1),
     )
     result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
     assert result.estimate is not None
@@ -323,6 +324,8 @@ def test_pipeline_scores_on_the_recalibrated_probability(session: Session) -> No
     assert result.score.edge == pytest.approx(0.62 - 0.5)
     # PYT-100: the committed (recalibrated) forecast the score sized on is persisted on the row.
     assert result.estimate.p_model_calibrated == pytest.approx(0.62)
+    # PYT-111: the applied map's fit-asof is recorded for the verdict's point-in-time re-check.
+    assert result.estimate.p_model_calibrated_fit_asof == ASOF - timedelta(days=1)
 
 
 def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> None:
@@ -331,6 +334,7 @@ def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> N
         "politics",
         CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.55, 0.65]}),
         n_fit=1,
+        fit_asof=ASOF - timedelta(days=1),
     )
     result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
     assert result.estimate is not None
@@ -339,6 +343,24 @@ def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> N
     assert result.score.edge == pytest.approx(0.7 - 0.5)
     # PYT-100: with no map applied, the committed forecast equals the raw p_model.
     assert result.estimate.p_model_calibrated == pytest.approx(0.7)
+
+
+def test_pipeline_ignores_a_recalibration_map_fit_after_the_snapshot(session: Session) -> None:
+    # PYT-111: a map fit AFTER the snapshot embeds resolutions the forecast could not have seen
+    # (replay lookahead). It must not be applied — raw p_model is committed, fit-asof stays None.
+    market, snapshot = _seed(session)
+    RecalibrationRepository(session).save(
+        "politics",
+        CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.55, 0.65]}),
+        n_fit=100,
+        fit_asof=ASOF + timedelta(days=1),
+    )
+    result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.estimate is not None
+    assert result.score is not None
+    assert result.score.edge == pytest.approx(0.7 - 0.5)  # raw, map not applied
+    assert result.estimate.p_model_calibrated == pytest.approx(0.7)
+    assert result.estimate.p_model_calibrated_fit_asof is None
 
 
 def test_pipeline_gates_a_category_with_a_map_that_fails_the_brier_gate(session: Session) -> None:
@@ -350,6 +372,7 @@ def test_pipeline_gates_a_category_with_a_map_that_fails_the_brier_gate(session:
         "politics",
         CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.4, 0.6]}),
         n_fit=100,
+        fit_asof=ASOF - timedelta(days=1),
     )
     result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
     assert result.decision.paper_only is True

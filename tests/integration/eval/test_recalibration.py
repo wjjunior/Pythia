@@ -82,27 +82,34 @@ def _seed_politics(session: Session) -> None:
 def test_save_and_load_active_map(session: Session) -> None:
     repo = RecalibrationRepository(session)
     cmap = CalibrationMap(method="platt", params={"a": 1.2, "b": -0.3})
-    repo.save("politics", cmap, n_fit=80)
+    repo.save("politics", cmap, n_fit=80, fit_asof=_TS)
 
     loaded = repo.active_for_category("politics")
     assert loaded is not None
-    stored_map, n_fit = loaded
+    stored_map, n_fit, fit_asof = loaded
     assert stored_map == cmap
     assert n_fit == 80
+    assert fit_asof == _TS
 
 
 def test_saving_a_new_map_deactivates_the_previous(session: Session) -> None:
     repo = RecalibrationRepository(session)
-    repo.save("politics", CalibrationMap(method="platt", params={"a": 1.0, "b": 0.0}), n_fit=60)
+    repo.save(
+        "politics",
+        CalibrationMap(method="platt", params={"a": 1.0, "b": 0.0}),
+        n_fit=60,
+        fit_asof=_TS,
+    )
     repo.save(
         "politics",
         CalibrationMap(method="isotonic", params={"x": [0.0, 1.0], "y": [0.1, 0.9]}),
         n_fit=1200,
+        fit_asof=_TS + timedelta(days=1),
     )
 
     loaded = repo.active_for_category("politics")
     assert loaded is not None
-    stored_map, n_fit = loaded
+    stored_map, n_fit, _fit_asof = loaded
     assert stored_map.method == "isotonic"
     assert n_fit == 1200
 
@@ -132,9 +139,10 @@ def test_fit_and_store_persists_a_point_in_time_map(session: Session) -> None:
     RecalibrationService(session).fit_and_store(_TS + timedelta(days=100), method="platt", min_n=4)
     loaded = RecalibrationRepository(session).active_for_category("politics")
     assert loaded is not None
-    cmap, n_fit = loaded
+    cmap, n_fit, fit_asof = loaded
     assert cmap.method == "platt"
     assert n_fit == 4
+    assert fit_asof == _TS + timedelta(days=100)  # the logical asof, not wall-clock
 
 
 def test_fit_and_store_below_min_n_stores_identity(session: Session) -> None:
@@ -142,7 +150,7 @@ def test_fit_and_store_below_min_n_stores_identity(session: Session) -> None:
     RecalibrationService(session).fit_and_store(_TS + timedelta(days=100), method="platt", min_n=50)
     loaded = RecalibrationRepository(session).active_for_category("politics")
     assert loaded is not None
-    cmap, n_fit = loaded
+    cmap, n_fit, _fit_asof = loaded
     assert cmap.method == "identity"
     assert n_fit == 4
 
@@ -155,7 +163,7 @@ def test_should_exclude_ambiguous_resolutions_from_training(session: Session) ->
     RecalibrationService(session).fit_and_store(_TS + timedelta(days=100), method="platt", min_n=4)
     loaded = RecalibrationRepository(session).active_for_category("politics")
     assert loaded is not None
-    _cmap, n_fit = loaded
+    _cmap, n_fit, _fit_asof = loaded
     assert n_fit == 4  # the ambiguous resolution is excluded from the fit
 
 
