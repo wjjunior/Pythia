@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     # Falcon (smart-money analytics, v2 §3.1/§4.5). Offline via fixtures when token unset.
     falcon_api_base: str | None = None
     falcon_api_token: SecretStr | None = None
+    falcon_agent_ids: str = ""  # "dataset:id,..." overrides merged over the confirmed defaults
     candidate_daily_cap: int = 20
 
     # Trader selection & roster lifecycle (v2 §4.2/§4.3, Appendix)
@@ -162,6 +163,19 @@ class Settings(BaseSettings):
     @property
     def evidence_source_list(self) -> list[str]:
         return [s.strip() for s in self.evidence_sources.split(",") if s.strip()]
+
+    @property
+    def falcon_agent_id_overrides(self) -> dict[str, int]:
+        overrides: dict[str, int] = {}
+        for entry in self.falcon_agent_ids.split(","):
+            item = entry.strip()
+            if not item:
+                continue
+            name, sep, raw = item.partition(":")
+            if not sep:
+                raise ValueError(f"invalid FALCON_AGENT_IDS entry {item!r}; expected 'dataset:id'")
+            overrides[name.strip()] = int(raw.strip())
+        return overrides
 
     @property
     def llm_enabled(self) -> bool:
