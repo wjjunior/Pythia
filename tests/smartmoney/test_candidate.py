@@ -2,8 +2,13 @@
 
 from datetime import UTC, datetime, timedelta
 
-from pythia.common import CandidateSignal, CandidateSignalStatus, TraderEntry
-from pythia.smartmoney.candidate import enqueue_candidates
+from pythia.common import (
+    CandidateSignal,
+    CandidateSignalStatus,
+    CandidateSource,
+    TraderEntry,
+)
+from pythia.smartmoney.candidate import drain_queued, enqueue_candidates
 
 _TS = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
@@ -22,11 +27,19 @@ def _entry(trader: str, market: str, ts: datetime) -> TraderEntry:
 class _FakeEvaluator:
     def __init__(self, *, returns_market: bool = True) -> None:
         self.calls: list[tuple[str, datetime, tuple[str, ...]]] = []
+        self.ran: list[str] = []
         self._returns_market = returns_market
 
     def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
         self.calls.append((external_market, asof, tuple(trader_ids)))
         return f"market:{external_market}" if self._returns_market else None
+
+    def resolve(self, external_market: str) -> str | None:
+        return f"market:{external_market}" if self._returns_market else None
+
+    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+        self.ran.append(market_id)
+        return self._returns_market
 
 
 class _FakeStore:
@@ -39,6 +52,32 @@ class _FakeStore:
     def enqueue(self, signal: CandidateSignal) -> CandidateSignal:
         self.signals[signal.id] = signal
         return signal
+
+
+class _FakeQueuedStore:
+    def __init__(self, queued: list[CandidateSignal]) -> None:
+        self._queued = list(queued)
+        self.set: list[tuple[str, CandidateSignalStatus]] = []
+
+    def list_by_status(self, status: CandidateSignalStatus) -> list[CandidateSignal]:
+        return [s for s in self._queued if s.status is status]
+
+    def set_status(self, signal_id: str, status: CandidateSignalStatus) -> CandidateSignal:
+        self.set.append((signal_id, status))
+        original = next(s for s in self._queued if s.id == signal_id)
+        return original.model_copy(update={"status": status})
+
+
+def _queued(market: str, ts: datetime, *, market_id: str | None) -> CandidateSignal:
+    return CandidateSignal(
+        id=f"q:{market}",
+        asof=ts,
+        trader_ids=["ta"],
+        source=CandidateSource.NEW_ENTRY,
+        status=CandidateSignalStatus.QUEUED,
+        created_at=ts,
+        market_id=market_id,
+    )
 
 
 def test_one_market_many_traders_is_evaluated_once_with_merged_attribution() -> None:
@@ -124,3 +163,47 @@ def test_enqueue_is_idempotent_per_market_asof() -> None:
     )
     assert len(evaluator.calls) == 1  # the second run sees the existing candidate → no re-eval
     assert len(store.signals) == 1
+
+
+def test_over_cap_candidate_records_its_market_id_for_the_trigger_guard() -> None:
+    # PYT-117/R-8: a QUEUED (over-cap) trigger must carry its market_id so the §3.2 evidence guard
+    # sees it; otherwise the same flow could both trigger and become evidence (double-count).
+    evaluator = _FakeEvaluator()
+    entries = [_entry("ta", "0xa", _TS), _entry("tb", "0xb", _TS)]  # 0xa evaluated, 0xb over cap
+
+    signals = enqueue_candidates(
+        entries,
+        store=_FakeStore(),
+        evaluator=evaluator,
+        daily_cap=1,
+        evaluated_today=0,
+        created_at=_TS,
+    )
+
+    queued = next(s for s in signals if s.status is CandidateSignalStatus.QUEUED)
+    assert queued.market_id == "market:0xb"  # resolved despite being deferred
+    assert evaluator.calls == [("0xa", _TS, ("ta",))]  # only the under-cap one ran the pipeline
+
+
+def test_drain_processes_oldest_queued_first_under_budget() -> None:
+    evaluator = _FakeEvaluator()
+    store = _FakeQueuedStore(
+        [
+            _queued("0xa", _TS, market_id="m-a"),
+            _queued("0xb", _TS + timedelta(minutes=1), market_id="m-b"),
+        ]
+    )
+
+    drained = drain_queued(store=store, evaluator=evaluator, budget=1)
+
+    assert [d.id for d in drained] == ["q:0xa"]  # oldest-first, bounded by budget
+    assert store.set == [("q:0xa", CandidateSignalStatus.EVALUATED)]
+    assert evaluator.ran == ["m-a"]  # only the oldest market was re-run; 0xb stays queued
+
+
+def test_drain_skips_a_queued_candidate_without_a_resolved_market() -> None:
+    evaluator = _FakeEvaluator()
+    store = _FakeQueuedStore([_queued("0xa", _TS, market_id=None)])
+
+    assert drain_queued(store=store, evaluator=evaluator, budget=5) == []
+    assert evaluator.ran == []  # nothing to run for an untracked market
