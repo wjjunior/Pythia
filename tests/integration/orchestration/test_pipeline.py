@@ -321,6 +321,8 @@ def test_pipeline_scores_on_the_recalibrated_probability(session: Session) -> No
     # The estimate row keeps the raw p_model; the score uses p_calibrated = interp(0.7) = 0.62.
     assert result.estimate.p_model == 0.7
     assert result.score.edge == pytest.approx(0.62 - 0.5)
+    # PYT-100: the committed (recalibrated) forecast the score sized on is persisted on the row.
+    assert result.estimate.p_model_calibrated == pytest.approx(0.62)
 
 
 def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> None:
@@ -331,9 +333,12 @@ def test_pipeline_ignores_a_below_min_n_recalibration_map(session: Session) -> N
         n_fit=1,
     )
     result = _pipeline(session, _ConfidentLLM()).run(market, snapshot)
+    assert result.estimate is not None
     assert result.score is not None
     # n_fit=1 is below the default min_n: the raw p_model (0.7) is scored, not p_calibrated.
     assert result.score.edge == pytest.approx(0.7 - 0.5)
+    # PYT-100: with no map applied, the committed forecast equals the raw p_model.
+    assert result.estimate.p_model_calibrated == pytest.approx(0.7)
 
 
 def test_pipeline_sizes_down_a_high_invalid_rate_category(session: Session) -> None:

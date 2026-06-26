@@ -121,6 +121,9 @@ class Estimate(SQLModel, table=True):
         sa_column=Column(UUID(as_uuid=True), ForeignKey("market_snapshots.id"), nullable=False)
     )
     p_model: float = Field(sa_column=Column(Double, nullable=False))
+    # The committed (recalibrated) forecast the deterministic layer sizes on (PYT-100); nullable for
+    # pre-PYT-100 rows. The verdict measures this; raw p_model is kept as an estimator diagnostic.
+    p_model_calibrated: float | None = Field(default=None, sa_column=Column(Double, nullable=True))
     confidence: float = Field(sa_column=Column(Double, nullable=False))
     lower: float = Field(sa_column=Column(Double, nullable=False))
     upper: float = Field(sa_column=Column(Double, nullable=False))

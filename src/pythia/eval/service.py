@@ -104,6 +104,15 @@ def _horizon(market: models.Market, ts: datetime) -> float | None:
     return (deadline - ts).total_seconds() / 86_400
 
 
+def _committed(estimate: models.Estimate) -> float:
+    # The forecast the deterministic layer committed to (sized on): the recalibrated value when a
+    # map was active, else the raw estimator output. The verdict measures this so it describes the
+    # system actually running (PYT-100). NULL ⇒ pre-PYT-100 row, fall back to raw p_model.
+    return (
+        estimate.p_model_calibrated if estimate.p_model_calibrated is not None else estimate.p_model
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class CalibrationReport:
     categories: list[CategoryCalibration]
@@ -179,7 +188,11 @@ class CalibrationService:
             quotes = [q for q in all_quotes.get(str(market_id), []) if q.ts <= ts]
             q_blended = blended_baseline(q_market, latest_prices_per_venue(quotes))
             # Brier baseline column uses q_blended; cohort classification bins on q_market
-            record: tuple[float, float, int] = (estimate.p_model, q_blended, outcomes[market_id])
+            record: tuple[float, float, int] = (
+                _committed(estimate),
+                q_blended,
+                outcomes[market_id],
+            )
             by_category.setdefault(categories[market_id], []).append(record)
             market = market_rows.get(market_id)
             h = _horizon(market, ts) if market is not None else None
@@ -206,7 +219,7 @@ class CalibrationService:
         by_cohort: _Records = {}
         for market_id, estimate in latest.items():
             q_market, ts = snapshots[estimate.snapshot_id]
-            record: tuple[float, float, int] = (estimate.p_model, q_market, outcomes[market_id])
+            record: tuple[float, float, int] = (_committed(estimate), q_market, outcomes[market_id])
             by_category.setdefault(categories[market_id], []).append(record)
             market = market_rows.get(market_id)
             h = _horizon(market, ts) if market is not None else None
@@ -264,7 +277,7 @@ class CalibrationService:
         if not trades:
             return None
         p_models = {
-            row.id: row.p_model
+            row.id: _committed(row)
             for row in self._session.exec(
                 select(models.Estimate).where(
                     col(models.Estimate.id).in_([trade.estimate_id for trade in trades])

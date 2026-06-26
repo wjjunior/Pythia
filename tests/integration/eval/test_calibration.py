@@ -54,13 +54,19 @@ def _snapshot(session: Session, name: str, q: float) -> None:
 
 
 def _estimate(
-    session: Session, name: str, p_model: float, *, created_at: datetime | None = None
+    session: Session,
+    name: str,
+    p_model: float,
+    *,
+    created_at: datetime | None = None,
+    p_model_calibrated: float | None = None,
 ) -> None:
     row = models.Estimate(
         id=_uid(f"{name}-est-{p_model}-{created_at}"),
         market_id=_uid(name),
         snapshot_id=_uid(f"{name}-snap"),
         p_model=p_model,
+        p_model_calibrated=p_model_calibrated,
         confidence=0.5,
         lower=0.0,
         upper=1.0,
@@ -123,6 +129,34 @@ def test_per_category_brier_with_n_excluding_ambiguous(session: Session) -> None
     assert by_cat["politics"].invalid_count == 1
     assert by_cat["politics"].invalid_rate == pytest.approx(1 / 3)
     assert by_cat["sports"].invalid_count == 0
+
+
+def test_verdict_measures_the_committed_recalibrated_forecast_not_raw(session: Session) -> None:
+    # PYT-100: the estimator output (raw 0.6) and the committed/sized forecast (recalibrated 0.8)
+    # differ; the headline Brier must measure the committed 0.8 — what the system actually ran.
+    _market(session, "c1", "politics")
+    _snapshot(session, "c1", 0.5)
+    _estimate(session, "c1", 0.6, p_model_calibrated=0.8)
+    _resolution(session, "c1", 1)
+
+    report = CalibrationService(session, settings=_settings()).report()
+    politics = next(c for c in report.categories if c.category == "politics")
+
+    assert politics.brier_system == pytest.approx(0.04)  # brier(0.8, 1) — committed, NOT 0.16 (raw)
+    overall = next(c for c in report.cohorts if c.cohort == "overall")
+    assert overall.brier_system == pytest.approx(
+        0.04
+    )  # cohorts + reliability follow the committed p
+
+
+def test_verdict_falls_back_to_raw_when_committed_is_null(session: Session) -> None:
+    # A pre-PYT-100 estimate (no p_model_calibrated) is measured on raw p_model (back-compatible).
+    _resolved_market(session, "n1", "politics", q=0.5, p_model=0.7, outcome=1)
+
+    report = CalibrationService(session, settings=_settings()).report()
+    politics = next(c for c in report.categories if c.category == "politics")
+
+    assert politics.brier_system == pytest.approx(0.09)  # brier(0.7, 1), the raw fallback
 
 
 def test_gate_status_blocks_a_category_with_insufficient_evidence(session: Session) -> None:

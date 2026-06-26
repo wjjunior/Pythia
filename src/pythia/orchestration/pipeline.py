@@ -161,8 +161,14 @@ class Pipeline:
         )
 
         critiqued = self._critic.review(estimate, evidence)
-        self._estimates.add(critiqued)
-        self._members.add_many(critiqued.id, critiqued.members)
+        # The deterministic layer sizes on the recalibrated, market-distrust-adjusted forecast.
+        # Persist that committed p_model on the estimate so the calibration verdict measures the
+        # forecast the system actually acts on, not the raw estimator output (PYT-100, §4.9).
+        scored, category_calibrated = self._recalibrated(market.category, critiqued)
+        scored = self._distrust_market_disagreement(scored, snapshot)
+        committed = critiqued.model_copy(update={"p_model_calibrated": scored.p_model})
+        self._estimates.add(committed)
+        self._members.add_many(committed.id, committed.members)
         _log.info("critic_verdict", confidence=critiqued.confidence)
         self._audit.append(
             AuditEvent(
@@ -179,8 +185,6 @@ class Pipeline:
 
         graded_p_resol, resolution_gated = self._resolution_risk(market, snapshot)
         p_corr = self._venue_p_corr(market, snapshot)
-        scored, category_calibrated = self._recalibrated(market.category, critiqued)
-        scored = self._distrust_market_disagreement(scored, snapshot)
         score = self._score(scored, snapshot, graded_p_resol, p_corr)
         self._scores.add(score)
         _log.info(
@@ -238,7 +242,7 @@ class Pipeline:
 
         self._runs.finish(run_id, status=PipelineRunStatus.COMPLETED)
         _log.info("pipeline_run_finish")
-        return PipelineResult(run_id=run_id, estimate=critiqued, score=score, decision=decision)
+        return PipelineResult(run_id=run_id, estimate=committed, score=score, decision=decision)
 
     def _veto_before_estimation(self, run_id: str, market: Market) -> PipelineResult:
         decision = RiskDecision(
