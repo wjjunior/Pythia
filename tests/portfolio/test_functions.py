@@ -6,6 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from pythia.common import Side
 from pythia.portfolio import OpenPosition, available_capital, exposure_fraction, exposure_state
 
 _money = st.floats(min_value=0.0, max_value=1e9, allow_nan=False, allow_infinity=False)
@@ -73,6 +74,17 @@ def test_exposure_state_windows_exclude_older_positions() -> None:
     assert state.absolute_total == 170.0
     assert state.weekly_total == 150.0
     assert state.daily_total == 100.0
+
+
+def test_exposure_state_aggregates_per_event_and_counts_open_yes_legs() -> None:
+    positions = [
+        OpenPosition(10.0, "x", "m1", _NOW, event_slug="evt", side=Side.YES),
+        OpenPosition(20.0, "x", "m2", _NOW, event_slug="evt", side=Side.NO),
+        OpenPosition(5.0, "x", "m3", _NOW),  # no event → not counted
+    ]
+    state = exposure_state(positions, asof=_NOW, daily_window=_DAY, weekly_window=_WEEK)
+    assert state.per_event == {"evt": 30.0}
+    assert state.event_open_yes == {"evt": 1}  # only the YES leg counts
 
 
 @given(st.lists(st.tuples(_money, st.sampled_from(["a", "b", "c"])), max_size=20))
