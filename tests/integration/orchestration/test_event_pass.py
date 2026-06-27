@@ -15,7 +15,9 @@ pytestmark = pytest.mark.integration
 _NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
-def _seed_option(session: Session, event_slug: str, name: str, *, yes_price: float) -> str:
+def _seed_option(
+    session: Session, event_slug: str, name: str, *, yes_price: float, resolved: bool = False
+) -> str:
     market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{event_slug}-{name}"))
     MarketRepository(session).upsert(
         Market(
@@ -26,6 +28,7 @@ def _seed_option(session: Session, event_slug: str, name: str, *, yes_price: flo
             resolution_rule="r",
             event_slug=event_slug,
             neg_risk=True,
+            resolved=resolved,
         )
     )
     SnapshotRepository(session).append(
@@ -61,3 +64,13 @@ def test_event_pass_persists_nothing_for_a_consistently_priced_event(session: Se
     _seed_option(session, "cup", "b", yes_price=0.5)  # asks sum 1.1 >= 1 → no arb
     assert run_event_pass(session, now=_NOW) == 0
     assert ArbRepository(session).list_ranked() == []
+
+
+def test_event_pass_excludes_resolved_options(session: Session) -> None:
+    # The two open options form a dutch book (asks 0.4 + 0.4 < 1); a resolved option must not enter
+    # the group — pulling it in (yes 1.0) would push the sum >= 1 and hide the real arb.
+    _seed_option(session, "cup", "a", yes_price=0.4)
+    _seed_option(session, "cup", "b", yes_price=0.4)
+    _seed_option(session, "cup", "done", yes_price=1.0, resolved=True)
+    assert run_event_pass(session, now=_NOW) == 1
+    assert len(ArbRepository(session).list_ranked()[0].legs) == 2  # only the open options

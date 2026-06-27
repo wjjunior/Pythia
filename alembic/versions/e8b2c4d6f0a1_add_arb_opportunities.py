@@ -26,7 +26,12 @@ def upgrade() -> None:
     """Upgrade schema."""
     op.create_table(
         "arb_opportunities",
-        sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "id",
+            sa.dialects.postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("event_slug", sa.Text(), nullable=False),
         sa.Column("kind", sa.Text(), nullable=False),
         sa.Column("ev", sa.Double(), nullable=False),

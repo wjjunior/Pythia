@@ -19,6 +19,8 @@ class EventService:
     def get_event_group(self, event_slug: str, asof: datetime) -> EventGroup | None:
         options: list[tuple[Market, MarketSnapshot]] = []
         for market in self._markets.list_by_event_slug(event_slug):
+            if market.resolved:
+                continue  # a live event group is open options only — resolved legs distort arbs
             snapshot = self._snapshots.latest_for_market_asof(market.id, asof=asof)
             if snapshot is not None:
                 options.append((market, snapshot))

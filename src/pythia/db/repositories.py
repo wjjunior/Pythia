@@ -1089,7 +1089,7 @@ class ArbRepository:
             self._session.add(
                 models.ArbOpportunity(
                     id=uuid.uuid4(),
-                    event_slug=arb.event_slug,
+                    event_slug=event_slug,  # the cleared slug, not arb.event_slug (stay in sync)
                     kind=arb.kind.value,
                     ev=arb.ev,
                     legs=[
