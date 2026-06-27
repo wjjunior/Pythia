@@ -82,12 +82,14 @@ def test_orderbook_parses_levels_and_coerces_prices() -> None:
     assert len(book.bids) == 3
 
 
-def test_open_positions_parse_and_coerce_string_numbers() -> None:
-    positions = _fixture_client().get_open_positions("0x11514fb5")
-    assert len(positions) == 2
+def test_open_positions_are_derived_by_netting_the_wallet_trades() -> None:
+    # PYT-132: Falcon has no positions endpoint; positions come from netting the trades fixture.
+    positions = _fixture_client().get_open_positions("0x11514fb5", ASOF)
+    assert len(positions) == 2  # two outcomes of one market, both still open (pure BUYs)
     assert positions[0].condition_id.startswith("0x584654")
-    assert positions[0].size == pytest.approx(1200.5)  # JSON string coerced
-    assert positions[0].avg_price == pytest.approx(0.62)  # historical price parsed, never evaluated
+    assert positions[0].outcome == "Down" and positions[0].size == pytest.approx(225.23)
+    assert positions[0].avg_price == pytest.approx(0.001)  # entry price, context-only
+    assert positions[1].outcome == "Up" and positions[1].size == pytest.approx(69.0)
 
 
 def test_falcon_client_conforms_to_port() -> None:
@@ -233,11 +235,11 @@ def test_unconfigured_dataset_raises_a_distinct_typed_error_not_transient() -> N
         "https://falcon.example/api/v2/semantic/retrieve/parameterized", "t", {"top_traders": 579}
     )
     with pytest.raises(FalconDatasetUnconfigured):
-        transport.retrieve("open_positions", {})
+        transport.retrieve("orderbook", {})  # held until its time-range params land (PYT-131)
     assert not issubclass(FalconDatasetUnconfigured, TransientTransportError)
 
 
 def test_client_is_fail_soft_on_an_unconfigured_dataset() -> None:
-    client = FalconClient(_RaisingTransport(FalconDatasetUnconfigured("open_positions")))
-    assert client.get_open_positions("0xabc") == []
+    client = FalconClient(_RaisingTransport(FalconDatasetUnconfigured("trader_trades")))
+    assert client.get_open_positions("0xabc", ASOF) == []
     assert client.get_market("0xabc") is None

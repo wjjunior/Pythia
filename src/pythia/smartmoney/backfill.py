@@ -141,7 +141,7 @@ class BackfillSweeper:
     def sweep(
         self, trader_id: str, wallet: str, *, now: datetime, evaluated_today: int
     ) -> list[CandidateSignal]:
-        positions = self._falcon.get_open_positions(wallet)
+        positions = self._falcon.get_open_positions(wallet, now)
         _log.info("backfill_sweep_start", trader_id=trader_id, positions=len(positions))
         return run_backfill_sweep(
             trader_id,

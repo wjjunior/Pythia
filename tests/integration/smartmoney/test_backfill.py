@@ -1,8 +1,10 @@
 """Integration test (PYT-94, AC-S8): open-position backfill end-to-end on real Postgres.
 
-Sweeps a wallet's open book (Falcon fixture) on tracking start: each tracked, allow-listed position
-is evaluated at asof = now (the current snapshot, never the trader's historical entry) and lands in
-the ledger tagged ``open_backfill``; an untracked position is skipped.
+Sweeps a wallet's open book on tracking start. Positions are derived by netting the wallet's Falcon
+trades (PYT-132 — there is no positions endpoint); each tracked, allow-listed position is evaluated
+at asof = now (the current snapshot, never the trader's historical entry) and lands in the ledger
+tagged ``open_backfill``. Both derived outcomes share one tracked market, so the sweep dedupes them
+to a single candidate.
 """
 
 import uuid
@@ -33,7 +35,7 @@ pytestmark = pytest.mark.integration
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "falcon"
 _NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
-# The first condition_id in open_positions.json; the second has no tracked market (skipped).
+# The condition_id of both BUY trades in trader_trades.json — netted into two open outcomes.
 _TRACKED_COND = "0x584654c869a3f1868f3ad1248e11ea988f3c4e332002839c6cac0e6db94485ee"
 
 
@@ -87,7 +89,7 @@ def test_backfill_sweep_persists_open_backfill_verdict_at_now(session: Session) 
 
     signals = sweeper.sweep(trader.id, trader.wallet, now=_NOW, evaluated_today=0)
 
-    assert len(signals) == 1  # only the tracked, allow-listed position; the other is skipped
+    assert len(signals) == 1  # both derived outcomes share the one tracked market → deduped to one
     signal = signals[0]
     assert signal.source is CandidateSource.OPEN_BACKFILL
     assert signal.asof == _NOW  # current price, never the trader's historical entry (AC-S8)

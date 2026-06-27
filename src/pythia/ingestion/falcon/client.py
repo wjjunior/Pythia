@@ -29,6 +29,7 @@ from pythia.ingestion.falcon.models import (
     TopTrader,
     TraderPnlPoint,
 )
+from pythia.ingestion.falcon.positions import derive_open_positions
 from pythia.ingestion.market_crawler import (
     LiveVenueAccessError,
     TransientTransportError,
@@ -37,9 +38,7 @@ from pythia.ingestion.market_crawler import (
 
 _log = get_logger(__name__)
 
-FalconDataset = Literal[
-    "top_traders", "trader_pnl", "trader_trades", "market", "orderbook", "open_positions"
-]
+FalconDataset = Literal["top_traders", "trader_pnl", "trader_trades", "market", "orderbook"]
 _FALCON_DATASETS: tuple[FalconDataset, ...] = get_args(FalconDataset)
 
 
@@ -48,6 +47,7 @@ class FalconDatasetUnconfigured(Exception):
 
 
 _PNL_LOOKBACK_DAYS = 30
+_POSITIONS_LOOKBACK_DAYS = 365  # window for netting trades into open positions; older may be missed
 _DEFAULT_PERIOD = "7d"
 _DEFAULT_LIMIT = 50
 
@@ -63,7 +63,7 @@ class FalconPort(Protocol):
     def get_trader_trades(self, wallet: str, since: datetime) -> list[FalconTrade]: ...
     def get_market(self, condition_id: str) -> FalconMarket | None: ...
     def get_orderbook(self, token_id: str) -> Orderbook | None: ...
-    def get_open_positions(self, wallet: str) -> list[OpenPosition]: ...
+    def get_open_positions(self, wallet: str, asof: datetime) -> list[OpenPosition]: ...
 
 
 class FalconTransport(Protocol):
@@ -218,16 +218,15 @@ class FalconClient:
         raw = self._soft("orderbook", {"token_id": token_id}, default=None)
         return Orderbook.model_validate(raw) if raw else None
 
-    def get_open_positions(self, wallet: str) -> list[OpenPosition]:
-        params = {"proxy_wallet": wallet, "condition_id": "ALL"}
-        raw = self._soft("open_positions", params, default=None)
-        return [OpenPosition.model_validate(row) for row in _results(raw)] if raw else []
+    def get_open_positions(self, wallet: str, asof: datetime) -> list[OpenPosition]:
+        # Falcon has no positions endpoint — net the wallet's recent trades instead (PYT-132).
+        trades = self.get_trader_trades(wallet, asof - timedelta(days=_POSITIONS_LOOKBACK_DAYS))
+        return derive_open_positions(trades, asof)
 
 
 # agent_id per dataset for the live gateway, confirmed from the Falcon API docs (§3.1). orderbook
-# (572) is held until get_orderbook sends the documented start_time/end_time (else a live 4xx);
-# open_positions has no Falcon endpoint — it is derived from trades (PYT-132). Override any id via
-# FALCON_AGENT_IDS. The live path is built only when a token + USE_LIVE_VENUES are set.
+# (572) is held until get_orderbook sends the documented start_time/end_time (else a live 4xx).
+# Override any id via FALCON_AGENT_IDS; live path is built only when token + USE_LIVE_VENUES set.
 _FALCON_AGENT_IDS: dict[FalconDataset, int] = {
     "top_traders": 579,
     "trader_trades": 556,
