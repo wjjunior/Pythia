@@ -3,6 +3,17 @@
 import pytest
 
 from pythia.agents import ModelRouter, UnknownAgentError, model_family
+from pythia.agents.router import DEFAULT_SLATES
+
+
+def test_critic_default_drops_the_deprecated_model_and_keeps_family_diversity() -> None:
+    # PYT-133: anthropic/claude-3-haiku refused / returned prose live; the critic now leads with a
+    # current, JSON-reliable Anthropic model — still a different family than the Google estimator.
+    all_models = [model for slate in DEFAULT_SLATES.values() for model in slate]
+    assert "anthropic/claude-3-haiku" not in all_models
+    critic_primary = DEFAULT_SLATES["critic"][0]
+    assert critic_primary == "anthropic/claude-haiku-4.5"
+    assert model_family(critic_primary) != model_family(DEFAULT_SLATES["estimation"][0])
 
 
 def test_static_route_returns_the_first_candidate() -> None:
@@ -47,7 +58,7 @@ def test_model_family_is_the_slug_prefix() -> None:
 
 
 def test_diverse_candidates_excludes_the_estimator_family() -> None:
-    router = ModelRouter(slates={"critic": ["anthropic/claude-3-haiku", "openai/gpt-oss-20b"]})
+    router = ModelRouter(slates={"critic": ["anthropic/claude-haiku-4.5", "openai/gpt-oss-20b"]})
     diverse = router.diverse_candidates("critic", exclude_family_of="anthropic/claude-sonnet")
     assert diverse == ["openai/gpt-oss-20b"]
 

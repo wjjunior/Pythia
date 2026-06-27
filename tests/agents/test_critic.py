@@ -122,7 +122,7 @@ def _critique_response() -> dict[str, Any]:
 
 def test_critic_uses_a_different_family_than_the_estimator() -> None:
     transport = _RecordingTransport(_critique_response())
-    router = ModelRouter(slates={"critic": ["anthropic/claude-3-haiku", "openai/gpt-oss-20b"]})
+    router = ModelRouter(slates={"critic": ["anthropic/claude-haiku-4.5", "openai/gpt-oss-20b"]})
     CriticAgent(OpenRouterLLMPort(transport, router)).review(
         _estimate(model_name="anthropic/claude-sonnet"), []
     )

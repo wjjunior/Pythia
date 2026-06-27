@@ -29,8 +29,10 @@ DEFAULT_SLATES: Mapping[str, list[str]] = {
         "minimax/minimax-m3",
     ],
     # Distinct families so the critic-diversity rule always has a non-estimator-family option.
+    # Leads with a current, JSON-reliable Anthropic model: claude-3-haiku refused/returned prose
+    # live, burning retries (PYT-133).
     "critic": [
-        "anthropic/claude-3-haiku",
+        "anthropic/claude-haiku-4.5",
         "openai/gpt-oss-20b",
         "z-ai/glm-4.7-flash",
         "meta-llama/llama-3.3-70b-instruct",
