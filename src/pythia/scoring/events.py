@@ -7,7 +7,7 @@ as input — no I/O, no clock.
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from pythia.common import (
     ArbKind,
@@ -131,3 +131,51 @@ def _ladder_spreads(group: EventGroup) -> list[ArbOpportunity]:
                 )
             )
     return arbs
+
+
+def _project_simplex(values: Sequence[float]) -> list[float]:
+    """Euclidean projection onto the probability simplex {x >= 0, sum x = 1} (Duchi et al.)."""
+    descending = sorted(values, reverse=True)
+    cumulative = 0.0
+    theta = 0.0
+    for index, value in enumerate(descending):
+        cumulative += value
+        candidate = (cumulative - 1.0) / (index + 1)
+        if value - candidate > 0.0:
+            theta = candidate
+    return [max(0.0, value - theta) for value in values]
+
+
+def _isotonic_decreasing(values: Sequence[float]) -> list[float]:
+    """L2 projection onto non-increasing sequences (pool-adjacent-violators)."""
+    blocks: list[tuple[float, int]] = []  # (sum, count) per pooled block
+    for value in values:
+        total, count = value, 1
+        while blocks and total / count > blocks[-1][0] / blocks[-1][1]:
+            prev_total, prev_count = blocks.pop()
+            total += prev_total
+            count += prev_count
+        blocks.append((total, count))
+    projected: list[float] = []
+    for total, count in blocks:
+        projected.extend([total / count] * count)
+    return projected
+
+
+def couple_probabilities(group: EventGroup, p_by_market: Mapping[str, float]) -> dict[str, float]:
+    """Project per-option committed probabilities onto the event's structurally-valid set (PYT-139).
+
+    Mutually-exclusive ⇒ L2 projection onto the simplex (Σ=1); threshold ladder ⇒ isotonic (non-
+    increasing in the threshold). Both are non-expansive, so the projection can only sharpen Brier.
+    """
+    market_ids = [option.market_id for option in group.options]
+    if len(market_ids) < 2 or not all(market_id in p_by_market for market_id in market_ids):
+        return dict(p_by_market)
+    probabilities = [p_by_market[market_id] for market_id in market_ids]  # group.options order
+    if group.event_type is EventType.MUTUALLY_EXCLUSIVE:
+        adjusted = _project_simplex(probabilities)
+    elif group.event_type is EventType.THRESHOLD_LADDER:
+        adjusted = _isotonic_decreasing(probabilities)
+    else:
+        return dict(p_by_market)
+    return {**p_by_market, **dict(zip(market_ids, adjusted, strict=True))}
