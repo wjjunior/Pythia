@@ -56,6 +56,7 @@ def _to_db_market(market: Market) -> models.Market:
             market.resolution_source_type.value if market.resolution_source_type else None
         ),
         event_slug=market.event_slug,
+        neg_risk=market.neg_risk,
         close_time=market.close_time,
         resolves_at=market.resolves_at,
         resolved=market.resolved,
@@ -74,6 +75,7 @@ def _from_db_market(row: models.Market) -> Market:
             ResolutionSourceType(row.resolution_source_type) if row.resolution_source_type else None
         ),
         event_slug=row.event_slug,
+        neg_risk=row.neg_risk,
         close_time=row.close_time,
         resolves_at=row.resolves_at,
         resolved=row.resolved,
@@ -140,6 +142,7 @@ class MarketRepository:
             row.resolution_rule = market.resolution_rule
             row.resolution_source = market.resolution_source
             row.event_slug = market.event_slug
+            row.neg_risk = market.neg_risk
             row.close_time = market.close_time
             row.resolves_at = market.resolves_at
             row.resolved = market.resolved
@@ -163,6 +166,12 @@ class MarketRepository:
     def get(self, market_id: str) -> Market | None:
         row = self._session.get(models.Market, uuid.UUID(market_id))
         return _from_db_market(row) if row is not None else None
+
+    def list_by_event_slug(self, event_slug: str) -> Sequence[Market]:
+        rows = self._session.exec(
+            select(models.Market).where(models.Market.event_slug == event_slug)
+        ).all()
+        return [_from_db_market(row) for row in rows]
 
 
 class SnapshotRepository:

@@ -52,6 +52,10 @@ class Market(SQLModel, table=True):
     resolution_source: str | None = Field(default=None, sa_column=Column(Text))
     resolution_source_type: str | None = Field(default=None, sa_column=Column(Text))
     event_slug: str | None = Field(default=None, sa_column=Column(Text))
+    neg_risk: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
     close_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     resolves_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     resolved: bool = Field(

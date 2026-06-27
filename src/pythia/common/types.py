@@ -25,6 +25,14 @@ class MarketStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class EventType(StrEnum):
+    """How an event's option-markets relate (PYT-137)."""
+
+    MUTUALLY_EXCLUSIVE = "mutually_exclusive"  # negRisk: exactly one option resolves YES
+    THRESHOLD_LADDER = "threshold_ladder"  # nested "above $X": P non-increasing in the threshold
+    UNKNOWN = "unknown"  # not coupled
+
+
 class ResolutionSourceType(StrEnum):
     """How a market resolves (§4.4.2) — grades the P_resol penalty and gates promotion."""
 
@@ -81,9 +89,24 @@ class Market(_Frozen):
     resolution_source: str | None = None
     resolution_source_type: ResolutionSourceType | None = None
     event_slug: str | None = None
+    neg_risk: bool = False  # Polymarket negRisk: marks a mutually-exclusive option set
     close_time: datetime | None = None
     resolves_at: datetime | None = None
     resolved: bool = False
+
+
+class EventOption(_Frozen):
+    market_id: str
+    question: str
+    yes_price: float
+    spread: float
+    threshold: float | None = None  # parsed for THRESHOLD_LADDER, else None
+
+
+class EventGroup(_Frozen):
+    event_slug: str
+    event_type: EventType
+    options: list[EventOption]
 
 
 class MarketSnapshot(_Frozen):
