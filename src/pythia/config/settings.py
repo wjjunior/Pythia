@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     cap_per_trade: float = 0.02
     cap_per_market: float = 0.05
     cap_per_category: float = 0.10
+    cap_per_event: float = 0.10  # total exposure across one multi-option event's legs (PYT-140)
     cap_daily: float = 0.05
     cap_weekly: float = 0.15
     cap_absolute: float = 1.0

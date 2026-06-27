@@ -3,6 +3,7 @@
 No LLM, no clock, no I/O. Limits and exposure are injected; gates veto, caps adjust down.
 """
 
+from pythia.common import Side
 from pythia.risk.models import (
     ExposureState,
     RiskDecision,
@@ -27,12 +28,22 @@ def gate_reasons(proposal: TradeProposal, limits: RiskLimits) -> tuple[RiskReaso
     return tuple(reasons)
 
 
+def event_double_yes(proposal: TradeProposal, exposure: ExposureState) -> bool:
+    # A 2nd directional YES on a mutually-exclusive event is a self-inflicted dutch book (the legs
+    # can't both win) — vetoed, unless they form a single detected, locked arb basket.
+    if proposal.arb_basket or not proposal.event_exclusive or proposal.side is not Side.YES:
+        return False
+    if proposal.event_slug is None:
+        return False
+    return exposure.event_open_yes.get(proposal.event_slug, 0) > 0
+
+
 def cap_headrooms(
     proposal: TradeProposal, limits: RiskLimits, exposure: ExposureState
 ) -> dict[RiskReason, float]:
     group = exposure.per_group.get(proposal.correlation_group, 0.0)
     category = exposure.per_category.get(proposal.category, 0.0)
-    return {
+    headrooms = {
         RiskReason.CAP_PER_TRADE: limits.cap_per_trade,
         RiskReason.CAP_PER_MARKET: limits.cap_per_market - group,
         RiskReason.CAP_PER_CATEGORY: limits.cap_per_category - category,
@@ -40,12 +51,18 @@ def cap_headrooms(
         RiskReason.CAP_WEEKLY: limits.cap_weekly - exposure.weekly_total,
         RiskReason.CAP_ABSOLUTE: limits.cap_absolute - exposure.absolute_total,
     }
+    if proposal.event_slug is not None:  # the per-event cap binds only on coupled-event legs
+        event = exposure.per_event.get(proposal.event_slug, 0.0)
+        headrooms[RiskReason.CAP_PER_EVENT] = limits.cap_per_event - event
+    return headrooms
 
 
 def evaluate(proposal: TradeProposal, limits: RiskLimits, exposure: ExposureState) -> RiskDecision:
     paper_only = not proposal.category_calibrated or proposal.resolution_gated
 
     gates = gate_reasons(proposal, limits)
+    if event_double_yes(proposal, exposure):
+        gates = (*gates, RiskReason.EVENT_DOUBLE_YES)
     if gates:
         return RiskDecision(approved_size=0.0, vetoed=True, reasons=gates, paper_only=paper_only)
 
