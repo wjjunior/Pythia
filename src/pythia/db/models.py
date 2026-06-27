@@ -244,8 +244,9 @@ class PaperTrade(SQLModel, table=True):
     market_id: uuid.UUID = Field(
         sa_column=Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=False)
     )
-    estimate_id: uuid.UUID = Field(
-        sa_column=Column(UUID(as_uuid=True), ForeignKey("estimates.id"), nullable=False)
+    estimate_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("estimates.id"), nullable=True),
     )
     side: str = Field(sa_column=Column(Text, nullable=False))
     entry_price: float = Field(sa_column=Column(Double, nullable=False))

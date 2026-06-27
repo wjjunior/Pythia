@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from pythia.common import PaperTrade, Side, TradeStatus
 from pythia.db import models
@@ -21,14 +21,14 @@ DEFAULT_SLIPPAGE = 0.0
 
 
 class PaperLedgerError(RuntimeError):
-    """The estimate or its snapshot is missing — the trade has no observed price to fill at."""
+    """No price to fill at — the estimate, its snapshot, or the market's snapshot is missing."""
 
 
 def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
     return PaperTrade(
         id=str(row.id),
         market_id=str(row.market_id),
-        estimate_id=str(row.estimate_id),
+        estimate_id=str(row.estimate_id) if row.estimate_id is not None else None,
         side=Side(row.side),
         entry_price=row.entry_price,
         size=row.size,
@@ -48,44 +48,39 @@ class PaperLedger:
         self._slippage = slippage
 
     def open(self, trade: PaperTrade) -> PaperTrade:
-        estimate = self._session.get(models.Estimate, uuid.UUID(trade.estimate_id))
-        if estimate is None:
-            raise PaperLedgerError(f"estimate {trade.estimate_id} not found")
-        snapshot = self._session.get(models.MarketSnapshot, estimate.snapshot_id)
-        if snapshot is None:
-            raise PaperLedgerError(f"snapshot {estimate.snapshot_id} not found")
-        entry_price = fill_price(
-            snapshot.yes_price, trade.side, snapshot.spread, fee=self._fee, slippage=self._slippage
-        )
-        row = models.PaperTrade(
-            id=uuid.UUID(trade.id),
-            market_id=uuid.UUID(trade.market_id),
-            estimate_id=uuid.UUID(trade.estimate_id),
-            side=trade.side,
-            entry_price=entry_price,
-            size=trade.size,
-            status=TradeStatus.OPEN,
-            opened_at=trade.opened_at,
-        )
+        row = self._row_for(trade)
         self._session.add(row)
         self._session.commit()
         self._session.refresh(row)
         return _from_db_trade(row)
 
-    def _row_for(self, trade: PaperTrade) -> models.PaperTrade:
+    def _snapshot_for(self, trade: PaperTrade) -> models.MarketSnapshot:
+        if trade.estimate_id is None:  # market-anchored (arb basket): the market's latest snapshot
+            snapshot = self._session.exec(
+                select(models.MarketSnapshot)
+                .where(models.MarketSnapshot.market_id == uuid.UUID(trade.market_id))
+                .order_by(col(models.MarketSnapshot.ts).desc())
+            ).first()
+            if snapshot is None:
+                raise PaperLedgerError(f"no snapshot for market {trade.market_id}")
+            return snapshot
         estimate = self._session.get(models.Estimate, uuid.UUID(trade.estimate_id))
         if estimate is None:
             raise PaperLedgerError(f"estimate {trade.estimate_id} not found")
         snapshot = self._session.get(models.MarketSnapshot, estimate.snapshot_id)
         if snapshot is None:
             raise PaperLedgerError(f"snapshot {estimate.snapshot_id} not found")
+        return snapshot
+
+    def _row_for(self, trade: PaperTrade) -> models.PaperTrade:
+        snapshot = self._snapshot_for(trade)
         entry_price = fill_price(
             snapshot.yes_price, trade.side, snapshot.spread, fee=self._fee, slippage=self._slippage
         )
         return models.PaperTrade(
             id=uuid.UUID(trade.id),
             market_id=uuid.UUID(trade.market_id),
-            estimate_id=uuid.UUID(trade.estimate_id),
+            estimate_id=uuid.UUID(trade.estimate_id) if trade.estimate_id is not None else None,
             side=trade.side,
             entry_price=entry_price,
             size=trade.size,

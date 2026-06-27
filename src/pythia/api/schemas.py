@@ -100,10 +100,21 @@ class ArbLegItem(BaseModel):
 
 
 class ArbItem(BaseModel):
+    id: str
     event_slug: str
     kind: str
     ev: float
     legs: list[ArbLegItem]
+
+
+class ArbApproveRequest(BaseModel):
+    baskets: float  # unit baskets to open; each leg buys this many shares (size = baskets * price)
+    reviewer: str | None = None
+
+
+class ArbApproveResult(BaseModel):
+    arb_id: str
+    trades: list[PaperTrade]
 
 
 class RunResponse(BaseModel):
