@@ -241,6 +241,12 @@ def test_poll_prices_a_binary_market_without_a_yes_outcome_from_outcome_prices()
     assert pairs[0][1].yes_price == pytest.approx(0.62)  # the affirmative ("Up") price
 
 
+def test_to_market_captures_neg_risk() -> None:
+    # PYT-137: the fixture is a negRisk (mutually-exclusive) market; the flag is stored at ingest.
+    assert to_market(_RAW[0], "m").neg_risk is True
+    assert to_market({**_RAW[0], "negRisk": False}, "m").neg_risk is False
+
+
 def test_poll_normalises_markets_and_snapshots() -> None:
     pairs = _crawler().poll()
     assert len(pairs) == 5

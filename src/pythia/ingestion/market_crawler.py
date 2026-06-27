@@ -260,6 +260,7 @@ def to_market(raw: dict[str, Any], market_id: str) -> Market:
         # stored, queryable value rather than re-deriving it at score time (PYT-122).
         resolution_source_type=classify_resolution_source(resolution_source),
         event_slug=_event_slug(raw),
+        neg_risk=bool(raw.get("negRisk", False)),
         close_time=_parse_datetime(raw.get("endDate")),
         resolves_at=_uma_resolves_at(raw),
         resolved=bool(raw.get("closed", False)),
