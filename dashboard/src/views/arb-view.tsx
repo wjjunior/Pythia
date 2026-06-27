@@ -47,7 +47,7 @@ function BasketCard({ arb }: { arb: ArbItem }) {
                 <TableCell>
                   <Badge variant={leg.side === "YES" ? "positive" : "negative"}>{leg.side}</Badge>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{num(leg.price, 3)}</TableCell>
+                <TableCell className="text-right tabular-nums">{pct(leg.price)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
