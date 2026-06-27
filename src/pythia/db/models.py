@@ -42,6 +42,7 @@ class Market(SQLModel, table=True):
             "resolution_source_type IN ('chainlink', 'clean_binary', 'subjective_uma')",
             name="markets_resolution_source_type_check",
         ),
+        Index("markets_event_slug", "event_slug"),  # event-level grouping lookups (PYT-137)
     )
 
     id: uuid.UUID | None = _id()

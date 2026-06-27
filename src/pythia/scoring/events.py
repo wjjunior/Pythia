@@ -37,11 +37,13 @@ def parse_threshold(question: str) -> float | None:
 
 
 def classify_event(markets: Sequence[Market]) -> EventType:
-    """negRisk ⇒ mutually-exclusive; else distinct parseable $ thresholds ⇒ ladder; else unknown."""
-    if any(market.neg_risk for market in markets):
-        return EventType.MUTUALLY_EXCLUSIVE
+    """all-negRisk (>=2) ⇒ exclusive; >=2 distinct parseable $ thresholds ⇒ ladder; else unknown."""
+    if len(markets) < 2:
+        return EventType.UNKNOWN  # a single option is not a coupled set
+    if all(market.neg_risk for market in markets):
+        return EventType.MUTUALLY_EXCLUSIVE  # negRisk is event-level — every option carries it
     distinct = {t for t in (parse_threshold(m.question) for m in markets) if t is not None}
-    if len(markets) >= 2 and len(distinct) == len(markets):
+    if len(distinct) == len(markets):
         return EventType.THRESHOLD_LADDER
     return EventType.UNKNOWN
 

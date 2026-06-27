@@ -66,6 +66,17 @@ def test_non_negrisk_non_threshold_is_unknown() -> None:
     assert classify_event(markets) is EventType.UNKNOWN
 
 
+def test_single_option_negrisk_event_is_not_mutually_exclusive() -> None:
+    # A coupled set needs >=2 options; a lone negRisk market is degenerate (Copilot review).
+    assert classify_event([_market("a", "Will X win?", neg_risk=True)]) is EventType.UNKNOWN
+
+
+def test_inconsistent_negrisk_across_options_is_not_mutually_exclusive() -> None:
+    # negRisk is event-level — require *all* options to carry it, not just one.
+    markets = [_market("a", "Will X win?", neg_risk=True), _market("b", "Will Y win?")]
+    assert classify_event(markets) is EventType.UNKNOWN
+
+
 def test_build_event_group_orders_ladder_options_by_threshold() -> None:
     options = [
         (_market("hi", "cap above $1 trillion?"), _snap("hi", 0.70)),

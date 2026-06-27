@@ -1,7 +1,8 @@
-"""add markets.neg_risk (mutually-exclusive event flag, PYT-137)
+"""add markets.neg_risk + event_slug index (event-level grouping, PYT-137)
 
 Polymarket negRisk marks a market as one option of a mutually-exclusive event set. Stored at ingest
-so event-level grouping/arbitrage classifies the event type without re-deriving it at read time.
+so event-level grouping/arbitrage classifies the event type without re-deriving it at read time. The
+event_slug index keeps per-event grouping lookups off a full table scan as markets grows.
 
 Revision ID: d7f3b9e1c5a2
 Revises: b2d4f6a8c1e3
@@ -27,8 +28,10 @@ def upgrade() -> None:
         "markets",
         sa.Column("neg_risk", sa.Boolean(), nullable=False, server_default=sa.text("false")),
     )
+    op.create_index("markets_event_slug", "markets", ["event_slug"])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index("markets_event_slug", table_name="markets")
     op.drop_column("markets", "neg_risk")
