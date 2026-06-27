@@ -220,7 +220,11 @@ class FalconClient:
 
     def get_open_positions(self, wallet: str, asof: datetime) -> list[OpenPosition]:
         # Falcon has no positions endpoint — net the wallet's recent trades instead (PYT-132).
-        trades = self.get_trader_trades(wallet, asof - timedelta(days=_POSITIONS_LOOKBACK_DAYS))
+        since = asof - timedelta(days=_POSITIONS_LOOKBACK_DAYS)
+        key = wallet.lower()
+        # Scope to this wallet: the live API filters by proxy_wallet, but a fixture/cassette may not
+        # — never attribute another wallet's trade to this position (defense in depth).
+        trades = [t for t in self.get_trader_trades(wallet, since) if t.wallet.lower() == key]
         return derive_open_positions(trades, asof)
 
 

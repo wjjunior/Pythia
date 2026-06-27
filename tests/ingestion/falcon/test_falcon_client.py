@@ -82,14 +82,15 @@ def test_orderbook_parses_levels_and_coerces_prices() -> None:
     assert len(book.bids) == 3
 
 
-def test_open_positions_are_derived_by_netting_the_wallet_trades() -> None:
-    # PYT-132: Falcon has no positions endpoint; positions come from netting the trades fixture.
-    positions = _fixture_client().get_open_positions("0x11514fb5", ASOF)
-    assert len(positions) == 2  # two outcomes of one market, both still open (pure BUYs)
+def test_open_positions_are_derived_from_only_the_requested_wallet_trades() -> None:
+    # PYT-132: positions are netted from the wallet's trades. The fixture also holds a trade for a
+    # different wallet (outcome "Up") — scoping must exclude it, never cross-attribute it.
+    wallet = "0x11514fb5ef1e3fe110691243714fcf2182db1fed"  # the fixture's "Down" trade
+    positions = _fixture_client().get_open_positions(wallet, ASOF)
+    assert len(positions) == 1  # only this wallet's BUY; the other wallet's "Up" is excluded
     assert positions[0].condition_id.startswith("0x584654")
     assert positions[0].outcome == "Down" and positions[0].size == pytest.approx(225.23)
     assert positions[0].avg_price == pytest.approx(0.001)  # entry price, context-only
-    assert positions[1].outcome == "Up" and positions[1].size == pytest.approx(69.0)
 
 
 def test_falcon_client_conforms_to_port() -> None:
