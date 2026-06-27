@@ -11,4 +11,5 @@ export const qk = {
   roster: ["roster"] as const,
   smartCandidates: ["smart-candidates"] as const,
   rosterEvents: ["roster-events"] as const,
+  arbs: ["arbs"] as const,
 }

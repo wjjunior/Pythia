@@ -32,6 +32,8 @@ export const useCalibration = (category?: string) =>
 
 export const useCost = () => useQuery({ queryKey: qk.cost, queryFn: api.cost })
 
+export const useArbs = () => useQuery({ queryKey: qk.arbs, queryFn: api.arbs })
+
 export const useSimulation = (category?: string) =>
   useQuery({ queryKey: qk.simulation(category), queryFn: () => api.simulation(category) })
 
