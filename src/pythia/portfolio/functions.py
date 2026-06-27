@@ -7,6 +7,7 @@ open positions; time enters as the `asof` parameter to `exposure_state`.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from pythia.common import Side
 from pythia.risk import ExposureState
 
 
@@ -16,6 +17,8 @@ class OpenPosition:
     category: str
     correlation_group: str
     opened_at: datetime
+    event_slug: str | None = None
+    side: Side = Side.YES
 
 
 def available_capital(
@@ -37,6 +40,8 @@ def exposure_state(
 ) -> ExposureState:
     per_category: dict[str, float] = {}
     per_group: dict[str, float] = {}
+    per_event: dict[str, float] = {}
+    event_open_yes: dict[str, int] = {}
     daily_total = 0.0
     weekly_total = 0.0
     absolute_total = 0.0
@@ -45,6 +50,10 @@ def exposure_state(
         per_group[position.correlation_group] = (
             per_group.get(position.correlation_group, 0.0) + position.size
         )
+        if position.event_slug is not None:
+            per_event[position.event_slug] = per_event.get(position.event_slug, 0.0) + position.size
+            if position.side is Side.YES:
+                event_open_yes[position.event_slug] = event_open_yes.get(position.event_slug, 0) + 1
         absolute_total += position.size
         age = asof - position.opened_at
         if age <= daily_window:
@@ -54,6 +63,8 @@ def exposure_state(
     return ExposureState(
         per_group=per_group,
         per_category=per_category,
+        per_event=per_event,
+        event_open_yes=event_open_yes,
         daily_total=daily_total,
         weekly_total=weekly_total,
         absolute_total=absolute_total,

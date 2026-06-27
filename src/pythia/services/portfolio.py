@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session
 
+from pythia.common import Side
 from pythia.config import Settings
 from pythia.db.repositories import PaperTradeRepository
 from pythia.portfolio.functions import OpenPosition
@@ -58,9 +59,16 @@ class PortfolioService:
     def exposure_state(self) -> ExposureState:
         positions = [
             OpenPosition(
-                size=size, category=category, correlation_group=market_id, opened_at=opened_at
+                size=size,
+                category=category,
+                correlation_group=market_id,
+                opened_at=opened_at,
+                event_slug=event_slug,
+                side=Side(side),
             )
-            for size, category, market_id, opened_at in self._trades.open_positions()
+            for size, category, market_id, opened_at, event_slug, side in (
+                self._trades.open_positions()
+            )
         ]
         return _exposure_state(
             positions,

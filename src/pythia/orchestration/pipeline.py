@@ -24,6 +24,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     Score,
+    Side,
 )
 from pythia.common.logging import bind, bind_correlation, clear_correlation, get_logger
 from pythia.config import Settings
@@ -379,6 +380,9 @@ class Pipeline:
             opportunity_score=score.opportunity_score,
             category_calibrated=category_calibrated,
             resolution_gated=resolution_gated,
+            side=Side.YES if score.edge >= 0.0 else Side.NO,  # the model's directional lean
+            event_slug=market.event_slug,
+            event_exclusive=market.neg_risk,  # negRisk ⇒ a mutually-exclusive option set
         )
         return evaluate(proposal, limits, exposure)
 
@@ -388,6 +392,7 @@ class Pipeline:
             cap_per_trade=capital * settings.cap_per_trade,
             cap_per_market=capital * settings.cap_per_market,
             cap_per_category=capital * settings.cap_per_category,
+            cap_per_event=capital * settings.cap_per_event,
             cap_daily=capital * settings.cap_daily,
             cap_weekly=capital * settings.cap_weekly,
             cap_absolute=capital * settings.cap_absolute,

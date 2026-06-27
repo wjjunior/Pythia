@@ -789,21 +789,16 @@ class PaperTradeRepository:
         )
         return float(self._session.exec(statement).one())
 
-    def open_positions(self) -> list[tuple[float, str, str, datetime]]:
+    def open_positions(self) -> list[tuple[float, str, str, datetime, str | None, str]]:
         rows = self._session.exec(
-            select(
-                models.PaperTrade.size,
-                models.Market.category,
-                models.PaperTrade.market_id,
-                models.PaperTrade.opened_at,
-            )
+            select(models.PaperTrade, models.Market)
             .join(models.Market, col(models.PaperTrade.market_id) == col(models.Market.id))
             .where(models.PaperTrade.status == TradeStatus.OPEN)
         ).all()
         return [
-            (size, category, str(market_id), opened_at)
-            for size, category, market_id, opened_at in rows
-            if opened_at is not None
+            (t.size, m.category, str(t.market_id), t.opened_at, m.event_slug, t.side)
+            for t, m in rows
+            if t.opened_at is not None
         ]
 
 
