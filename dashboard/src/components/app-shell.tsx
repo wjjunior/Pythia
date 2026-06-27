@@ -3,6 +3,7 @@ import {
   BarChart3,
   DollarSign,
   Radar,
+  Scale,
   TrendingUp,
   Users,
   Wallet,
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils"
 const NAV = [
   { to: "/", label: "Radar", icon: Radar, end: true },
   { to: "/smart-money", label: "Smart money", icon: Users, end: false },
+  { to: "/arb", label: "Arbitrage", icon: Scale, end: false },
   { to: "/paper", label: "Paper", icon: Wallet, end: false },
   { to: "/calibration", label: "Calibration", icon: BarChart3, end: false },
   { to: "/cost", label: "Cost", icon: DollarSign, end: false },
