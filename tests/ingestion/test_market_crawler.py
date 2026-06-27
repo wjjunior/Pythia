@@ -507,6 +507,19 @@ def test_poll_degrades_to_the_page_when_backfill_fails() -> None:
 
     pairs = _poll(_FailingEvents(page=page, events={}))
 
-    assert [m.external_id for m, _ in pairs] == [
-        "0xA"
-    ]  # a backfill failure never crashes the crawl
+    assert [m.external_id for m, _ in pairs] == ["0xA"]  # a backfill failure never crashes poll
+
+
+def test_poll_degrades_when_event_backfill_returns_a_client_error() -> None:
+    page = [_raw_market("0xA", "evt")]
+
+    class _ClientErrorEvents(_EventTransport):
+        def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+            request = httpx.Request("GET", "https://gamma/events")
+            raise httpx.HTTPStatusError(
+                "404", request=request, response=httpx.Response(404, request=request)
+            )
+
+    pairs = _poll(_ClientErrorEvents(page=page, events={}))
+
+    assert [m.external_id for m, _ in pairs] == ["0xA"]  # a 4xx on /events must not crash the crawl

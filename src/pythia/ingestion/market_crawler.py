@@ -400,7 +400,8 @@ class MarketCrawler:
         for attempt in range(self._retries):
             try:
                 return self._transport.fetch_event_markets(slug)
-            except LiveVenueAccessError as exc:
+            except (LiveVenueAccessError, httpx.HTTPStatusError) as exc:
+                # geo-block or a 4xx (e.g. an unknown event slug) — drop the backfill, keep the page
                 _log.warning("event_backfill_unavailable", slug=slug, error=str(exc))
                 return []
             except TransientTransportError as exc:
