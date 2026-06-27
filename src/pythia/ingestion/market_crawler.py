@@ -161,6 +161,8 @@ def _yes_price(raw: dict[str, Any]) -> float:
     for outcome, price in zip(outcomes, prices, strict=True):
         if str(outcome).lower() == "yes":
             return float(price)
+    if len(prices) == 2:  # binary market with no literal "Yes" (e.g. Up/Down): affirmative is first
+        return float(prices[0])
     return float(raw["lastTradePrice"])
 
 

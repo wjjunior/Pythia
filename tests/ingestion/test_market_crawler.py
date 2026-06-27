@@ -229,6 +229,18 @@ def test_poll_dedupes_a_market_gamma_returns_more_than_once() -> None:
     assert pairs[0][0].external_id == _RAW[0]["conditionId"]
 
 
+def test_poll_prices_a_binary_market_without_a_yes_outcome_from_outcome_prices() -> None:
+    # Bitcoin Up/Down style: no literal "Yes" outcome and no lastTradePrice, but priceable from
+    # outcomePrices — the affirmative side is the first outcome (PYT-135).
+    up_down = {k: v for k, v in _RAW[0].items() if k != "lastTradePrice"}
+    up_down |= {"outcomes": '["Up", "Down"]', "outcomePrices": '["0.62", "0.38"]'}
+    pairs = MarketCrawler(
+        _StaticTransport([up_down]), clock=lambda: TS, sleep=lambda _s: None
+    ).poll()
+    assert len(pairs) == 1  # priced, not dropped
+    assert pairs[0][1].yes_price == pytest.approx(0.62)  # the affirmative ("Up") price
+
+
 def test_poll_normalises_markets_and_snapshots() -> None:
     pairs = _crawler().poll()
     assert len(pairs) == 5
