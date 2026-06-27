@@ -349,14 +349,18 @@ class MarketCrawler:
     def poll(self) -> list[tuple[Market, MarketSnapshot]]:
         ts = self._clock()
         pairs: list[tuple[Market, MarketSnapshot]] = []
+        seen: set[str] = set()
         for raw in self._fetch():
             try:
                 external_id = raw["conditionId"]
+                if external_id in seen:
+                    continue  # Gamma lists a market under multiple events — one snapshot per market
                 market = to_market(raw, _market_id(external_id))
                 snapshot = to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)
             except (KeyError, ValueError, TypeError) as exc:
                 _log.warning("malformed_market_dropped", error=str(exc))
                 continue
+            seen.add(external_id)
             pairs.append((market, snapshot))
         return pairs
 

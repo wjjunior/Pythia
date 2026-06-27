@@ -220,6 +220,15 @@ def test_poll_drops_mismatched_lengths_even_when_yes_appears_first() -> None:
     assert crawler.poll() == []
 
 
+def test_poll_dedupes_a_market_gamma_returns_more_than_once() -> None:
+    # Gamma lists a market under multiple events; a duplicate conditionId in one batch must yield a
+    # single snapshot, not two identical deterministic ids that abort the crawl insert (PYT-134).
+    transport = _StaticTransport([_RAW[0], _RAW[0]])
+    pairs = MarketCrawler(transport, clock=lambda: TS, sleep=lambda _s: None).poll()
+    assert len(pairs) == 1
+    assert pairs[0][0].external_id == _RAW[0]["conditionId"]
+
+
 def test_poll_normalises_markets_and_snapshots() -> None:
     pairs = _crawler().poll()
     assert len(pairs) == 5
