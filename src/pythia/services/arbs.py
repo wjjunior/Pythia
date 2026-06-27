@@ -9,6 +9,7 @@ open via ``open_basket`` (all-or-none) and so are exempt from the single-market 
 import uuid
 from datetime import datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from pythia.common import ArbLeg, PaperTrade, TradeStatus
@@ -21,6 +22,10 @@ _PLACEHOLDER_ENTRY = 0.0  # the ledger refills from the snapshot; this value is 
 
 class UnknownArbError(LookupError):
     """No persisted arb with this id — nothing to approve."""
+
+
+class ArbAlreadyApprovedError(RuntimeError):
+    """This arb's basket is already open — its deterministic leg ids would collide."""
 
 
 def _leg_trade(arb_id: str, leg: ArbLeg, baskets: float, at: datetime) -> PaperTrade:
@@ -44,8 +49,13 @@ class ArbApprovalService:
 
     def approve(self, arb_id: str, *, baskets: float, at: datetime) -> list[PaperTrade]:
         ensure_paper_mode(self._settings)
+        if baskets <= 0.0:
+            raise ValueError("baskets must be positive")
         arb = self._arbs.get(arb_id)
         if arb is None:
             raise UnknownArbError(arb_id)
         trades = [_leg_trade(arb_id, leg, baskets, at) for leg in arb.legs]
-        return self._ledger.open_basket(trades)
+        try:
+            return self._ledger.open_basket(trades)
+        except IntegrityError as exc:  # deterministic leg ids ⇒ a re-approval collides
+            raise ArbAlreadyApprovedError(arb_id) from exc

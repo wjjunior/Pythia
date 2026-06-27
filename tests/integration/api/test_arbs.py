@@ -121,6 +121,14 @@ def test_approve_unknown_arb_is_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_re_approving_the_same_arb_is_409(client: TestClient, session: Session) -> None:
+    _seed_dutch_book(session)
+    arb_id = client.get("/api/arbs").json()[0]["id"]
+    assert client.post(f"/api/arbs/{arb_id}/approve", json={"baskets": 10.0}).status_code == 200
+    again = client.post(f"/api/arbs/{arb_id}/approve", json={"baskets": 10.0})
+    assert again.status_code == 409
+
+
 def test_approve_rejects_a_non_positive_size(client: TestClient, session: Session) -> None:
     _seed_dutch_book(session)
     arb_id = client.get("/api/arbs").json()[0]["id"]

@@ -296,15 +296,12 @@ class CalibrationService:
         """(category, predicted_ev, realized_ev) for each resolved paper trade."""
         if not outcomes:
             return []
-        trades = [
-            trade
-            for trade in self._session.exec(
-                select(models.PaperTrade)
-                .where(col(models.PaperTrade.market_id).in_(list(outcomes)))
-                .where(models.PaperTrade.status == TradeStatus.RESOLVED)
-            ).all()
-            if trade.estimate_id is not None  # arb baskets are price plays, not model forecasts
-        ]
+        trades = self._session.exec(
+            select(models.PaperTrade)
+            .where(col(models.PaperTrade.market_id).in_(list(outcomes)))
+            .where(models.PaperTrade.status == TradeStatus.RESOLVED)
+            .where(col(models.PaperTrade.estimate_id).is_not(None))  # skip arb baskets
+        ).all()
         if not trades:
             return []
         p_models = {

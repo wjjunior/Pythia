@@ -16,7 +16,11 @@ from pythia.db.repositories import (
 )
 from pythia.orchestration.runner import run_event_pass
 from pythia.paper import PaperLedger, fill_price
-from pythia.services.arbs import ArbApprovalService, UnknownArbError
+from pythia.services.arbs import (
+    ArbAlreadyApprovedError,
+    ArbApprovalService,
+    UnknownArbError,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -85,6 +89,19 @@ def test_approve_opens_all_legs_at_the_observed_snapshot_price(session: Session)
 def test_approve_unknown_arb_raises(session: Session) -> None:
     with pytest.raises(UnknownArbError):
         _service(session).approve(str(uuid.uuid4()), baskets=_BASKETS, at=_NOW)
+
+
+def test_approve_rejects_non_positive_baskets(session: Session) -> None:
+    arb_id = _detect_arb(session)
+    with pytest.raises(ValueError, match="positive"):
+        _service(session).approve(arb_id, baskets=0.0, at=_NOW)
+
+
+def test_re_approving_the_same_arb_raises_already_approved(session: Session) -> None:
+    arb_id = _detect_arb(session)
+    _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW)
+    with pytest.raises(ArbAlreadyApprovedError):  # deterministic leg ids collide on re-approval
+        _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW)
 
 
 def test_resolved_basket_realizes_the_locked_ev(session: Session) -> None:

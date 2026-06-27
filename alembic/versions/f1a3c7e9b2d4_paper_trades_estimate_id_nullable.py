@@ -33,6 +33,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    # Arb-basket legs have no estimate; they cannot exist under the NOT NULL schema, so drop them.
+    op.execute("DELETE FROM paper_trades WHERE estimate_id IS NULL")
     op.alter_column(
         "paper_trades",
         "estimate_id",

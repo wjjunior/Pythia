@@ -55,10 +55,11 @@ class PaperLedger:
         return _from_db_trade(row)
 
     def _snapshot_for(self, trade: PaperTrade) -> models.MarketSnapshot:
-        if trade.estimate_id is None:  # market-anchored (arb basket): the market's latest snapshot
+        if trade.estimate_id is None:  # market-anchored (arb basket): latest snapshot <= opened_at
             snapshot = self._session.exec(
                 select(models.MarketSnapshot)
                 .where(models.MarketSnapshot.market_id == uuid.UUID(trade.market_id))
+                .where(col(models.MarketSnapshot.ts) <= trade.opened_at)
                 .order_by(col(models.MarketSnapshot.ts).desc())
             ).first()
             if snapshot is None:

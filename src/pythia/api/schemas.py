@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pythia.common import (
     CandidateSignal,
@@ -108,7 +108,8 @@ class ArbItem(BaseModel):
 
 
 class ArbApproveRequest(BaseModel):
-    baskets: float  # unit baskets to open; each leg buys this many shares (size = baskets * price)
+    # unit baskets to open; each leg buys this many shares (size = baskets * price)
+    baskets: float = Field(gt=0.0)
     reviewer: str | None = None
 
 
