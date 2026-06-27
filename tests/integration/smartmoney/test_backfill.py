@@ -1,8 +1,10 @@
 """Integration test (PYT-94, AC-S8): open-position backfill end-to-end on real Postgres.
 
-Sweeps a wallet's open book (Falcon fixture) on tracking start: each tracked, allow-listed position
-is evaluated at asof = now (the current snapshot, never the trader's historical entry) and lands in
-the ledger tagged ``open_backfill``; an untracked position is skipped.
+Sweeps a wallet's open book on tracking start. Positions are derived by netting the wallet's own
+Falcon trades (PYT-132 — there is no positions endpoint); each tracked, allow-listed position is
+evaluated at asof = now (the current snapshot, never the trader's historical entry) and lands in the
+ledger tagged ``open_backfill``. The wallet has one netted open position, so the sweep yields one
+candidate.
 """
 
 import uuid
@@ -33,7 +35,8 @@ pytestmark = pytest.mark.integration
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "falcon"
 _NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
-# The first condition_id in open_positions.json; the second has no tracked market (skipped).
+# Wallet + condition_id of the "Down" BUY in trader_trades.json — netted into one open position.
+_WALLET = "0x11514fb5ef1e3fe110691243714fcf2182db1fed"
 _TRACKED_COND = "0x584654c869a3f1868f3ad1248e11ea988f3c4e332002839c6cac0e6db94485ee"
 
 
@@ -55,7 +58,7 @@ def test_backfill_sweep_persists_open_backfill_verdict_at_now(session: Session) 
     trader = TrackedTraderRepo(session).add(
         TrackedTrader(
             id=str(uuid.uuid5(uuid.NAMESPACE_URL, "bf-w")),
-            wallet="0x11514fb5",
+            wallet=_WALLET,
             state=TraderState.TRIAL,
             added_at=_NOW,
             state_since=_NOW,
@@ -87,7 +90,7 @@ def test_backfill_sweep_persists_open_backfill_verdict_at_now(session: Session) 
 
     signals = sweeper.sweep(trader.id, trader.wallet, now=_NOW, evaluated_today=0)
 
-    assert len(signals) == 1  # only the tracked, allow-listed position; the other is skipped
+    assert len(signals) == 1  # the wallet's single netted open position in the tracked market
     signal = signals[0]
     assert signal.source is CandidateSource.OPEN_BACKFILL
     assert signal.asof == _NOW  # current price, never the trader's historical entry (AC-S8)
