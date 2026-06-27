@@ -73,6 +73,16 @@ def test_event_pass_persists_nothing_for_a_consistently_priced_event(session: Se
     assert ArbRepository(session).list_ranked() == []
 
 
+def test_event_pass_does_not_flag_a_complete_negrisk_event(session: Session) -> None:
+    # PYT-147 regression: any two of these legs (0.4 + 0.4) look like a dutch book, but the complete
+    # three-leg set (asks sum 1.1 ≥ 1) is not arbitrable. A complete event must emit no arb.
+    _seed_option(session, "match", "home", yes_price=0.4)
+    _seed_option(session, "match", "away", yes_price=0.4)
+    _seed_option(session, "match", "draw", yes_price=0.3)
+    assert run_event_pass(session, now=_NOW) == 0
+    assert ArbRepository(session).list_ranked() == []
+
+
 def test_event_pass_excludes_resolved_options(session: Session) -> None:
     # The two open options form a dutch book (asks 0.4 + 0.4 < 1); a resolved option must not enter
     # the group — pulling it in (yes 1.0) would push the sum >= 1 and hide the real arb.

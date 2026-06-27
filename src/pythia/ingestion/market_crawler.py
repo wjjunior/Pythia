@@ -56,6 +56,8 @@ class MarketTransport(Protocol):
         end_date_min: str | None = None,
     ) -> list[dict[str, Any]]: ...
 
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]: ...
+
 
 class FixtureTransport:
     """Replays recorded Gamma responses from disk — the default offline transport."""
@@ -72,6 +74,9 @@ class FixtureTransport:
     ) -> list[dict[str, Any]]:
         data: list[dict[str, Any]] = json.loads(self._path.read_text())
         return data
+
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        return []  # a recorded slate is already complete — no per-event backfill offline
 
 
 class HttpxTransport:
@@ -146,6 +151,28 @@ class HttpxTransport:
                 break
             offset += self._limit
         return markets[: self._max_markets]
+
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        require_live(self._use_live, "polymarket")
+        url = f"{self._base_url}/events"
+        try:
+            response = httpx.get(url, params={"slug": slug}, timeout=self._timeout)
+            response.raise_for_status()
+        except httpx.ConnectError as exc:  # includes ConnectTimeout — a geo-block looks like this
+            raise LiveVenueAccessError(
+                f"cannot reach {url}; enable the VPN before a live Polymarket call (§8.6)"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise TransientTransportError(f"timeout calling {url}") from exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code >= 500:
+                raise TransientTransportError(f"{exc.response.status_code} from {url}") from exc
+            raise
+        events: list[dict[str, Any]] = response.json()
+        if not events:
+            return []
+        markets: list[dict[str, Any]] = events[0].get("markets") or []
+        return markets
 
 
 def _parse_json_list(value: str) -> list[Any]:
@@ -365,7 +392,50 @@ class MarketCrawler:
                 continue
             seen.add(external_id)
             pairs.append((market, snapshot))
+        self._backfill_negrisk_events(pairs, seen, ts)
         return pairs
+
+    def _fetch_event(self, slug: str) -> list[dict[str, Any]]:
+        # Best-effort enrichment: a failed backfill degrades to the partial page, never crashes.
+        for attempt in range(self._retries):
+            try:
+                return self._transport.fetch_event_markets(slug)
+            except (LiveVenueAccessError, httpx.HTTPStatusError) as exc:
+                # geo-block or a 4xx (e.g. an unknown event slug) — drop the backfill, keep the page
+                _log.warning("event_backfill_unavailable", slug=slug, error=str(exc))
+                return []
+            except TransientTransportError as exc:
+                _log.warning(
+                    "event_backfill_transient_failure",
+                    slug=slug,
+                    attempt=attempt + 1,
+                    error=str(exc),
+                )
+                if attempt + 1 < self._retries:
+                    self._sleep(self._backoff_base * (2**attempt))
+        return []
+
+    def _backfill_negrisk_events(
+        self, pairs: list[tuple[Market, MarketSnapshot]], seen: set[str], ts: datetime
+    ) -> None:
+        # The volume filter drops low-volume legs of a negRisk event, which would make an incomplete
+        # option set look like a dutch book (PYT-147). Refetch each present negRisk event in full.
+        slugs = {market.event_slug for market, _ in pairs if market.neg_risk and market.event_slug}
+        for slug in slugs:
+            for raw in self._fetch_event(slug):
+                try:
+                    if bool(raw.get("closed", False)):
+                        continue  # complete the live option set only
+                    external_id = raw["conditionId"]
+                    if external_id in seen:
+                        continue
+                    market = to_market(raw, _market_id(external_id))
+                    snapshot = to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)
+                except (KeyError, ValueError, TypeError) as exc:
+                    _log.warning("malformed_market_dropped", error=str(exc))
+                    continue
+                seen.add(external_id)
+                pairs.append((market, snapshot))
 
     def resolutions(self) -> list[ResolvedMarket]:
         now = self._clock()

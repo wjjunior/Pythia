@@ -45,6 +45,9 @@ class _FlakyTransport:
             raise TransientTransportError("temporary")
         return _RAW
 
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        return []
+
 
 class _GeoBlockedTransport:
     def __init__(self) -> None:
@@ -60,6 +63,9 @@ class _GeoBlockedTransport:
         self.calls += 1
         raise LiveVenueAccessError("enable the VPN")
 
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        return []
+
 
 class _StaticTransport:
     def __init__(self, markets: list[dict[str, Any]]) -> None:
@@ -73,6 +79,9 @@ class _StaticTransport:
         end_date_min: str | None = None,
     ) -> list[dict[str, Any]]:
         return self._markets
+
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        return []
 
 
 class _CapturingTransport:
@@ -92,6 +101,9 @@ class _CapturingTransport:
         self.end_date_min = end_date_min
         self.closed = closed
         return _RAW
+
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        return []
 
 
 def test_poll_requests_a_close_window_when_configured() -> None:
@@ -405,3 +417,109 @@ def test_resolutions_returns_outcomes_for_resolved_markets() -> None:
     assert results[0].external_id == "0xdone"
     assert results[0].outcome == 1
     assert results[0].resolved_at == datetime(2026, 6, 18, 19, 0, tzinfo=UTC)
+
+
+def _raw_market(
+    condition_id: str, slug: str, *, neg_risk: bool = True, yes: float = 0.3, closed: bool = False
+) -> dict[str, Any]:
+    return {
+        "conditionId": condition_id,
+        "question": f"{condition_id}?",
+        "category": "sports",
+        "description": "rule",
+        "outcomes": json.dumps(["Yes", "No"]),
+        "outcomePrices": json.dumps([str(yes), str(round(1.0 - yes, 4))]),
+        "lastTradePrice": str(yes),
+        "spread": 0.0,
+        "volumeNum": 1000.0,
+        "liquidityNum": 1000.0,
+        "events": [{"slug": slug}],
+        "negRisk": neg_risk,
+        "closed": closed,
+    }
+
+
+class _EventTransport:
+    """Serves a volume-filtered page plus a per-event full leg set (PYT-147 backfill)."""
+
+    def __init__(self, page: list[dict[str, Any]], events: dict[str, list[dict[str, Any]]]) -> None:
+        self._page = page
+        self._events = events
+        self.event_slugs: list[str] = []
+
+    def fetch_markets(
+        self,
+        *,
+        closed: bool = False,
+        end_date_max: str | None = None,
+        end_date_min: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return [] if closed else self._page
+
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        self.event_slugs.append(slug)
+        return self._events.get(slug, [])
+
+
+def _poll(transport: _EventTransport) -> list[tuple[Market, MarketSnapshot]]:
+    return MarketCrawler(transport, clock=lambda: TS, sleep=lambda _seconds: None).poll()
+
+
+def test_poll_backfills_low_volume_legs_of_a_negrisk_event() -> None:
+    page = [_raw_market("0xA", "evt"), _raw_market("0xB", "evt")]  # liquid legs survive the filter
+    full = [*page, _raw_market("0xC", "evt")]  # the dropped low-volume leg
+    transport = _EventTransport(page=page, events={"evt": full})
+
+    pairs = _poll(transport)
+
+    assert sorted(m.external_id for m, _ in pairs) == ["0xA", "0xB", "0xC"]  # event completed
+    assert transport.event_slugs == ["evt"]  # one /events call, deduped by slug
+    assert len({snapshot.id for _, snapshot in pairs}) == 3  # no duplicate snapshots
+
+
+def test_poll_does_not_backfill_non_negrisk_events() -> None:
+    page = [_raw_market("0xA", "evt", neg_risk=False)]
+    full = [*page, _raw_market("0xB", "evt", neg_risk=False)]
+    transport = _EventTransport(page=page, events={"evt": full})
+
+    pairs = _poll(transport)
+
+    assert [m.external_id for m, _ in pairs] == ["0xA"]
+    assert transport.event_slugs == []  # ladders / non-negRisk events are out of scope
+
+
+def test_poll_skips_closed_legs_when_backfilling() -> None:
+    page = [_raw_market("0xA", "evt")]
+    full = [*page, _raw_market("0xC", "evt", closed=True)]
+    transport = _EventTransport(page=page, events={"evt": full})
+
+    pairs = _poll(transport)
+
+    assert [m.external_id for m, _ in pairs] == ["0xA"]  # a resolved leg is not ingested
+
+
+def test_poll_degrades_to_the_page_when_backfill_fails() -> None:
+    page = [_raw_market("0xA", "evt")]
+
+    class _FailingEvents(_EventTransport):
+        def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+            raise TransientTransportError("boom")
+
+    pairs = _poll(_FailingEvents(page=page, events={}))
+
+    assert [m.external_id for m, _ in pairs] == ["0xA"]  # a backfill failure never crashes poll
+
+
+def test_poll_degrades_when_event_backfill_returns_a_client_error() -> None:
+    page = [_raw_market("0xA", "evt")]
+
+    class _ClientErrorEvents(_EventTransport):
+        def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+            request = httpx.Request("GET", "https://gamma/events")
+            raise httpx.HTTPStatusError(
+                "404", request=request, response=httpx.Response(404, request=request)
+            )
+
+    pairs = _poll(_ClientErrorEvents(page=page, events={}))
+
+    assert [m.external_id for m, _ in pairs] == ["0xA"]  # a 4xx on /events must not crash the crawl
