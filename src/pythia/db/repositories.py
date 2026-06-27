@@ -750,7 +750,7 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
     return PaperTrade(
         id=str(row.id),
         market_id=str(row.market_id),
-        estimate_id=str(row.estimate_id),
+        estimate_id=str(row.estimate_id) if row.estimate_id is not None else None,
         side=Side(row.side),
         entry_price=row.entry_price,
         size=row.size,
@@ -1065,7 +1065,9 @@ def _from_db_arb(row: models.ArbOpportunity) -> ArbOpportunity:
         ArbLeg(market_id=leg["market_id"], side=Side(leg["side"]), price=leg["price"])
         for leg in row.legs
     ]
-    return ArbOpportunity(event_slug=row.event_slug, kind=ArbKind(row.kind), legs=legs, ev=row.ev)
+    return ArbOpportunity(
+        id=str(row.id), event_slug=row.event_slug, kind=ArbKind(row.kind), legs=legs, ev=row.ev
+    )
 
 
 class ArbRepository:
@@ -1101,3 +1103,7 @@ class ArbRepository:
             select(models.ArbOpportunity).order_by(col(models.ArbOpportunity.ev).desc())
         ).all()
         return [_from_db_arb(row) for row in rows]
+
+    def get(self, arb_id: str) -> ArbOpportunity | None:
+        row = self._session.get(models.ArbOpportunity, uuid.UUID(arb_id))
+        return _from_db_arb(row) if row is not None else None

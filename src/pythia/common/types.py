@@ -127,6 +127,7 @@ class ArbOpportunity(_Frozen):
     kind: ArbKind
     legs: list[ArbLeg]
     ev: float  # locked profit per unit basket (> 0)
+    id: str | None = None  # the persisted row id; None for a freshly-detected, unsaved arb
 
 
 class MarketSnapshot(_Frozen):
@@ -214,7 +215,7 @@ class Score(_Frozen):
 class PaperTrade(_Frozen):
     id: str
     market_id: str
-    estimate_id: str
+    estimate_id: str | None  # None for an arb-basket leg — a price play, not a model forecast
     side: Side
     entry_price: Prob
     size: float

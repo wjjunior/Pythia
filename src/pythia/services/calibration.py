@@ -300,6 +300,7 @@ class CalibrationService:
             select(models.PaperTrade)
             .where(col(models.PaperTrade.market_id).in_(list(outcomes)))
             .where(models.PaperTrade.status == TradeStatus.RESOLVED)
+            .where(col(models.PaperTrade.estimate_id).is_not(None))  # skip arb baskets
         ).all()
         if not trades:
             return []
