@@ -33,6 +33,13 @@ class EventType(StrEnum):
     UNKNOWN = "unknown"  # not coupled
 
 
+class ArbKind(StrEnum):
+    """A structural arbitrage shape on a multi-option event (PYT-138)."""
+
+    DUTCH_BOOK = "dutch_book"  # mutually-exclusive options whose YES asks sum to < 1
+    LADDER_SPREAD = "ladder_spread"  # a threshold ladder priced non-monotonically
+
+
 class ResolutionSourceType(StrEnum):
     """How a market resolves (§4.4.2) — grades the P_resol penalty and gates promotion."""
 
@@ -107,6 +114,19 @@ class EventGroup(_Frozen):
     event_slug: str
     event_type: EventType
     options: list[EventOption]
+
+
+class ArbLeg(_Frozen):
+    market_id: str
+    side: Side
+    price: float  # the executable price to pay for this leg at detection time
+
+
+class ArbOpportunity(_Frozen):
+    event_slug: str
+    kind: ArbKind
+    legs: list[ArbLeg]
+    ev: float  # locked profit per unit basket (> 0)
 
 
 class MarketSnapshot(_Frozen):
