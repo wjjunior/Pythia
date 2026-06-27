@@ -43,6 +43,9 @@ class _ResolvedTransport:
     ) -> list[dict[str, Any]]:
         return self._markets if closed else []
 
+    def fetch_event_markets(self, slug: str) -> list[dict[str, Any]]:
+        return []
+
 
 def _resolved_raw(condition_id: str, yes_price: str) -> dict[str, Any]:
     no_price = "0" if yes_price == "1" else "1"
