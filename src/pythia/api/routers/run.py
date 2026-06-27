@@ -17,4 +17,6 @@ def run(session: SessionDep, settings: SettingsDep, broadcaster: BroadcasterDep)
         settings,
         publish_radar=lambda market_id: broadcaster.publish(SseChannel.RADAR_CHANGED, market_id),
     )
-    return RunResponse(markets=summary.markets, scored=summary.scored, halted=summary.halted)
+    return RunResponse(
+        markets=summary.markets, scored=summary.scored, halted=summary.halted, arbs=summary.arbs
+    )

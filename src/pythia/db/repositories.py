@@ -14,6 +14,9 @@ from sqlalchemy import and_, func, or_
 from sqlmodel import Session, col, select
 
 from pythia.common import (
+    ArbKind,
+    ArbLeg,
+    ArbOpportunity,
     AuditEvent,
     AuditKind,
     CandidateStatus,
@@ -1060,3 +1063,46 @@ def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot
     for market, snapshot in pairs:
         markets.upsert(market)
         snapshots.append(snapshot)
+
+
+def _from_db_arb(row: models.ArbOpportunity) -> ArbOpportunity:
+    legs = [
+        ArbLeg(market_id=leg["market_id"], side=Side(leg["side"]), price=leg["price"])
+        for leg in row.legs
+    ]
+    return ArbOpportunity(event_slug=row.event_slug, kind=ArbKind(row.kind), legs=legs, ev=row.ev)
+
+
+class ArbRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def replace_for_event(
+        self, event_slug: str, arbs: Sequence[ArbOpportunity], *, detected_at: datetime
+    ) -> None:
+        """Refresh an event's detected arbs: drop the stale set, insert the current one."""
+        for stale in self._session.exec(
+            select(models.ArbOpportunity).where(models.ArbOpportunity.event_slug == event_slug)
+        ).all():
+            self._session.delete(stale)
+        for arb in arbs:
+            self._session.add(
+                models.ArbOpportunity(
+                    id=uuid.uuid4(),
+                    event_slug=event_slug,  # the cleared slug, not arb.event_slug (stay in sync)
+                    kind=arb.kind.value,
+                    ev=arb.ev,
+                    legs=[
+                        {"market_id": leg.market_id, "side": leg.side.value, "price": leg.price}
+                        for leg in arb.legs
+                    ],
+                    detected_at=detected_at,
+                )
+            )
+        self._session.commit()
+
+    def list_ranked(self) -> list[ArbOpportunity]:
+        rows = self._session.exec(
+            select(models.ArbOpportunity).order_by(col(models.ArbOpportunity.ev).desc())
+        ).all()
+        return [_from_db_arb(row) for row in rows]

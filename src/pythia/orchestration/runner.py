@@ -9,7 +9,7 @@ a breached budget halts the batch.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlmodel import Session
 
@@ -25,6 +25,7 @@ from pythia.common import EvidencePort, LLMPort, Market, MarketStatus, TraderEnt
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import (
+    ArbRepository,
     CostRepository,
     EstimateRepository,
     MarketRepository,
@@ -33,6 +34,8 @@ from pythia.db.repositories import (
 from pythia.db.smartmoney import CandidateSignalRepo, TraderEntryRepo
 from pythia.orchestration.pipeline import Pipeline
 from pythia.rag import EvidenceStore, make_embedder
+from pythia.scoring.events import detect_arbitrage
+from pythia.services.events import EventService
 from pythia.smartmoney.evidence import SmartMoneyEvidencePort
 
 _log = get_logger(__name__)
@@ -46,6 +49,29 @@ class RunSummary:
     markets: int
     scored: int
     halted: bool
+    arbs: int = 0
+
+
+def run_event_pass(session: Session, *, now: datetime) -> int:
+    """Group open markets by event, detect structural arbitrage, and refresh the stored set."""
+    open_markets = MarketRepository(session).list(status=MarketStatus.OPEN)
+    by_event: dict[str, int] = {}
+    for market in open_markets:
+        if market.event_slug:
+            by_event[market.event_slug] = by_event.get(market.event_slug, 0) + 1
+    service = EventService(session)
+    arbs_repo = ArbRepository(session)
+    total = 0
+    for event_slug, option_count in by_event.items():
+        if option_count < 2:
+            continue  # a single-option event is not a coupled set
+        group = service.get_event_group(event_slug, now)
+        if group is None:
+            continue
+        arbs = detect_arbitrage(group)
+        arbs_repo.replace_for_event(event_slug, arbs, detected_at=now)
+        total += len(arbs)
+    return total
 
 
 def _default_llm_factory(session: Session, settings: Settings) -> LlmFactory:
@@ -166,4 +192,5 @@ def run_open_markets(
             scored += 1
             if publish_radar is not None:
                 publish_radar(market.id)
-    return RunSummary(markets=len(markets), scored=scored, halted=False)
+    arbs = run_event_pass(session, now=datetime.now(UTC))
+    return RunSummary(markets=len(markets), scored=scored, halted=False, arbs=arbs)

@@ -7,6 +7,7 @@ stage: there is no real-order path here.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlmodel import Session, select
@@ -70,6 +71,43 @@ class PaperLedger:
         self._session.commit()
         self._session.refresh(row)
         return _from_db_trade(row)
+
+    def _row_for(self, trade: PaperTrade) -> models.PaperTrade:
+        estimate = self._session.get(models.Estimate, uuid.UUID(trade.estimate_id))
+        if estimate is None:
+            raise PaperLedgerError(f"estimate {trade.estimate_id} not found")
+        snapshot = self._session.get(models.MarketSnapshot, estimate.snapshot_id)
+        if snapshot is None:
+            raise PaperLedgerError(f"snapshot {estimate.snapshot_id} not found")
+        entry_price = fill_price(
+            snapshot.yes_price, trade.side, snapshot.spread, fee=self._fee, slippage=self._slippage
+        )
+        return models.PaperTrade(
+            id=uuid.UUID(trade.id),
+            market_id=uuid.UUID(trade.market_id),
+            estimate_id=uuid.UUID(trade.estimate_id),
+            side=trade.side,
+            entry_price=entry_price,
+            size=trade.size,
+            status=TradeStatus.OPEN,
+            opened_at=trade.opened_at,
+        )
+
+    def open_basket(self, trades: Sequence[PaperTrade]) -> list[PaperTrade]:
+        """Open every leg atomically: all fill at their observed price, or none do (all-or-none)."""
+        rows: list[models.PaperTrade] = []
+        try:
+            for trade in trades:
+                row = self._row_for(trade)
+                self._session.add(row)
+                rows.append(row)
+            self._session.commit()
+        except Exception:
+            self._session.rollback()  # a missing leg rolls back the whole basket
+            raise
+        for row in rows:
+            self._session.refresh(row)
+        return [_from_db_trade(row) for row in rows]
 
     def resolve(self, market_id: str, outcome: int, at: datetime) -> None:
         rows = self._session.exec(
