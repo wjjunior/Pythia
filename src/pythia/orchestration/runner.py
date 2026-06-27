@@ -21,7 +21,16 @@ from pythia.agents import (
     LLMResponseError,
     make_llm_port,
 )
-from pythia.common import EvidencePort, LLMPort, Market, MarketStatus, TraderEntry
+from pythia.common import (
+    Estimate,
+    EventGroup,
+    EvidencePort,
+    LLMPort,
+    Market,
+    MarketStatus,
+    TraderEntry,
+)
+from pythia.common.ids import deterministic_id
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import (
@@ -34,7 +43,7 @@ from pythia.db.repositories import (
 from pythia.db.smartmoney import CandidateSignalRepo, TraderEntryRepo
 from pythia.orchestration.pipeline import Pipeline
 from pythia.rag import EvidenceStore, make_embedder
-from pythia.scoring.events import detect_arbitrage
+from pythia.scoring.events import couple_probabilities, detect_arbitrage
 from pythia.services.events import EventService
 from pythia.smartmoney.evidence import SmartMoneyEvidencePort
 
@@ -61,6 +70,7 @@ def run_event_pass(session: Session, *, now: datetime) -> int:
             by_event[market.event_slug] = by_event.get(market.event_slug, 0) + 1
     service = EventService(session)
     arbs_repo = ArbRepository(session)
+    estimates = EstimateRepository(session)
     total = 0
     for event_slug, option_count in by_event.items():
         if option_count < 2:
@@ -71,7 +81,51 @@ def run_event_pass(session: Session, *, now: datetime) -> int:
         arbs = detect_arbitrage(group)
         arbs_repo.replace_for_event(event_slug, arbs, detected_at=now)
         total += len(arbs)
+        _couple_event(estimates, group)
     return total
+
+
+_COUPLED_MODEL = "event-coupled"
+
+
+def _couple_event(estimates: EstimateRepository, group: EventGroup) -> None:
+    """Project the options' committed forecasts onto the valid set; append the coupled estimates.
+
+    Append-only: a new ``event-coupled`` estimate per changed option becomes the latest forecast the
+    calibration verdict measures (PYT-144). Idempotent — skip if the latest is already coupled.
+    """
+    latest: dict[str, Estimate] = {}
+    for option in group.options:
+        estimate = estimates.latest_for_market(option.market_id)
+        if estimate is None or estimate.model_name == _COUPLED_MODEL:
+            return  # incomplete, or already coupled at the latest forecast
+        latest[option.market_id] = estimate
+    committed = {
+        market_id: (e.p_model_calibrated if e.p_model_calibrated is not None else e.p_model)
+        for market_id, e in latest.items()
+    }
+    coupled = couple_probabilities(group, committed)
+    for market_id, estimate in latest.items():
+        if coupled[market_id] == committed[market_id]:
+            continue  # projection left this option unchanged (already valid)
+        estimates.add(
+            Estimate(
+                id=deterministic_id(_COUPLED_MODEL, estimate.snapshot_id),
+                market_id=estimate.market_id,
+                snapshot_id=estimate.snapshot_id,
+                p_model=estimate.p_model,
+                confidence=estimate.confidence,
+                lower=estimate.lower,
+                upper=estimate.upper,
+                rationale="event-coupled forecast",
+                evidence_ids=estimate.evidence_ids,
+                model_name=_COUPLED_MODEL,
+                critic_notes=estimate.critic_notes,
+                p_model_calibrated=coupled[market_id],
+                p_model_calibrated_fit_asof=estimate.p_model_calibrated_fit_asof,
+                members=[],
+            )
+        )
 
 
 def _default_llm_factory(session: Session, settings: Settings) -> LlmFactory:
