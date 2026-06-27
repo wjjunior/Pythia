@@ -93,10 +93,24 @@ class CostResponse(BaseModel):
     by_day: dict[str, float]
 
 
+class ArbLegItem(BaseModel):
+    market_id: str
+    side: str
+    price: float
+
+
+class ArbItem(BaseModel):
+    event_slug: str
+    kind: str
+    ev: float
+    legs: list[ArbLegItem]
+
+
 class RunResponse(BaseModel):
     markets: int
     scored: int
     halted: bool
+    arbs: int = 0
 
 
 class GrowthCurvePointView(BaseModel):

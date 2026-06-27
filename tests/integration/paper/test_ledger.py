@@ -4,12 +4,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from pythia.common import Estimate, Market, MarketSnapshot, PaperTrade, Side, TradeStatus
 from pythia.db import models
 from pythia.db.repositories import EstimateRepository, MarketRepository, SnapshotRepository
-from pythia.paper import PaperLedger, fill_price, realize_pnl
+from pythia.paper import PaperLedger, PaperLedgerError, fill_price, realize_pnl
 
 pytestmark = pytest.mark.integration
 
@@ -121,3 +121,20 @@ def test_resolve_is_a_noop_for_already_resolved_trades(session: Session) -> None
     second = session.get(models.PaperTrade, uuid.UUID(opened.id))
     assert second is not None
     assert second.pnl == first_pnl
+
+
+def test_open_basket_opens_every_leg(session: Session) -> None:
+    _seed(session)
+    opened = PaperLedger(session).open_basket([_trade(Side.YES, 40.0), _trade(Side.NO, 60.0)])
+    assert {t.side for t in opened} == {Side.YES, Side.NO}
+    assert all(t.status is TradeStatus.OPEN for t in opened)
+
+
+def test_open_basket_rolls_back_when_a_leg_is_missing(session: Session) -> None:
+    _seed(session)
+    bad = _trade(Side.YES, 50.0).model_copy(
+        update={"id": str(uuid.uuid4()), "estimate_id": str(uuid.uuid4())}  # estimate not in DB
+    )
+    with pytest.raises(PaperLedgerError):
+        PaperLedger(session).open_basket([_trade(Side.NO, 50.0), bad])
+    assert session.exec(select(models.PaperTrade)).all() == []  # all-or-none: nothing persisted

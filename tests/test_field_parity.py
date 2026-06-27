@@ -35,6 +35,8 @@ _ALLOWED_DIVERGENCE: dict[str, tuple[set[str], set[str]]] = {
     # Storage-specific columns: the pgvector embedding + JSONB metadata, and the raw provider JSON.
     "Evidence": ({"embedding", "metadata"}, set()),
     "MarketSnapshot": ({"raw"}, set()),
+    # Surrogate PK + detection timestamp; legs are JSONB rows of the contract's ArbLeg list.
+    "ArbOpportunity": ({"id", "detected_at"}, set()),
 }
 
 

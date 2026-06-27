@@ -565,3 +565,15 @@ class RosterEvent(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
     )
+
+
+class ArbOpportunity(SQLModel, table=True):
+    __tablename__ = "arb_opportunities"
+    __table_args__ = (Index("arb_opportunities_event", "event_slug"),)
+
+    id: uuid.UUID | None = _id()
+    event_slug: str = Field(sa_column=Column(Text, nullable=False))
+    kind: str = Field(sa_column=Column(Text, nullable=False))
+    ev: float = Field(sa_column=Column(Double, nullable=False))
+    legs: list[dict[str, Any]] = Field(sa_column=Column(JSONB, nullable=False))
+    detected_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
