@@ -8,6 +8,9 @@ from pythia.common.ports import (
     PaperLedgerPort,
 )
 from pythia.common.types import (
+    ArbKind,
+    ArbLeg,
+    ArbOpportunity,
     AuditEvent,
     AuditKind,
     CandidateSignal,
@@ -53,6 +56,9 @@ from pythia.common.types import (
 from pythia.common.venue import blended_baseline, latest_prices_per_venue
 
 __all__ = [
+    "ArbKind",
+    "ArbLeg",
+    "ArbOpportunity",
     "AuditEvent",
     "AuditKind",
     "AuditPort",

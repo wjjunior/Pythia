@@ -9,7 +9,17 @@ as input — no I/O, no clock.
 import re
 from collections.abc import Sequence
 
-from pythia.common import EventGroup, EventOption, EventType, Market, MarketSnapshot
+from pythia.common import (
+    ArbKind,
+    ArbLeg,
+    ArbOpportunity,
+    EventGroup,
+    EventOption,
+    EventType,
+    Market,
+    MarketSnapshot,
+    Side,
+)
 
 _SCALE = {
     "thousand": 1e3,
@@ -67,3 +77,57 @@ def build_event_group(
     if is_ladder:
         event_options.sort(key=lambda option: option.threshold or 0.0)
     return EventGroup(event_slug=event_slug, event_type=event_type, options=event_options)
+
+
+def _ask(option: EventOption) -> float:
+    return min(1.0, option.yes_price + option.spread / 2.0)
+
+
+def _bid(option: EventOption) -> float:
+    return max(0.0, option.yes_price - option.spread / 2.0)
+
+
+def detect_arbitrage(group: EventGroup) -> list[ArbOpportunity]:
+    """Locked arbitrage in an event, priced conservatively at the spread-adjusted ask/bid."""
+    if group.event_type is EventType.MUTUALLY_EXCLUSIVE:
+        return _dutch_book(group)
+    if group.event_type is EventType.THRESHOLD_LADDER:
+        return _ladder_spreads(group)
+    return []
+
+
+def _dutch_book(group: EventGroup) -> list[ArbOpportunity]:
+    # negRisk ⇒ exactly one option resolves YES, so buying YES on all costs sum(ask) and pays $1.
+    total_ask = sum(_ask(option) for option in group.options)
+    if total_ask >= 1.0:
+        return []
+    legs = [ArbLeg(market_id=o.market_id, side=Side.YES, price=_ask(o)) for o in group.options]
+    return [
+        ArbOpportunity(
+            event_slug=group.event_slug, kind=ArbKind.DUTCH_BOOK, legs=legs, ev=1.0 - total_ask
+        )
+    ]
+
+
+def _ladder_spreads(group: EventGroup) -> list[ArbOpportunity]:
+    # Ascending by threshold: YES(>t_low) dominates YES(>t_high), so fair price_low >= price_high.
+    # A violation prices high above low; the locked arb is long YES(low) + short YES(high) via NO,
+    # with ev = bid(high) - ask(low) (worst-case payoff 1, cost ask_low + 1 - bid_high).
+    options = group.options
+    arbs: list[ArbOpportunity] = []
+    for i in range(len(options)):
+        for j in range(i + 1, len(options)):
+            low, high = options[i], options[j]
+            ev = _bid(high) - _ask(low)
+            if ev <= 0.0:
+                continue
+            legs = [
+                ArbLeg(market_id=low.market_id, side=Side.YES, price=_ask(low)),
+                ArbLeg(market_id=high.market_id, side=Side.NO, price=1.0 - _bid(high)),
+            ]
+            arbs.append(
+                ArbOpportunity(
+                    event_slug=group.event_slug, kind=ArbKind.LADDER_SPREAD, legs=legs, ev=ev
+                )
+            )
+    return arbs
