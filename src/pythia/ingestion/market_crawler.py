@@ -171,7 +171,13 @@ class HttpxTransport:
         events: list[dict[str, Any]] = response.json()
         if not events:
             return []
-        markets: list[dict[str, Any]] = events[0].get("markets") or []
+        event = events[0]
+        event_slug = event.get("slug") or slug
+        markets: list[dict[str, Any]] = event.get("markets") or []
+        for market in markets:
+            # /events nests markets without the event back-reference; restore it so a backfilled leg
+            # groups under the event slug rather than its own market slug (PYT-148).
+            market.setdefault("events", [{"slug": event_slug}])
         return markets
 
 
