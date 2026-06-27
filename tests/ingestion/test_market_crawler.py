@@ -17,7 +17,7 @@ from pythia.ingestion import (
     MarketNotFoundError,
     TransientTransportError,
 )
-from pythia.ingestion.market_crawler import resolved_outcome, to_market
+from pythia.ingestion.market_crawler import _event_slug, resolved_outcome, to_market
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "polymarket" / "gamma_markets.json"
 TS = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
@@ -195,6 +195,22 @@ def test_httpx_resolution_crawl_is_a_single_unordered_request(
     assert len(calls) == 1
     assert calls[0]["closed"] == "true"
     assert "order" not in calls[0] and "end_date_min" not in calls[0] and "offset" not in calls[0]
+
+
+def test_httpx_fetch_event_markets_restores_the_event_back_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Gamma's /events nests markets WITHOUT the `events` back-reference; the transport restores it
+    # so a backfilled leg derives the event slug, not its own market slug (PYT-148).
+    event = {"slug": "evt", "markets": [{"conditionId": "0xC", "slug": "evt-bucket"}]}
+
+    def fake_get(url: str, params: dict[str, Any], timeout: float) -> _FakeResponse:
+        return _FakeResponse([event])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    markets = HttpxTransport("https://gamma", use_live=True).fetch_event_markets("evt")
+
+    assert _event_slug(markets[0]) == "evt"  # was falling back to the market's own slug
 
 
 def test_httpx_transport_refuses_a_live_call_when_use_live_is_off(
@@ -473,6 +489,7 @@ def test_poll_backfills_low_volume_legs_of_a_negrisk_event() -> None:
     pairs = _poll(transport)
 
     assert sorted(m.external_id for m, _ in pairs) == ["0xA", "0xB", "0xC"]  # event completed
+    assert {m.event_slug for m, _ in pairs} == {"evt"}  # backfilled legs join the event group
     assert transport.event_slugs == ["evt"]  # one /events call, deduped by slug
     assert len({snapshot.id for _, snapshot in pairs}) == 3  # no duplicate snapshots
 
