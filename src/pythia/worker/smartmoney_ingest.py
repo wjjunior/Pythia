@@ -32,7 +32,7 @@ from pythia.db.smartmoney import (
     TraderEntryRepo,
 )
 from pythia.ingestion.falcon import FalconPort
-from pythia.ingestion.market_crawler import LiveVenueAccessError
+from pythia.ingestion.market_crawler import HttpxTransport, LiveVenueAccessError
 from pythia.orchestration import Pipeline
 from pythia.rag import EvidenceStore, make_embedder
 from pythia.smartmoney.backfill import BackfillSweeper, should_backfill
@@ -86,7 +86,16 @@ def run_detection(
         return
     signals = CandidateSignalRepo(session)
     pipeline = _build_pipeline(session, settings, _guarded_llm(session, settings))
-    evaluator = PipelineCandidateEvaluator(session, pipeline)
+    # On-demand ingestion (PYT-156): a trigger on a market outside our crawl is fetched + evaluated.
+    # Only when live venues are on — offline this stays a local-only resolve, no fetch attempts.
+    fetcher = (
+        HttpxTransport(settings.polymarket_api_base, use_live=True)
+        if settings.use_live_venues
+        else None
+    )
+    evaluator = PipelineCandidateEvaluator(
+        session, pipeline, market_fetcher=fetcher, clock=lambda: now
+    )
     try:
         enqueued = detect_and_enqueue(
             traders,

@@ -180,6 +180,15 @@ class HttpxTransport:
             market.setdefault("events", [{"slug": event_slug}])
         return markets
 
+    def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
+        # A single open market by its condition_id — to ingest a smart-money trigger on a market
+        # outside the crawled slate (PYT-156). Reuses _request's /markets error classification;
+        # include_tag mirrors the open crawl so derive_category sees the same tag fallback.
+        data = self._request(
+            {"condition_ids": condition_id, "closed": "false", "include_tag": "true"}
+        )
+        return next((m for m in data if m.get("conditionId") == condition_id), None)
+
 
 def _parse_json_list(value: str) -> list[Any]:
     parsed: list[Any] = json.loads(value)
@@ -312,6 +321,14 @@ def to_snapshot(
         volume=float(raw["volumeNum"]),
         liquidity=float(raw["liquidityNum"]),
     )
+
+
+def normalize_market(raw: dict[str, Any], ts: datetime) -> tuple[Market, MarketSnapshot]:
+    """Build a (Market, MarketSnapshot) from a raw Gamma market observed at ``ts``."""
+    external_id = raw["conditionId"]
+    market = to_market(raw, _market_id(external_id))
+    snapshot = to_snapshot(raw, _snapshot_id(external_id, ts), market.id, ts)
+    return market, snapshot
 
 
 def _market_id(external_id: str) -> str:
