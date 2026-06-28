@@ -71,6 +71,15 @@ class OpportunityStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class ReviewStatus(StrEnum):
+    """Where a market stands in the human-review/paper lifecycle (PYT-153), for the ops views."""
+
+    NONE = "none"  # not yet reviewed
+    OPEN = "open"  # has an open paper position
+    RESOLVED = "resolved"  # had a paper position that resolved
+    REJECTED = "rejected"  # the review gate rejected it
+
+
 class AuditKind(StrEnum):
     ESTIMATE = "estimate"
     CRITIC_VERDICT = "critic_verdict"

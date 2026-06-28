@@ -5,6 +5,7 @@ import type { components } from "./api.gen"
 type Schemas = components["schemas"]
 
 export type RadarItem = Schemas["RadarItem"]
+export type ReviewStatus = Schemas["ReviewStatus"]
 export type Market = Schemas["Market"]
 export type MarketDetail = Schemas["MarketDetail"]
 export type MarketSnapshot = Schemas["MarketSnapshot"]

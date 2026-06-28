@@ -14,6 +14,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     PaperTrade,
+    ReviewStatus,
     RosterEvent,
     Score,
     Side,
@@ -41,6 +42,7 @@ class RadarItem(BaseModel):
     win_probability: float
     closes_in_days: float | None
     resolves_in_days: float | None
+    review_status: ReviewStatus
 
 
 class EstimateDetail(BaseModel):
