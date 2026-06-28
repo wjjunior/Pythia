@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { useOverride, useRoster, useRosterHistory, useSmartCandidates } from "@/hooks/use-api"
 import { isoDateTime, num, pct } from "@/lib/format"
+import { traderUrl } from "@/lib/polymarket"
 import { reviewStatusBadge } from "@/lib/radar"
 import {
   MUTE_HINT,
@@ -31,6 +32,20 @@ import type { TraderState } from "@/lib/types"
 
 const cell = (value: number | null, render: (n: number) => string): string =>
   value === null ? "—" : render(value)
+
+function WalletLink({ wallet }: { wallet: string }) {
+  return (
+    <a
+      href={traderUrl(wallet) ?? undefined}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={`${wallet} — open on polymarketanalytics.com`}
+      className="font-mono text-xs hover:text-foreground hover:underline"
+    >
+      {shortWallet(wallet)}
+    </a>
+  )
+}
 
 export function SmartMoneyView() {
   return (
@@ -95,11 +110,8 @@ function RosterPanel() {
                     const state: TraderState = entry.trader.state
                     return (
                       <TableRow key={entry.trader.id}>
-                        <TableCell
-                          className="font-mono text-xs"
-                          title={entry.trader.wallet}
-                        >
-                          {shortWallet(entry.trader.wallet)}
+                        <TableCell>
+                          <WalletLink wallet={entry.trader.wallet} />
                         </TableCell>
                         <TableCell>
                           <Badge variant={STATE_BADGE[state]}>{state}</Badge>
@@ -290,8 +302,8 @@ function HistoryPanel() {
                       <TableCell className="tabular-nums text-muted-foreground">
                         {isoDateTime(event.created_at)}
                       </TableCell>
-                      <TableCell className="font-mono text-xs" title={wallet}>
-                        {shortWallet(wallet)}
+                      <TableCell>
+                        <WalletLink wallet={wallet} />
                       </TableCell>
                       <TableCell>
                         <span className="inline-flex items-center gap-1.5">
