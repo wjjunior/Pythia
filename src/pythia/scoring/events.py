@@ -137,7 +137,10 @@ def _dutch_book(group: EventGroup) -> list[ArbOpportunity]:
     total_ask = sum(_ask(option) for option in group.options)
     if total_ask >= 1.0:
         return []
-    legs = [ArbLeg(market_id=o.market_id, side=Side.YES, price=_ask(o)) for o in group.options]
+    legs = [
+        ArbLeg(market_id=o.market_id, side=Side.YES, price=_ask(o), question=o.question)
+        for o in group.options
+    ]
     return [
         ArbOpportunity(
             event_slug=group.event_slug, kind=ArbKind.DUTCH_BOOK, legs=legs, ev=1.0 - total_ask
@@ -158,8 +161,15 @@ def _ladder_spreads(group: EventGroup) -> list[ArbOpportunity]:
             if ev <= 0.0:
                 continue
             legs = [
-                ArbLeg(market_id=low.market_id, side=Side.YES, price=_ask(low)),
-                ArbLeg(market_id=high.market_id, side=Side.NO, price=1.0 - _bid(high)),
+                ArbLeg(
+                    market_id=low.market_id, side=Side.YES, price=_ask(low), question=low.question
+                ),
+                ArbLeg(
+                    market_id=high.market_id,
+                    side=Side.NO,
+                    price=1.0 - _bid(high),
+                    question=high.question,
+                ),
             ]
             arbs.append(
                 ArbOpportunity(

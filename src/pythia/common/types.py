@@ -120,6 +120,7 @@ class ArbLeg(_Frozen):
     market_id: str
     side: Side
     price: float  # the executable price to pay for this leg at detection time
+    question: str = ""  # the leg market's question, for a legible panel (PYT-152)
 
 
 class ArbOpportunity(_Frozen):
@@ -128,6 +129,7 @@ class ArbOpportunity(_Frozen):
     legs: list[ArbLeg]
     ev: float  # locked profit per unit basket (> 0)
     id: str | None = None  # the persisted row id; None for a freshly-detected, unsaved arb
+    detected_at: datetime | None = None  # when the event pass detected it; None until persisted
 
 
 class MarketSnapshot(_Frozen):

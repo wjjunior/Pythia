@@ -94,11 +94,30 @@ def test_arbs_endpoint_lists_persisted_baskets_by_ev(client: TestClient, session
 
     assert [item["event_slug"] for item in body] == ["e2", "e1"]  # ranked by EV desc
     assert body[0]["kind"] == "ladder_spread"
-    assert body[0]["legs"][1] == {"market_id": "hi", "side": "NO", "price": 0.3}
+    assert body[0]["legs"][1] == {"market_id": "hi", "side": "NO", "price": 0.3, "question": ""}
 
 
 def test_arbs_endpoint_is_empty_with_no_baskets(client: TestClient) -> None:
     assert client.get("/api/arbs").json() == []
+
+
+def test_arb_panel_carries_question_detected_at_and_approved(
+    client: TestClient, session: Session
+) -> None:
+    _seed_dutch_book(session)
+
+    before = client.get("/api/arbs").json()[0]
+    assert before["detected_at"] is not None  # PYT-152: when the event pass detected it
+    assert before["approved"] is False
+    assert {leg["question"] for leg in before["legs"]} == {  # legible legs, not hex ids
+        "Will a win?",
+        "Will b win?",
+        "Will c win?",
+    }
+
+    client.post(f"/api/arbs/{before['id']}/approve", json={"baskets": 5.0})
+    after = client.get("/api/arbs").json()[0]
+    assert after["approved"] is True  # the basket's legs are now open in the ledger
 
 
 def test_approve_opens_all_basket_legs(client: TestClient, session: Session) -> None:

@@ -11,13 +11,20 @@ from pythia.api.schemas import ArbApproveRequest, ArbApproveResult, ArbItem, Arb
 from pythia.config import ExecutionModeError
 from pythia.db.repositories import ArbRepository
 from pythia.paper import PaperLedger, PaperLedgerError
-from pythia.services.arbs import ArbAlreadyApprovedError, ArbApprovalService, UnknownArbError
+from pythia.services.arbs import (
+    ArbAlreadyApprovedError,
+    ArbApprovalService,
+    UnknownArbError,
+    approved_arb_ids,
+)
 
 router = APIRouter(tags=["arbs"])
 
 
 @router.get("/api/arbs")
 def arbs(session: SessionDep) -> list[ArbItem]:
+    ranked = [arb for arb in ArbRepository(session).list_ranked() if arb.id is not None]
+    approved = approved_arb_ids(session, ranked)  # one batch query for the whole list
     return [
         ArbItem(
             id=arb.id,
@@ -25,12 +32,19 @@ def arbs(session: SessionDep) -> list[ArbItem]:
             kind=arb.kind.value,
             ev=arb.ev,
             legs=[
-                ArbLegItem(market_id=leg.market_id, side=leg.side.value, price=leg.price)
+                ArbLegItem(
+                    market_id=leg.market_id,
+                    side=leg.side.value,
+                    price=leg.price,
+                    question=leg.question,
+                )
                 for leg in arb.legs
             ],
+            detected_at=arb.detected_at,
+            approved=arb.id in approved,
         )
-        for arb in ArbRepository(session).list_ranked()
-        if arb.id is not None  # persisted rows always carry an id; never fabricate one
+        for arb in ranked
+        if arb.id is not None  # persisted rows always carry an id; never fabricate one (narrows id)
     ]
 
 

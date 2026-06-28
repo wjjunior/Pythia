@@ -7,13 +7,15 @@ open via ``open_basket`` (all-or-none) and so are exempt from the single-market 
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
-from pythia.common import ArbLeg, PaperTrade, TradeStatus
+from pythia.common import ArbLeg, ArbOpportunity, PaperTrade, Side, TradeStatus
 from pythia.config import Settings, ensure_paper_mode
+from pythia.db import models
 from pythia.db.repositories import ArbRepository
 from pythia.paper import PaperLedger
 
@@ -28,9 +30,32 @@ class ArbAlreadyApprovedError(RuntimeError):
     """This arb's basket is already open — its deterministic leg ids would collide."""
 
 
+def arb_leg_trade_id(arb_id: str, market_id: str, side: Side) -> str:
+    """The deterministic paper-trade id for an arb leg — the approve path and the approved-state
+    check share it so they cannot diverge."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"arb|{arb_id}|{market_id}|{side.value}"))
+
+
+def approved_arb_ids(session: Session, arbs: Sequence[ArbOpportunity]) -> set[str]:
+    """Ids of arbs whose basket is already open — any leg's deterministic trade id exists in the
+    ledger (open_basket is all-or-none, so one present leg means the whole basket was opened)."""
+    by_trade_id: dict[uuid.UUID, str] = {}
+    for arb in arbs:
+        if arb.id is None:
+            continue
+        for leg in arb.legs:
+            by_trade_id[uuid.UUID(arb_leg_trade_id(arb.id, leg.market_id, leg.side))] = arb.id
+    if not by_trade_id:
+        return set()
+    existing = session.exec(
+        select(models.PaperTrade.id).where(col(models.PaperTrade.id).in_(list(by_trade_id)))
+    ).all()
+    return {by_trade_id[row] for row in existing if row is not None}
+
+
 def _leg_trade(arb_id: str, leg: ArbLeg, baskets: float, at: datetime) -> PaperTrade:
     return PaperTrade(
-        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"arb|{arb_id}|{leg.market_id}|{leg.side.value}")),
+        id=arb_leg_trade_id(arb_id, leg.market_id, leg.side),
         market_id=leg.market_id,
         estimate_id=None,
         side=leg.side,
