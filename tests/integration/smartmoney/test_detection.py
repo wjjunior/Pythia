@@ -1,7 +1,9 @@
 """Integration tests (PYT-90): new-entry detection (AC-S1) + the pipeline evaluator (AC-S2)."""
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from sqlmodel import Session
@@ -130,4 +132,68 @@ def test_pipeline_evaluator_runs_the_pipeline_and_persists_a_verdict(session: Se
 
 def test_pipeline_evaluator_skips_an_untracked_market(session: Session) -> None:
     evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
-    assert evaluator.evaluate("0xnot-in-our-db", _TS, ["t"]) is None
+    assert evaluator.evaluate("0xnot-in-our-db", _TS, ["t"]) is None  # no fetcher → local-only
+
+
+def _raw_market(condition_id: str) -> dict[str, Any]:
+    return {
+        "conditionId": condition_id,
+        "question": "Will the whale's pick resolve YES?",
+        "category": "sports",
+        "description": "rule",
+        "outcomes": json.dumps(["Yes", "No"]),
+        "outcomePrices": json.dumps(["0.4", "0.6"]),
+        "lastTradePrice": "0.4",
+        "spread": 0.02,
+        "volumeNum": 1000.0,
+        "liquidityNum": 1000.0,
+        "negRisk": False,
+        "closed": False,
+    }
+
+
+class _FakeFetcher:
+    def __init__(self, by_condition: dict[str, dict[str, Any]]) -> None:
+        self._by = by_condition
+
+    def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
+        return self._by.get(condition_id)
+
+
+def test_pipeline_evaluator_ingests_a_triggered_market_on_demand(session: Session) -> None:
+    # A tracked wallet entered a market outside our crawl: the evaluator fetches + ingests it.
+    fetcher = _FakeFetcher({"0xuncrawled": _raw_market("0xuncrawled")})
+    evaluator = PipelineCandidateEvaluator(
+        session, _pipeline(session), market_fetcher=fetcher, clock=lambda: _TS
+    )
+
+    market_id = evaluator.evaluate("0xuncrawled", _TS, ["trader-1"])
+
+    assert market_id is not None
+    ingested = MarketRepository(session).get_by_external_id("0xuncrawled")
+    assert ingested is not None and ingested.id == market_id  # fetched + ingested, not dropped
+    estimate = EstimateRepository(session).latest_for_market(market_id)
+    assert estimate is not None  # the pipeline then ran on the freshly-ingested market
+    assert ScoreRepository(session).get_by_estimate(estimate.id) is not None  # verdict persisted
+
+
+def test_pipeline_evaluator_skips_when_the_triggered_market_is_missing(session: Session) -> None:
+    fetcher = _FakeFetcher({})  # condition not found upstream (closed/delisted)
+    evaluator = PipelineCandidateEvaluator(
+        session, _pipeline(session), market_fetcher=fetcher, clock=lambda: _TS
+    )
+    assert evaluator.evaluate("0xgone", _TS, ["t"]) is None  # fetch miss → SKIPPED, as before
+
+
+def test_pipeline_evaluator_skips_a_closed_triggered_market(session: Session) -> None:
+    raw = _raw_market("0xclosed")
+    raw["closed"] = True
+    evaluator = PipelineCandidateEvaluator(
+        session,
+        _pipeline(session),
+        market_fetcher=_FakeFetcher({"0xclosed": raw}),
+        clock=lambda: _TS,
+    )
+
+    assert evaluator.evaluate("0xclosed", _TS, ["t"]) is None  # already resolved → not ingested
+    assert MarketRepository(session).get_by_external_id("0xclosed") is None

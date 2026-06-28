@@ -8,10 +8,11 @@ as a crawler-sourced market (§5.2). A market we do not yet track is skipped; th
 """
 
 from collections import defaultdict
-from collections.abc import Sequence
-from datetime import datetime
-from typing import Protocol
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
+import httpx
 from sqlmodel import Session
 
 from pythia.common import (
@@ -26,6 +27,11 @@ from pythia.common.logging import get_logger
 from pythia.db.repositories import MarketRepository, SnapshotRepository
 from pythia.db.smartmoney import TraderEntryRepo
 from pythia.ingestion.falcon import FalconPort
+from pythia.ingestion.market_crawler import (
+    LiveVenueAccessError,
+    TransientTransportError,
+    normalize_market,
+)
 from pythia.orchestration import Pipeline
 from pythia.smartmoney.detector import detect_new_entries
 
@@ -113,19 +119,64 @@ def enqueue_candidates(
     return signals
 
 
+class MarketFetcher(Protocol):
+    """Fetch a single Polymarket market by condition_id — the live HttpxTransport satisfies it."""
+
+    def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None: ...
+
+
 class PipelineCandidateEvaluator:
     """Resolve a Falcon market to a tracked v1 market; run the pipeline at its latest snapshot."""
 
-    def __init__(self, session: Session, pipeline: Pipeline) -> None:
+    def __init__(
+        self,
+        session: Session,
+        pipeline: Pipeline,
+        *,
+        market_fetcher: MarketFetcher | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._markets = MarketRepository(session)
         self._snapshots = SnapshotRepository(session)
         self._pipeline = pipeline
+        self._fetcher = market_fetcher  # None ⇒ local-only resolve (offline / no live venues)
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def resolve(self, external_market: str) -> str | None:
         market = self._markets.get_by_external_id(external_market)
-        if market is None:
-            _log.info("candidate_skipped_untracked_market", external_market=external_market)
+        if market is not None:
+            return market.id
+        ingested = self._ingest_triggered(external_market)  # smart-money discovery (PYT-156)
+        if ingested is not None:
+            return ingested
+        _log.info("candidate_skipped_untracked_market", external_market=external_market)
+        return None
+
+    def _ingest_triggered(self, external_market: str) -> str | None:
+        # A tracked wallet entered a market outside our crawl: fetch it from Gamma and ingest it so
+        # the pipeline can evaluate it, instead of dropping the trigger. Best-effort — any fetch /
+        # parse failure degrades to None (SKIPPED), never aborting the detection tick.
+        if self._fetcher is None:
             return None
+        try:
+            raw = self._fetcher.fetch_market_by_condition(external_market)
+        except (LiveVenueAccessError, TransientTransportError, httpx.HTTPStatusError) as exc:
+            _log.warning(
+                "triggered_market_fetch_failed", external_market=external_market, error=str(exc)
+            )
+            return None
+        if raw is None or bool(raw.get("closed", False)):
+            return None
+        try:
+            market, snapshot = normalize_market(raw, self._clock())
+        except (KeyError, ValueError, TypeError) as exc:
+            _log.warning(
+                "triggered_market_malformed", external_market=external_market, error=str(exc)
+            )
+            return None
+        self._markets.upsert(market)
+        self._snapshots.append(snapshot)
+        _log.info("triggered_market_ingested", external_market=external_market, market_id=market.id)
         return market.id
 
     def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
