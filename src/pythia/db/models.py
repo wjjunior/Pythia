@@ -603,3 +603,25 @@ class TraderPosition(SQLModel, table=True):
     title: str = Field(sa_column=Column(Text, nullable=False))
     end_date: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     asof: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class PipelineRunFunnel(SQLModel, table=True):
+    __tablename__ = "pipeline_run_funnel"
+    __table_args__ = (Index("pipeline_run_funnel_ts", "ts"),)
+
+    id: uuid.UUID | None = _id()
+    ts: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+    crawled: int = Field(sa_column=Column(Integer, nullable=False))
+    tracked_open: int = Field(sa_column=Column(Integer, nullable=False))
+    shortlisted: int = Field(sa_column=Column(Integer, nullable=False))
+    estimated: int = Field(sa_column=Column(Integer, nullable=False))
+    scored: int = Field(sa_column=Column(Integer, nullable=False))
+    radar_surfaced: int = Field(sa_column=Column(Integer, nullable=False))
+    dropped_window: int = Field(sa_column=Column(Integer, nullable=False))
+    dropped_win_multiple: int = Field(sa_column=Column(Integer, nullable=False))
+    dropped_win_probability: int = Field(sa_column=Column(Integer, nullable=False))
+    dropped_extreme_disagreement: int = Field(sa_column=Column(Integer, nullable=False))
+    categories: dict[str, int] = Field(sa_column=Column(JSONB, nullable=False))

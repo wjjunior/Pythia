@@ -465,3 +465,41 @@ class TraderPosition(_Frozen):
     title: str
     asof: datetime
     end_date: datetime | None = None
+
+
+class PipelineFunnel(_Frozen):
+    """Per-tick pipeline stage funnel (PYT-164) — diagnostic counts, never a gate.
+
+    Crosses orchestration → db (a ``pipeline_run_funnel`` row) → log line, so it lives with the
+    shared contracts. ``categories`` is the per-category crawl representation.
+    """
+
+    crawled: int
+    tracked_open: int
+    shortlisted: int
+    estimated: int
+    scored: int
+    radar_surfaced: int
+    dropped_window: int
+    dropped_win_multiple: int
+    dropped_win_probability: int
+    dropped_extreme_disagreement: int
+    categories: dict[str, int]
+
+    @property
+    def reconciles(self) -> bool:
+        ordered = (
+            self.crawled
+            >= self.tracked_open
+            >= self.shortlisted
+            >= self.estimated
+            >= self.scored
+            >= self.radar_surfaced
+        )
+        drops = (
+            self.dropped_window
+            + self.dropped_win_multiple
+            + self.dropped_win_probability
+            + self.dropped_extreme_disagreement
+        )
+        return ordered and drops == self.scored - self.radar_surfaced

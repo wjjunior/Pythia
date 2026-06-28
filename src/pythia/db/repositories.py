@@ -32,6 +32,7 @@ from pythia.common import (
     MarketStatus,
     MemberForecast,
     PaperTrade,
+    PipelineFunnel,
     Postmortem,
     ResolutionSourceType,
     Score,
@@ -594,6 +595,31 @@ class PipelineRunRepository:
         row.status = status
         row.finished_at = datetime.now(UTC)
         self._session.add(row)
+        self._session.commit()
+
+
+class PipelineRunFunnelRepository:
+    """Append-only per-tick stage funnel (PYT-164). Diagnostic — queryable, never a gate."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, funnel: PipelineFunnel) -> None:
+        self._session.add(
+            models.PipelineRunFunnel(
+                crawled=funnel.crawled,
+                tracked_open=funnel.tracked_open,
+                shortlisted=funnel.shortlisted,
+                estimated=funnel.estimated,
+                scored=funnel.scored,
+                radar_surfaced=funnel.radar_surfaced,
+                dropped_window=funnel.dropped_window,
+                dropped_win_multiple=funnel.dropped_win_multiple,
+                dropped_win_probability=funnel.dropped_win_probability,
+                dropped_extreme_disagreement=funnel.dropped_extreme_disagreement,
+                categories=funnel.categories,
+            )
+        )
         self._session.commit()
 
 

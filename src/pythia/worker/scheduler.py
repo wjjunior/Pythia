@@ -15,7 +15,7 @@ from pythia.ingestion import MarketCrawler
 from pythia.ingestion.evidence import EvidenceTransport
 from pythia.ingestion.falcon import FalconPort
 from pythia.ingestion.venues import VenueClient
-from pythia.orchestration import run_open_markets
+from pythia.orchestration import make_funnel_sink, run_open_markets
 from pythia.services.calibration import RecalibrationService
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
 from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
@@ -63,7 +63,7 @@ def pipeline_tick(session_factory: SessionFactory, settings: Settings) -> None:
     # The SSE broadcaster is in-process (API process); a worker run writes scores but cannot
     # publish radar_changed — POST /api/run remains the on-demand + SSE path (§A.2, PYT-47).
     with session_factory() as session:
-        run_open_markets(session, settings)
+        run_open_markets(session, settings, funnel_sink=make_funnel_sink(session))
 
 
 def resolution_tick(

@@ -7,6 +7,7 @@ pipeline over every open market's latest snapshot. A score nudges the radar via 
 a breached budget halts the batch.
 """
 
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,6 +29,7 @@ from pythia.common import (
     LLMPort,
     Market,
     MarketStatus,
+    PipelineFunnel,
     TraderEntry,
 )
 from pythia.common.ids import deterministic_id
@@ -38,12 +40,18 @@ from pythia.db.repositories import (
     CostRepository,
     EstimateRepository,
     MarketRepository,
+    PipelineRunFunnelRepository,
     SnapshotRepository,
 )
 from pythia.db.smartmoney import CandidateSignalRepo, TraderEntryRepo
 from pythia.orchestration.pipeline import Pipeline
 from pythia.rag import EvidenceStore, make_embedder
 from pythia.scoring.events import couple_probabilities, detect_arbitrage
+from pythia.scoring.funnel import (
+    RadarGate,
+    classify_radar_gate,
+    funnel_from_gates,
+)
 from pythia.services.events import EventService
 from pythia.smartmoney.evidence import SmartMoneyEvidencePort
 
@@ -214,15 +222,38 @@ def run_open_markets(
     publish_radar: Callable[[str], None] | None = None,
     llm_factory: LlmFactory | None = None,
     discovery_llm: LLMPort | None = None,
+    funnel_sink: Callable[[PipelineFunnel], None] | None = None,
 ) -> RunSummary:
-    markets = MarketRepository(session).list(status=MarketStatus.OPEN)
-    markets = _shortlist(session, settings, markets, discovery_llm)
+    asof = datetime.now(UTC)
+    open_markets = MarketRepository(session).list(status=MarketStatus.OPEN)
+    markets = _shortlist(session, settings, open_markets, discovery_llm)
     snapshots = SnapshotRepository(session)
     estimates = EstimateRepository(session)
     evidence = _evidence_port(session, settings, EvidenceStore(session, make_embedder(settings)))
     build_llm = llm_factory if llm_factory is not None else _default_llm_factory(session, settings)
     routing = _routing(settings)
+    # PYT-164: pure per-tick counting alongside the existing flow — no stage logic changes. crawled
+    # and tracked_open coincide at the pipeline tick (crawl filters ran in the separate crawl tick).
+    categories = Counter(market.category for market in open_markets)
+    gates: Counter[RadarGate] = Counter()
+    estimated = 0
     scored = 0
+
+    def _emit_funnel() -> None:
+        if funnel_sink is None:
+            return
+        funnel_sink(
+            funnel_from_gates(
+                crawled=len(open_markets),
+                tracked_open=len(open_markets),
+                shortlisted=len(markets),
+                estimated=estimated,
+                scored=scored,
+                gates=gates,
+                categories=categories,
+            )
+        )
+
     for market in markets:
         snapshot = snapshots.latest_for_market(market.id)
         if snapshot is None or estimates.exists_for_snapshot(snapshot.id):
@@ -238,13 +269,37 @@ def run_open_markets(
             result = pipeline.run(market, snapshot)
         except BudgetExceeded:
             _log.warning("pipeline_budget_halt", market_id=market.id)
+            _emit_funnel()
             return RunSummary(markets=len(markets), scored=scored, halted=True)
         except Exception:
             _log.exception("pipeline_market_failed", market_id=market.id)
             continue
-        if result.score is not None:
+        estimated += 1
+        if result.score is not None and result.estimate is not None:
             scored += 1
+            gates[
+                classify_radar_gate(
+                    p_model=result.estimate.p_model,
+                    q=snapshot.yes_price,
+                    close_time=market.close_time,
+                    resolves_at=market.resolves_at,
+                    resolved=market.resolved,
+                    asof=asof,
+                )
+            ] += 1
             if publish_radar is not None:
                 publish_radar(market.id)
-    arbs = run_event_pass(session, now=datetime.now(UTC))
+    _emit_funnel()
+    arbs = run_event_pass(session, now=asof)
     return RunSummary(markets=len(markets), scored=scored, halted=False, arbs=arbs)
+
+
+def make_funnel_sink(session: Session) -> Callable[[PipelineFunnel], None]:
+    """Persist the per-tick funnel and emit it as one structured log line (PYT-164)."""
+    repo = PipelineRunFunnelRepository(session)
+
+    def sink(funnel: PipelineFunnel) -> None:
+        repo.add(funnel)
+        _log.info("pipeline_funnel", **funnel.model_dump())
+
+    return sink
