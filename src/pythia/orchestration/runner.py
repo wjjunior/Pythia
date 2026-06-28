@@ -274,8 +274,10 @@ def run_open_markets(
         except Exception:
             _log.exception("pipeline_market_failed", market_id=market.id)
             continue
+        if result.estimate is None:
+            continue  # vetoed before estimation (PipelineResult.estimate is None) — not estimated
         estimated += 1
-        if result.score is not None and result.estimate is not None:
+        if result.score is not None:
             scored += 1
             gates[
                 classify_radar_gate(
@@ -290,7 +292,7 @@ def run_open_markets(
             if publish_radar is not None:
                 publish_radar(market.id)
     _emit_funnel()
-    arbs = run_event_pass(session, now=asof)
+    arbs = run_event_pass(session, now=datetime.now(UTC))
     return RunSummary(markets=len(markets), scored=scored, halted=False, arbs=arbs)
 
 

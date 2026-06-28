@@ -70,6 +70,33 @@ def test_make_funnel_sink_persists_a_funnel_row(session: Session) -> None:
     assert rows[0].crawled == 1 and rows[0].scored == 1
 
 
+def test_funnel_excludes_a_market_vetoed_before_estimation(session: Session) -> None:
+    # An open position over the category cap vetoes the same-category market *before* estimation
+    # (PipelineResult.estimate is None). That run produced no estimate, so it must not be counted.
+    _seed(session, "f5", category="politics")
+    session.add(
+        models.PaperTrade(
+            id=uuid.uuid4(),
+            market_id=uuid.UUID(str(uuid.uuid5(uuid.NAMESPACE_URL, "f5"))),
+            estimate_id=None,
+            side="YES",
+            entry_price=0.5,
+            size=1_000_000_000.0,  # far over any per-category cap
+            status="open",
+            opened_at=_ASOF,
+        )
+    )
+    session.commit()
+    captured: list[PipelineFunnel] = []
+
+    run_open_markets(session, _settings(), funnel_sink=captured.append)
+
+    funnel = captured[0]
+    assert funnel.crawled == 1 and funnel.shortlisted == 1
+    assert funnel.estimated == 0 and funnel.scored == 0  # vetoed pre-estimation, not counted
+    assert funnel.reconciles
+
+
 def test_funnel_does_not_change_radar_output(session: Session) -> None:
     _seed(session, "f4")
     asof = datetime.now(UTC)
