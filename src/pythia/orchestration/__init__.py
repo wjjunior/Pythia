@@ -12,7 +12,7 @@ from pythia.orchestration.review import (
     UnknownEstimateError,
     VetoedOpportunityError,
 )
-from pythia.orchestration.runner import RunSummary, run_open_markets
+from pythia.orchestration.runner import RunSummary, make_funnel_sink, run_open_markets
 
 __all__ = [
     "NotRiskEvaluatedError",
@@ -26,5 +26,6 @@ __all__ = [
     "RunSummary",
     "UnknownEstimateError",
     "VetoedOpportunityError",
+    "make_funnel_sink",
     "run_open_markets",
 ]

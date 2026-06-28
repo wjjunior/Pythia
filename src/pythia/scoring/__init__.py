@@ -15,6 +15,11 @@ from pythia.scoring.functions import (
     opportunity_score,
     position_size,
 )
+from pythia.scoring.funnel import (
+    RadarGate,
+    classify_radar_gate,
+    funnel_from_gates,
+)
 from pythia.scoring.prioritization import (
     RadarMetrics,
     closes_in_days,
@@ -28,14 +33,17 @@ from pythia.scoring.prioritization import (
 
 __all__ = [
     "MARKET_DISAGREEMENT_FLOOR",
+    "RadarGate",
     "RadarMetrics",
     "ResolutionSourceType",
     "build_score",
+    "classify_radar_gate",
     "classify_resolution_source",
     "closes_in_days",
     "confidence",
     "edge",
     "entry_price",
+    "funnel_from_gates",
     "is_extreme_market_disagreement",
     "kelly_fraction",
     "market_disagreement_penalty",
