@@ -429,9 +429,11 @@ class MarketCrawler:
         slugs = {market.event_slug for market, _ in pairs if market.neg_risk and market.event_slug}
         for slug in slugs:
             for raw in self._fetch_event(slug):
+                if bool(raw.get("closed", False)):
+                    continue  # complete the live option set only
+                if not raw.get("outcomePrices"):
+                    continue  # an untraded/inactive leg has no price — skip quietly, not malformed
                 try:
-                    if bool(raw.get("closed", False)):
-                        continue  # complete the live option set only
                     external_id = raw["conditionId"]
                     if external_id in seen:
                         continue

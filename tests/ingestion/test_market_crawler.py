@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from pythia.common import Market, MarketDataPort, MarketSnapshot, ResolutionSourceType
 from pythia.ingestion import (
@@ -540,3 +541,19 @@ def test_poll_degrades_when_event_backfill_returns_a_client_error() -> None:
     pairs = _poll(_ClientErrorEvents(page=page, events={}))
 
     assert [m.external_id for m, _ in pairs] == ["0xA"]  # a 4xx on /events must not crash the crawl
+
+
+def test_poll_skips_a_priceless_backfilled_leg_without_warning() -> None:
+    # PYT-150: an untraded /events leg has no outcomePrices; drop it quietly, not as "malformed".
+    page = [_raw_market("0xA", "evt")]
+    valid = _raw_market("0xB", "evt")
+    untraded = {**_raw_market("0xC", "evt"), "outcomePrices": None}
+    transport = _EventTransport(page=page, events={"evt": [*page, valid, untraded]})
+
+    with capture_logs() as logs:
+        pairs = _poll(transport)
+
+    assert sorted(m.external_id for m, _ in pairs) == ["0xA", "0xB"]  # 0xB backfilled, 0xC dropped
+    assert not any(
+        entry["event"] == "malformed_market_dropped" for entry in logs
+    )  # dropped quietly
