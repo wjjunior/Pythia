@@ -3,7 +3,7 @@ import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 interface StatProps {
-  label: string
+  label: ReactNode
   value: ReactNode
   sub?: ReactNode
   className?: string

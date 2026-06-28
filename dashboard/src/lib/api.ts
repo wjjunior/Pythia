@@ -1,5 +1,6 @@
 // Thin typed REST client. The REST snapshot is the source of truth; SSE is advisory.
 import type {
+  ArbApproveResult,
   ArbItem,
   CalibrationResponse,
   CandidateFeedItem,
@@ -82,6 +83,11 @@ export const api = {
   calibration: (category?: string) => get<CalibrationResponse>("/calibration", { category }),
   cost: () => get<CostResponse>("/cost"),
   arbs: () => get<ArbItem[]>("/arbs"),
+  approveArb: (arbId: string, baskets: number) =>
+    request<ArbApproveResult>(withParams(`/arbs/${arbId}/approve`), {
+      method: "POST",
+      body: JSON.stringify({ baskets }),
+    }),
   simulation: (category?: string) => get<SimulationResponse>("/simulation", { category }),
   review: (estimateId: string, body: ReviewRequest) =>
     request<ReviewResult>(withParams(`/review/${estimateId}`), {

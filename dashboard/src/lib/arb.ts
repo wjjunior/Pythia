@@ -1,5 +1,5 @@
 // Pure derived state for the arbitrage panel. Business logic lives here, never in components.
-import type { ArbItem } from "./types"
+import type { ArbItem, ArbLegItem } from "./types"
 
 export const ARB_KIND_LABELS: Record<string, string> = {
   dutch_book: "Dutch book",
@@ -19,3 +19,13 @@ export const returnOnCost = (arb: ArbItem): number => {
 }
 
 export const rankByEv = (arbs: ArbItem[]): ArbItem[] => [...arbs].sort((a, b) => b.ev - a.ev)
+
+// Legs sorted by price desc — the most-likely outcome first, so the table reads top-down.
+export const legsByPrice = (legs: ArbLegItem[]): ArbLegItem[] =>
+  [...legs].sort((a, b) => b.price - a.price)
+
+export type CapitalFit = "ok" | "exceeds"
+
+// Whether opening the basket fits the available paper capital (advisory — the human is the gate).
+export const capitalFit = (cost: number, available: number): CapitalFit =>
+  cost > available ? "exceeds" : "ok"

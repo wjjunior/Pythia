@@ -34,6 +34,18 @@ export const useCost = () => useQuery({ queryKey: qk.cost, queryFn: api.cost })
 
 export const useArbs = () => useQuery({ queryKey: qk.arbs, queryFn: api.arbs })
 
+export const useApproveArb = () => {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, baskets }: { id: string; baskets: number }) => api.approveArb(id, baskets),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: qk.arbs })
+      void client.invalidateQueries({ queryKey: qk.paper })
+      void client.invalidateQueries({ queryKey: qk.portfolio })
+    },
+  })
+}
+
 export const useSimulation = (category?: string) =>
   useQuery({ queryKey: qk.simulation(category), queryFn: () => api.simulation(category) })
 

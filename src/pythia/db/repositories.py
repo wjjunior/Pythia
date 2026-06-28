@@ -1062,11 +1062,21 @@ def persist_crawl(session: Session, pairs: Sequence[tuple[Market, MarketSnapshot
 
 def _from_db_arb(row: models.ArbOpportunity) -> ArbOpportunity:
     legs = [
-        ArbLeg(market_id=leg["market_id"], side=Side(leg["side"]), price=leg["price"])
+        ArbLeg(
+            market_id=leg["market_id"],
+            side=Side(leg["side"]),
+            price=leg["price"],
+            question=leg.get("question", ""),
+        )
         for leg in row.legs
     ]
     return ArbOpportunity(
-        id=str(row.id), event_slug=row.event_slug, kind=ArbKind(row.kind), legs=legs, ev=row.ev
+        id=str(row.id),
+        event_slug=row.event_slug,
+        kind=ArbKind(row.kind),
+        legs=legs,
+        ev=row.ev,
+        detected_at=row.detected_at,
     )
 
 
@@ -1090,7 +1100,12 @@ class ArbRepository:
                     kind=arb.kind.value,
                     ev=arb.ev,
                     legs=[
-                        {"market_id": leg.market_id, "side": leg.side.value, "price": leg.price}
+                        {
+                            "market_id": leg.market_id,
+                            "side": leg.side.value,
+                            "price": leg.price,
+                            "question": leg.question,
+                        }
                         for leg in arb.legs
                     ],
                     detected_at=detected_at,

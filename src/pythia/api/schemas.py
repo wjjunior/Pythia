@@ -97,6 +97,7 @@ class ArbLegItem(BaseModel):
     market_id: str
     side: str
     price: float
+    question: str
 
 
 class ArbItem(BaseModel):
@@ -105,6 +106,8 @@ class ArbItem(BaseModel):
     kind: str
     ev: float
     legs: list[ArbLegItem]
+    detected_at: datetime | None
+    approved: bool
 
 
 class ArbApproveRequest(BaseModel):
