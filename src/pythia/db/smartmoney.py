@@ -7,21 +7,25 @@ their repos expose no update path. ``trader_entries`` insert is idempotent on
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlmodel import Session, col, select
 
 from pythia.common import (
     CandidateSignal,
     CandidateSignalStatus,
     CandidateSource,
+    HeldPosition,
     RosterEvent,
     TrackedTrader,
     TraderEntry,
+    TraderPosition,
     TraderScorecard,
     TraderState,
 )
+from pythia.common.ids import deterministic_id
 from pythia.db import models
 
 
@@ -90,6 +94,23 @@ def _from_db_candidate(row: models.CandidateSignal) -> CandidateSignal:
         status=CandidateSignalStatus(row.status),
         created_at=row.created_at,
         market_id=str(row.market_id) if row.market_id else None,
+    )
+
+
+def _from_db_position(row: models.TraderPosition) -> TraderPosition:
+    return TraderPosition(
+        id=str(row.id),
+        trader_id=str(row.trader_id),
+        condition_id=row.condition_id,
+        outcome=row.outcome,
+        size=row.size,
+        avg_price=row.avg_price,
+        cur_price=row.cur_price,
+        current_value=row.current_value,
+        cash_pnl=row.cash_pnl,
+        title=row.title,
+        asof=row.asof,
+        end_date=row.end_date,
     )
 
 
@@ -374,3 +395,54 @@ class RosterEventRepo:
             .limit(limit)
         ).all()
         return [_from_db_event(row) for row in rows]
+
+
+class TraderPositionRepo:
+    """Current holdings per tracked wallet — replaced wholesale each poll (no history in v1, §5)."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def replace_for_trader(
+        self, trader_id: str, positions: Sequence[HeldPosition], *, asof: datetime
+    ) -> list[TraderPosition]:
+        # Current-state table: drop the wallet's prior rows, then insert the fresh poll. A closed
+        # position simply disappears — exactly the data-api snapshot, no stale carry-over.
+        tid = uuid.UUID(trader_id)
+        self._session.execute(
+            delete(models.TraderPosition).where(col(models.TraderPosition.trader_id) == tid)
+        )
+        rows = [
+            models.TraderPosition(
+                id=uuid.UUID(deterministic_id(trader_id, p.condition_id, p.outcome)),
+                trader_id=tid,
+                condition_id=p.condition_id,
+                outcome=p.outcome,
+                size=p.size,
+                avg_price=p.avg_price,
+                cur_price=p.cur_price,
+                current_value=p.current_value,
+                cash_pnl=p.cash_pnl,
+                title=p.title,
+                end_date=p.end_date,
+                asof=asof,
+            )
+            for p in positions
+        ]
+        self._session.add_all(rows)
+        self._session.commit()
+        return [_from_db_position(row) for row in rows]
+
+    def list_for_trader(self, trader_id: str) -> list[TraderPosition]:
+        rows = self._session.exec(
+            select(models.TraderPosition)
+            .where(models.TraderPosition.trader_id == uuid.UUID(trader_id))
+            .order_by(col(models.TraderPosition.current_value).desc())
+        ).all()
+        return [_from_db_position(row) for row in rows]
+
+    def list_all(self) -> list[TraderPosition]:
+        rows = self._session.exec(
+            select(models.TraderPosition).order_by(col(models.TraderPosition.current_value).desc())
+        ).all()
+        return [_from_db_position(row) for row in rows]

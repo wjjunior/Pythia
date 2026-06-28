@@ -20,6 +20,7 @@ from pythia.common import (
     Side,
     TrackedTrader,
     TraderEntry,
+    TraderPosition,
 )
 from pythia.eval.gate import GateDecision
 from pythia.eval.models import CategoryCalibration, CohortCalibration, EvCalibration, ReliabilityBin
@@ -230,6 +231,11 @@ class CandidateFeedItem(BaseModel):
 class RosterEventItem(BaseModel):
     event: RosterEvent
     wallet: str
+
+
+class TraderPositionItem(BaseModel):
+    position: TraderPosition
+    wallet: str  # the holding wallet, joined from the roster
 
 
 class OverrideAction(StrEnum):

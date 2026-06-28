@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { rankRoster, SCORECARD_HINTS, shortWallet } from "./smartmoney"
+import { pnlTone, rankRoster, SCORECARD_HINTS, shortWallet } from "./smartmoney"
 import type { RosterEntry, ScorecardView, TraderState } from "./types"
 
 const card = (trader_score: number | null): ScorecardView => ({
@@ -67,5 +67,13 @@ describe("SCORECARD_HINTS", () => {
       "score",
       "sortino",
     ])
+  })
+})
+
+describe("pnlTone", () => {
+  it("maps profit, loss, and break-even to badge variants", () => {
+    expect(pnlTone(12.5)).toBe("positive")
+    expect(pnlTone(-3)).toBe("negative")
+    expect(pnlTone(0)).toBe("muted")
   })
 })

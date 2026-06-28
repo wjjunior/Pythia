@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlmodel import Session
 
-from pythia.common import EmbeddingPort, Market, MarketSnapshot, Venue
+from pythia.common import EmbeddingPort, Market, MarketSnapshot, PositionsPort, Venue
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import persist_crawl
@@ -19,7 +19,7 @@ from pythia.orchestration import run_open_markets
 from pythia.services.calibration import RecalibrationService
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
 from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
-from pythia.worker.smartmoney_ingest import run_detection, run_roster_review
+from pythia.worker.smartmoney_ingest import run_detection, run_positions_sweep, run_roster_review
 from pythia.worker.venue_ingest import ingest_tick as venue_ingest_tick
 
 _log = get_logger(__name__)
@@ -107,6 +107,15 @@ def smartmoney_roster_tick(
         run_roster_review(session, settings, falcon, now=clock())
 
 
+def smartmoney_positions_tick(
+    session_factory: SessionFactory,
+    positions: PositionsPort,
+    clock: Callable[[], datetime],
+) -> None:
+    with session_factory() as session:
+        run_positions_sweep(session, positions, now=clock())
+
+
 def build_scheduler(
     crawler: MarketCrawler,
     sink: Sink,
@@ -118,6 +127,7 @@ def build_scheduler(
     evidence_transports: list[EvidenceTransport] | None = None,
     settings: Settings | None = None,
     falcon: FalconPort | None = None,
+    positions: PositionsPort | None = None,
     clock: Callable[[], datetime] = _now,
 ) -> BlockingScheduler:
     # next_run_time = now makes each job fire once immediately at startup, then on the interval.
@@ -181,6 +191,14 @@ def build_scheduler(
             "interval",
             seconds=settings.roster_review_interval_seconds,
             id="smartmoney-roster-review",
+            next_run_time=now,
+        )
+    if session_factory is not None and positions is not None:
+        scheduler.add_job(
+            lambda: smartmoney_positions_tick(session_factory, positions, clock),
+            "interval",
+            seconds=interval_seconds,
+            id="smartmoney-positions",
             next_run_time=now,
         )
     return scheduler

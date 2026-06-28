@@ -15,6 +15,7 @@ from pythia.api.schemas import (
     RosterEntry,
     RosterEventItem,
     ScorecardView,
+    TraderPositionItem,
 )
 from pythia.common import ReviewStatus, RosterEvent, TraderScorecard, TraderState
 from pythia.common.ids import deterministic_id
@@ -24,6 +25,7 @@ from pythia.db.smartmoney import (
     RosterEventRepo,
     TrackedTraderRepo,
     TraderEntryRepo,
+    TraderPositionRepo,
     TraderScorecardRepo,
 )
 from pythia.scoring import recommended_side
@@ -122,6 +124,22 @@ def roster_events(
     return [
         RosterEventItem(event=event, wallet=wallets.get(event.trader_id, "unknown"))
         for event in RosterEventRepo(session).recent(limit)
+    ]
+
+
+@router.get("/api/smartmoney/positions")
+def positions(session: SessionDep) -> list[TraderPositionItem]:
+    # Current holdings of the *tracked* wallets only — a retired wallet's lingering rows (cleared on
+    # the next sweep) are filtered out here too, so the dashboard never links a stale wallet.
+    wallets = {
+        t.id: t.wallet
+        for t in TrackedTraderRepo(session).list()
+        if t.state is not TraderState.RETIRED
+    }
+    return [
+        TraderPositionItem(position=position, wallet=wallets[position.trader_id])
+        for position in TraderPositionRepo(session).list_all()
+        if position.trader_id in wallets
     ]
 
 

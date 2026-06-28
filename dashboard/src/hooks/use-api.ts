@@ -65,6 +65,9 @@ export const useSmartCandidates = () =>
 export const useRosterHistory = () =>
   useQuery({ queryKey: qk.rosterEvents, queryFn: () => api.rosterEvents() })
 
+export const useSmartPositions = () =>
+  useQuery({ queryKey: qk.smartPositions, queryFn: () => api.positions() })
+
 export const useOverride = () => {
   const client = useQueryClient()
   return useMutation({

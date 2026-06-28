@@ -1,0 +1,30 @@
+[
+  {
+    "conditionId": "0xcond1",
+    "outcome": "Yes",
+    "outcomeIndex": 0,
+    "size": 1200.0,
+    "avgPrice": 0.42,
+    "curPrice": 0.55,
+    "currentValue": 660.0,
+    "cashPnl": 156.0,
+    "percentPnl": 30.95,
+    "redeemable": false,
+    "title": "Will the incumbent win the 2026 election?",
+    "endDate": "2026-11-03T00:00:00Z"
+  },
+  {
+    "conditionId": "0xcond2",
+    "outcome": "No",
+    "outcomeIndex": 1,
+    "size": 300.0,
+    "avgPrice": 0.7,
+    "curPrice": 0.61,
+    "currentValue": 183.0,
+    "cashPnl": -27.0,
+    "percentPnl": -12.86,
+    "redeemable": false,
+    "title": "Will BTC close above 100k in 2026?",
+    "endDate": "2026-12-31T00:00:00Z"
+  }
+]

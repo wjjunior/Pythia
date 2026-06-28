@@ -578,3 +578,28 @@ class ArbOpportunity(SQLModel, table=True):
     ev: float = Field(sa_column=Column(Double, nullable=False))
     legs: list[dict[str, Any]] = Field(sa_column=Column(JSONB, nullable=False))
     detected_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class TraderPosition(SQLModel, table=True):
+    __tablename__ = "trader_positions"
+    __table_args__ = (
+        UniqueConstraint(
+            "trader_id", "condition_id", "outcome", name="trader_positions_trader_market_outcome"
+        ),
+        Index("trader_positions_trader", "trader_id"),
+    )
+
+    id: uuid.UUID | None = _id()
+    trader_id: uuid.UUID = Field(
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("tracked_traders.id"), nullable=False)
+    )
+    condition_id: str = Field(sa_column=Column(Text, nullable=False))
+    outcome: str = Field(sa_column=Column(Text, nullable=False))
+    size: float = Field(sa_column=Column(Double, nullable=False))
+    avg_price: float = Field(sa_column=Column(Double, nullable=False))
+    cur_price: float = Field(sa_column=Column(Double, nullable=False))
+    current_value: float = Field(sa_column=Column(Double, nullable=False))
+    cash_pnl: float = Field(sa_column=Column(Double, nullable=False))
+    title: str = Field(sa_column=Column(Text, nullable=False))
+    end_date: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    asof: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))

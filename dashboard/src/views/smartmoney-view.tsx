@@ -15,13 +15,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { useOverride, useRoster, useRosterHistory, useSmartCandidates } from "@/hooks/use-api"
-import { isoDateTime, num, pct } from "@/lib/format"
+import {
+  useOverride,
+  useRoster,
+  useRosterHistory,
+  useSmartCandidates,
+  useSmartPositions,
+} from "@/hooks/use-api"
+import { isoDateTime, num, pct, usd } from "@/lib/format"
 import { traderUrl } from "@/lib/polymarket"
 import { reviewStatusBadge } from "@/lib/radar"
 import {
   MUTE_HINT,
   PIN_HINT,
+  POSITIONS_HINT,
+  pnlTone,
   SCORECARD_HINTS,
   STATE_BADGE,
   VERDICT_HINT,
@@ -56,6 +64,7 @@ export function SmartMoneyView() {
       />
       <RosterPanel />
       <CandidatePanel />
+      <PositionsPanel />
       <HistoryPanel />
     </div>
   )
@@ -264,6 +273,69 @@ function CandidatePanel() {
                       </TableRow>
                     )
                   })}
+                </TableBody>
+              </Table>
+            </Card>
+          )
+        }}
+      </QueryState>
+    </section>
+  )
+}
+
+function PositionsPanel() {
+  const positions = useSmartPositions()
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-semibold tracking-tight">
+        <MetricHeader label="Current positions" hint={POSITIONS_HINT} />
+      </h2>
+      <QueryState query={positions}>
+        {(items) => {
+          if (items.length === 0) {
+            return <EmptyState message="No tracked positions yet." />
+          }
+          return (
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Wallet</TableHead>
+                    <TableHead>Market</TableHead>
+                    <TableHead>Outcome</TableHead>
+                    <TableHead className="text-right">size</TableHead>
+                    <TableHead className="text-right">avg → cur</TableHead>
+                    <TableHead className="text-right">value</TableHead>
+                    <TableHead className="text-right">PnL</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map(({ position, wallet }) => (
+                    <TableRow key={position.id}>
+                      <TableCell>
+                        <WalletLink wallet={wallet} />
+                      </TableCell>
+                      <TableCell className="max-w-sm truncate font-medium">
+                        {position.title}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="muted">{position.outcome}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {num(position.size, 0)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {num(position.avg_price, 2)} → {num(position.cur_price, 2)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {usd(position.current_value)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={pnlTone(position.cash_pnl)}>{usd(position.cash_pnl)}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </Card>

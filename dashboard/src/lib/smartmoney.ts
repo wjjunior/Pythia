@@ -29,6 +29,13 @@ export const VERDICT_HINT =
 export const PIN_HINT = "Force this wallet to active — its entries start triggering markets."
 export const MUTE_HINT = "Bench this wallet — its entries stop triggering markets."
 
+export const POSITIONS_HINT =
+  "Current holdings of the tracked wallets, polled from Polymarket — visibility only, not a signal."
+
+// Badge tone for a position's cash PnL — green in profit, red in loss, muted at break-even (rule 8).
+export const pnlTone = (cashPnl: number): "positive" | "negative" | "muted" =>
+  cashPnl > 0 ? "positive" : cashPnl < 0 ? "negative" : "muted"
+
 // Active first, then trial / benched / retired; within a state, strongest trader_score first.
 export const rankRoster = (entries: RosterEntry[]): RosterEntry[] =>
   [...entries].sort((a, b) => {
