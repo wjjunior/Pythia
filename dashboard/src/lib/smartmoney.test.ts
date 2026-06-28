@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { rankRoster, shortWallet } from "./smartmoney"
+import { rankRoster, SCORECARD_HINTS, shortWallet } from "./smartmoney"
 import type { RosterEntry, ScorecardView, TraderState } from "./types"
 
 const card = (trader_score: number | null): ScorecardView => ({
@@ -54,5 +54,18 @@ describe("shortWallet", () => {
   it("truncates long addresses and leaves short ones intact", () => {
     expect(shortWallet("0x1234567890abcdef")).toBe("0x1234…cdef")
     expect(shortWallet("0xabcd")).toBe("0xabcd")
+  })
+})
+
+describe("SCORECARD_HINTS", () => {
+  it("defines every scorecard column shown in the roster", () => {
+    expect(Object.keys(SCORECARD_HINTS).sort()).toEqual([
+      "agree",
+      "bpd",
+      "max_dd",
+      "n",
+      "score",
+      "sortino",
+    ])
   })
 })

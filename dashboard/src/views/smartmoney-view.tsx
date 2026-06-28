@@ -2,6 +2,7 @@ import { ArrowRight, Pin, VolumeX } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
 import { EmptyState, QueryState } from "@/components/async-boundary"
+import { MetricHeader } from "@/components/metric-header"
 import { PageHeader } from "@/components/page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,7 +17,16 @@ import {
 } from "@/components/ui/table"
 import { useOverride, useRoster, useRosterHistory, useSmartCandidates } from "@/hooks/use-api"
 import { isoDateTime, num, pct } from "@/lib/format"
-import { rankRoster, shortWallet, STATE_BADGE } from "@/lib/smartmoney"
+import { reviewStatusBadge } from "@/lib/radar"
+import {
+  MUTE_HINT,
+  PIN_HINT,
+  SCORECARD_HINTS,
+  STATE_BADGE,
+  VERDICT_HINT,
+  rankRoster,
+  shortWallet,
+} from "@/lib/smartmoney"
 import type { TraderState } from "@/lib/types"
 
 const cell = (value: number | null, render: (n: number) => string): string =>
@@ -27,7 +37,7 @@ export function SmartMoneyView() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Smart money"
-        description="Tracked sharp wallets, the candidate signals their entries trigger, and the roster-rotation audit trail. Pin promotes a wallet to active; mute benches it."
+        description="Tracked sharp wallets and the markets their entries trigger into our pipeline. Wallets cycle trial → active → benched → retired; only active wallets trigger markets. A viable candidate is one our model also rates +EV — click it to review. Pin forces a wallet active; mute benches it."
       />
       <RosterPanel />
       <CandidatePanel />
@@ -55,12 +65,24 @@ function RosterPanel() {
                   <TableRow>
                     <TableHead>Wallet</TableHead>
                     <TableHead>State</TableHead>
-                    <TableHead className="text-right">score</TableHead>
-                    <TableHead className="text-right">n</TableHead>
-                    <TableHead className="text-right">agree</TableHead>
-                    <TableHead className="text-right">bpd</TableHead>
-                    <TableHead className="text-right">sortino</TableHead>
-                    <TableHead className="text-right">max dd</TableHead>
+                    <TableHead className="text-right">
+                      <MetricHeader label="score" hint={SCORECARD_HINTS.score} />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <MetricHeader label="n" hint={SCORECARD_HINTS.n} />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <MetricHeader label="agree" hint={SCORECARD_HINTS.agree} />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <MetricHeader label="bpd" hint={SCORECARD_HINTS.bpd} />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <MetricHeader label="sortino" hint={SCORECARD_HINTS.sortino} />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <MetricHeader label="max dd" hint={SCORECARD_HINTS.max_dd} />
+                    </TableHead>
                     <TableHead>last entry</TableHead>
                     <TableHead className="text-right">
                       <span className="sr-only">Override</span>
@@ -110,6 +132,7 @@ function RosterPanel() {
                             <Button
                               variant="outline"
                               size="sm"
+                              title={PIN_HINT}
                               disabled={state === "active" || override.isPending}
                               onClick={() =>
                                 override.mutate({ traderId: entry.trader.id, action: "pin" })
@@ -121,6 +144,7 @@ function RosterPanel() {
                             <Button
                               variant="outline"
                               size="sm"
+                              title={MUTE_HINT}
                               disabled={state === "benched" || override.isPending}
                               onClick={() =>
                                 override.mutate({ traderId: entry.trader.id, action: "mute" })
@@ -164,15 +188,20 @@ function CandidatePanel() {
                     <TableHead>Market</TableHead>
                     <TableHead>Source</TableHead>
                     <TableHead className="text-right">triggers</TableHead>
-                    <TableHead>verdict</TableHead>
+                    <TableHead>
+                      <MetricHeader label="verdict" hint={VERDICT_HINT} />
+                    </TableHead>
                     <TableHead>side</TableHead>
                     <TableHead className="text-right">score</TableHead>
+                    <TableHead>status</TableHead>
                     <TableHead className="text-right">seen</TableHead>
+                    <TableHead className="text-right">action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((item) => {
                     const market = item.market
+                    const badge = reviewStatusBadge(item.review_status)
                     return (
                       <TableRow
                         key={item.candidate.id}
@@ -209,8 +238,16 @@ function CandidatePanel() {
                         <TableCell className="text-right font-semibold tabular-nums">
                           {cell(item.opportunity_score, (n) => num(n, 4))}
                         </TableCell>
+                        <TableCell>
+                          {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : null}
+                        </TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
                           {isoDateTime(item.candidate.created_at)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {item.viable && market ? (
+                            <span className="text-xs font-medium text-foreground">Review →</span>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     )

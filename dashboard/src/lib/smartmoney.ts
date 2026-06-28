@@ -13,6 +13,22 @@ export const STATE_BADGE: Record<TraderState, "positive" | "muted" | "outline" |
 export const shortWallet = (wallet: string): string =>
   wallet.length > 12 ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : wallet
 
+// Definitions for the cryptic scorecard columns, surfaced as hover tooltips.
+export const SCORECARD_HINTS = {
+  score: "Composite promotion score — higher is stronger; it ranks the roster.",
+  n: "Resolved entries behind the score — more entries means a more reliable score.",
+  agree: "Share of this wallet's entries where our pipeline also flagged +EV.",
+  bpd: "$-weighted Brier improvement vs the market on the agreed subset — the calibration signal.",
+  sortino: "Downside-risk-adjusted return (mean excess ÷ downside deviation).",
+  max_dd: "Worst peak-to-trough drawdown of the wallet's cumulative return.",
+} as const
+
+export const VERDICT_HINT =
+  "viable = our model also found +EV on the triggered market; no edge = the model disagreed."
+
+export const PIN_HINT = "Force this wallet to active — its entries start triggering markets."
+export const MUTE_HINT = "Bench this wallet — its entries stop triggering markets."
+
 // Active first, then trial / benched / retired; within a state, strongest trader_score first.
 export const rankRoster = (entries: RosterEntry[]): RosterEntry[] =>
   [...entries].sort((a, b) => {

@@ -26,6 +26,7 @@ from pythia.common import (
     TraderState,
 )
 from pythia.config import Settings
+from pythia.db import models
 from pythia.db.repositories import (
     EstimateRepository,
     MarketRepository,
@@ -183,6 +184,41 @@ def test_candidate_feed_includes_the_pipeline_verdict(client: TestClient, sessio
     assert item["viable"] is True and item["opportunity_score"] == pytest.approx(0.09)
     assert item["recommended_side"] == "YES" and item["market"]["question"] == "Q?"
     assert item["candidate"]["trader_ids"] == [trader.id]
+    assert item["review_status"] == "none"  # not yet reviewed (PYT-154)
+
+
+def test_candidate_feed_flags_an_open_review_state(client: TestClient, session: Session) -> None:
+    market = MarketRepository(session).upsert(
+        Market(id=_uid("rm"), external_id="0xrm", question="R?", category="c", resolution_rule="r")
+    )
+    session.add(
+        models.PaperTrade(
+            id=uuid.uuid4(),
+            market_id=uuid.UUID(market.id),
+            estimate_id=None,
+            side="YES",
+            entry_price=0.5,
+            size=1.0,
+            status="open",
+            opened_at=_TS,
+        )
+    )
+    session.commit()
+    trader = _trader(session, wallet="0xrw")
+    CandidateSignalRepo(session).enqueue(
+        CandidateSignal(
+            id=_uid("rcs"),
+            market_id=market.id,
+            asof=_TS,
+            trader_ids=[trader.id],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.EVALUATED,
+            created_at=_TS,
+        )
+    )
+
+    item = client.get("/api/smartmoney/candidates").json()[0]
+    assert item["review_status"] == "open"  # the candidate's market has an open paper position
 
 
 def test_roster_events_timeline_carries_wallet_and_reason(
