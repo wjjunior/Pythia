@@ -316,8 +316,12 @@ class CandidateSignalRepo:
         return [_from_db_candidate(row) for row in rows]
 
     def recent(self, limit: int) -> list[CandidateSignal]:
+        # Feed of *actionable* candidates only. A SKIPPED candidate has no market_id — it is a
+        # trigger on a market we could not track (closed/resolved by the time we fetched it), so it
+        # never entered the pipeline and would surface as a meaningless "unresolved" row (PYT-157).
         rows = self._session.exec(
             select(models.CandidateSignal)
+            .where(models.CandidateSignal.status != CandidateSignalStatus.SKIPPED.value)
             .order_by(col(models.CandidateSignal.created_at).desc())
             .limit(limit)
         ).all()

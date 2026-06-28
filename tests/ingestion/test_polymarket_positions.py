@@ -49,6 +49,43 @@ def test_client_parses_fixture_rows_into_held_positions() -> None:
     assert first.end_date is not None and first.end_date.year == 2026
 
 
+class _StaticTransport:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+
+    def fetch_positions(self, wallet: str) -> list[dict[str, Any]]:
+        return self._rows
+
+
+def _row(condition_id: str, cur_price: float, *, redeemable: bool = False) -> dict[str, Any]:
+    return {
+        "conditionId": condition_id,
+        "outcome": "Yes",
+        "size": 100.0,
+        "avgPrice": 0.5,
+        "curPrice": cur_price,
+        "currentValue": cur_price * 100.0,
+        "cashPnl": 0.0,
+        "title": condition_id,
+        "redeemable": redeemable,
+    }
+
+
+def test_client_drops_resolved_and_redeemable_positions() -> None:
+    rows = [
+        _row("0xopen", 0.55),  # open — kept
+        _row("0xlost", 0.0),  # resolved loser (settled to 0) — dropped
+        _row("0xwon", 1.0),  # resolved winner (settled to 1) — dropped
+        _row(
+            "0xredeem", 0.98, redeemable=True
+        ),  # claimable win — dropped though price is non-extreme
+        _row("0xnear", 0.9995),  # open near-certain (never exactly 1.0) — kept
+    ]
+    held = PolymarketPositionsClient(_StaticTransport(rows)).current_positions("0xw")
+
+    assert [p.condition_id for p in held] == ["0xopen", "0xnear"]  # only current open exposure
+
+
 def test_client_is_fail_soft_on_a_transient_transport_error() -> None:
     client = PolymarketPositionsClient(_RaisingTransport(TransientTransportError("503")))
     assert client.current_positions("0xwhale") == []  # data-api down → no positions, never a crash

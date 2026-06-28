@@ -223,6 +223,25 @@ def test_candidate_feed_flags_an_open_review_state(client: TestClient, session: 
     assert item["review_status"] == "open"  # the candidate's market has an open paper position
 
 
+def test_candidate_feed_excludes_skipped_untracked_candidates(
+    client: TestClient, session: Session
+) -> None:
+    trader = _trader(session, wallet="0xskip")
+    CandidateSignalRepo(session).enqueue(
+        CandidateSignal(
+            id=_uid("skip"),
+            market_id=None,  # an untracked (closed/resolved) market — never entered the pipeline
+            asof=_TS,
+            trader_ids=[trader.id],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.SKIPPED,
+            created_at=_TS,
+        )
+    )
+
+    assert client.get("/api/smartmoney/candidates").json() == []  # SKIPPED is not a feed row
+
+
 def test_roster_events_timeline_carries_wallet_and_reason(
     client: TestClient, session: Session
 ) -> None:
