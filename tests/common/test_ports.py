@@ -14,8 +14,10 @@ from pythia.common import (
     Evidence,
     EvidencePort,
     ExecutionPort,
+    HeldPosition,
     PaperLedgerPort,
     PaperTrade,
+    PositionsPort,
 )
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -40,6 +42,11 @@ class _StubAudit:
         return None
 
 
+class _StubPositions:
+    def current_positions(self, wallet: str) -> list[HeldPosition]:
+        return []
+
+
 def test_evidence_stub_conforms_and_requires_asof() -> None:
     port: EvidencePort = _StubEvidence()
     assert port.retrieve("m1", _TS, 5) == []
@@ -55,6 +62,12 @@ def test_audit_stub_conforms() -> None:
     port: AuditPort = _StubAudit()
     assert isinstance(port, AuditPort)
     port.append(AuditEvent(kind=AuditKind.ESTIMATE, payload={}))
+
+
+def test_positions_stub_conforms() -> None:
+    port: PositionsPort = _StubPositions()
+    assert isinstance(port, PositionsPort)
+    assert port.current_positions("0xw") == []
 
 
 def test_execution_port_is_an_abstract_seam_with_no_instance() -> None:

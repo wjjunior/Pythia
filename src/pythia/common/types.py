@@ -434,3 +434,34 @@ class RosterEvent(_Frozen):
     created_at: datetime
     from_state: TraderState | None = None
     metrics: dict[str, Any] | None = None
+
+
+class HeldPosition(_Frozen):
+    """A position a wallet currently holds at a venue — the PositionsPort boundary shape (§4.5)."""
+
+    condition_id: str
+    outcome: str
+    size: float
+    avg_price: float
+    cur_price: float
+    current_value: float
+    cash_pnl: float
+    title: str
+    end_date: datetime | None = None
+
+
+class TraderPosition(_Frozen):
+    """A tracked wallet's held position, stamped with the trader and the poll time, as stored."""
+
+    id: str
+    trader_id: str
+    condition_id: str
+    outcome: str
+    size: float
+    avg_price: float
+    cur_price: float
+    current_value: float
+    cash_pnl: float
+    title: str
+    asof: datetime
+    end_date: datetime | None = None

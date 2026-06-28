@@ -16,6 +16,7 @@ from pythia.common import (
     CandidateSignalStatus,
     CandidateSource,
     Estimate,
+    HeldPosition,
     Market,
     MarketSnapshot,
     RosterEvent,
@@ -38,6 +39,7 @@ from pythia.db.smartmoney import (
     RosterEventRepo,
     TrackedTraderRepo,
     TraderEntryRepo,
+    TraderPositionRepo,
     TraderScorecardRepo,
 )
 
@@ -253,6 +255,36 @@ def test_override_pins_a_trader_and_audits_it(client: TestClient, session: Sessi
     events = client.get("/api/smartmoney/roster-events").json()
     manual = [e for e in events if e["event"]["reason"] == "manual"]
     assert len(manual) == 1 and manual[0]["event"]["to_state"] == "active"
+
+
+def test_positions_endpoint_returns_holdings_with_wallet(
+    client: TestClient, session: Session
+) -> None:
+    trader = _trader(session, wallet="0xholder", state=TraderState.ACTIVE)
+    TraderPositionRepo(session).replace_for_trader(
+        trader.id,
+        [
+            HeldPosition(
+                condition_id="0xc1",
+                outcome="Yes",
+                size=100.0,
+                avg_price=0.4,
+                cur_price=0.55,
+                current_value=55.0,
+                cash_pnl=15.0,
+                title="Will it resolve YES?",
+                end_date=_TS,
+            )
+        ],
+        asof=_TS,
+    )
+
+    item = client.get("/api/smartmoney/positions").json()[0]
+
+    assert item["wallet"] == "0xholder"
+    assert item["position"]["condition_id"] == "0xc1" and item["position"]["outcome"] == "Yes"
+    assert item["position"]["cash_pnl"] == 15.0
+    assert item["position"]["title"] == "Will it resolve YES?"
 
 
 def test_override_unknown_trader_is_404(client: TestClient) -> None:

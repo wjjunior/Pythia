@@ -13,6 +13,7 @@ from pythia.common.types import (
     Estimate,
     EstimationContext,
     Evidence,
+    HeldPosition,
     Market,
     MarketSnapshot,
     PaperTrade,
@@ -48,6 +49,13 @@ class LLMPort(Protocol):
 class PaperLedgerPort(Protocol):
     def open(self, trade: PaperTrade) -> PaperTrade: ...
     def resolve(self, market_id: str, outcome: int, at: datetime) -> None: ...
+
+
+@runtime_checkable
+class PositionsPort(Protocol):
+    """A wallet's currently-held positions at a venue (§4.5, PYT-157). Live calls are §8.6-gated."""
+
+    def current_positions(self, wallet: str) -> list[HeldPosition]: ...
 
 
 @runtime_checkable

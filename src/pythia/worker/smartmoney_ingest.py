@@ -21,7 +21,7 @@ from pythia.agents import (
     CachingLLMPort,
     make_llm_port,
 )
-from pythia.common import LLMPort, TrackedTrader, TraderState
+from pythia.common import LLMPort, PositionsPort, TrackedTrader, TraderState
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import CostRepository
@@ -30,6 +30,7 @@ from pythia.db.smartmoney import (
     RosterEventRepo,
     TrackedTraderRepo,
     TraderEntryRepo,
+    TraderPositionRepo,
 )
 from pythia.ingestion.falcon import FalconPort
 from pythia.ingestion.market_crawler import HttpxTransport, LiveVenueAccessError
@@ -115,6 +116,27 @@ def run_detection(
         _log.warning("smartmoney_detection_budget_halt")
         return
     _log.info("smartmoney_detection_tick", traders=len(traders), candidates=len(enqueued))
+
+
+def run_positions_sweep(session: Session, positions: PositionsPort, *, now: datetime) -> None:
+    """One positions tick (§5, PYT-157): replace each non-retired wallet's current data-api holding.
+
+    Pure visibility — positions feed no scoring/evidence path in v1. Fail-soft (§9): a geo block is
+    surfaced and the sweep stops (§8.6); the client already swallows a transient data-api outage.
+    """
+    traders = [t for t in TrackedTraderRepo(session).list() if t.state is not TraderState.RETIRED]
+    if not traders:
+        return
+    repo = TraderPositionRepo(session)
+    swept = 0
+    for trader in traders:
+        try:
+            held = positions.current_positions(trader.wallet)
+        except LiveVenueAccessError:
+            _log.warning("smartmoney_geo_block", tick="positions")  # §8.6: surface, never retry
+            return
+        swept += len(repo.replace_for_trader(trader.id, held, asof=now))
+    _log.info("smartmoney_positions_sweep", traders=len(traders), positions=swept)
 
 
 def run_roster_review(

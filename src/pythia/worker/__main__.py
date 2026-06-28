@@ -5,6 +5,10 @@ from pythia.config import Settings, get_settings
 from pythia.db.session import session_scope
 from pythia.ingestion import HttpxTransport, MarketCrawler
 from pythia.ingestion.falcon import FalconClient, make_falcon_client
+from pythia.ingestion.polymarket_positions import (
+    PolymarketPositionsClient,
+    make_positions_client,
+)
 from pythia.rag.embeddings import make_embedder
 from pythia.worker.evidence_ingest import build_evidence_transports
 from pythia.worker.scheduler import build_scheduler, make_persist_sink
@@ -23,6 +27,13 @@ def _falcon(settings: Settings) -> FalconClient | None:
         token=settings.falcon_api_token.get_secret_value(),
         use_live=settings.use_live_venues,
         agent_ids=settings.falcon_agent_id_overrides,
+    )
+
+
+def _positions(settings: Settings) -> PolymarketPositionsClient:
+    # Current-holdings sweep over the §8.6-gated data-api; the worker only runs when live (§8.6).
+    return make_positions_client(
+        base_url=settings.polymarket_data_api_base, use_live=settings.use_live_venues
     )
 
 
@@ -67,6 +78,7 @@ def main() -> None:
         evidence_transports=evidence_transports,
         settings=settings,
         falcon=falcon,
+        positions=_positions(settings),
     )
     _log.info(
         "worker_start",

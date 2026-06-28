@@ -50,6 +50,7 @@ class Settings(BaseSettings):
 
     # Venues
     polymarket_api_base: str = "https://gamma-api.polymarket.com"
+    polymarket_data_api_base: str = "https://data-api.polymarket.com"  # positions (§5, PYT-157)
     kalshi_api_base: str | None = None
     metaculus_api_base: str | None = None
     metaculus_api_key: SecretStr | None = None

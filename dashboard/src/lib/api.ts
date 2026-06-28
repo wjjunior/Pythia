@@ -17,6 +17,7 @@ import type {
   RosterEntry,
   RosterEventItem,
   SimulationResponse,
+  TraderPositionItem,
 } from "./types"
 
 const BASE = "/api"
@@ -98,6 +99,7 @@ export const api = {
   smartCandidates: (limit = 50) =>
     get<CandidateFeedItem[]>("/smartmoney/candidates", { limit }),
   rosterEvents: (limit = 50) => get<RosterEventItem[]>("/smartmoney/roster-events", { limit }),
+  positions: () => get<TraderPositionItem[]>("/smartmoney/positions"),
   override: (traderId: string, action: OverrideAction) =>
     request<RosterEntry>(withParams(`/smartmoney/traders/${traderId}/override`), {
       method: "POST",
