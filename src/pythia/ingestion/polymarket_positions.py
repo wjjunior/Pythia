@@ -95,6 +95,19 @@ class HttpxPositionsTransport:
         raise last
 
 
+# A resolved market settles its price to exactly 0.0 (lost) or 1.0 (won); an open near-certain
+# market sits at 0.99x, never exactly 1.0. `redeemable` flags a settled, claimable win. data-api
+# /positions returns resolved-but-unredeemed holdings, so these are filtered to keep only the
+# wallet's CURRENT open exposure (PYT-157).
+_RESOLVED_PRICES = (0.0, 1.0)
+
+
+def _is_open(row: dict[str, Any]) -> bool:
+    if bool(row.get("redeemable", False)):
+        return False
+    return float(row.get("curPrice", 0.0)) not in _RESOLVED_PRICES
+
+
 def _to_held(row: dict[str, Any]) -> HeldPosition:
     # Map the data-api wire shape to the neutral DTO at the boundary (§5). Numeric fields arrive as
     # JSON numbers; end_date is ISO8601 (or absent) — Pydantic coerces / validates.
@@ -126,6 +139,8 @@ class PolymarketPositionsClient:
         # LiveVenueAccessError propagates: a geo block must surface to the operator (§8.6).
         held: list[HeldPosition] = []
         for row in rows:
+            if not _is_open(row):
+                continue  # resolved holding (settled or redeemable) — not current open exposure
             try:
                 held.append(_to_held(row))
             except (KeyError, ValueError, TypeError) as exc:
