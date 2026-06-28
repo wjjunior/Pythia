@@ -2,21 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
 import { qk } from "@/lib/query-keys"
-import {
-  CALIBRATION_MAX_DAYS_TO_RESOLVE,
-  CALIBRATION_MIN_WIN_MULTIPLE,
-  CALIBRATION_MIN_WIN_PROBABILITY,
-} from "@/lib/ranking"
+import { DEFAULT_RADAR_FILTERS, type RadarFilters } from "@/lib/radar"
 import type { OverrideAction, ReviewRequest } from "@/lib/types"
 
-export const useRadar = () =>
+export const useRadar = (filters: RadarFilters = DEFAULT_RADAR_FILTERS) =>
   useQuery({
-    queryKey: qk.radar,
+    queryKey: qk.radar(filters),
     queryFn: () =>
       api.radar({
-        maxDaysToResolve: CALIBRATION_MAX_DAYS_TO_RESOLVE,
-        minWinMultiple: CALIBRATION_MIN_WIN_MULTIPLE,
-        minWinProbability: CALIBRATION_MIN_WIN_PROBABILITY,
+        maxDaysToResolve: filters.maxDaysToResolve,
+        minWinMultiple: filters.minWinMultiple,
+        minWinProbability: filters.minWinProbability,
       }),
   })
 
@@ -56,7 +52,7 @@ export const useReview = (estimateId: string) => {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: qk.paper })
       void client.invalidateQueries({ queryKey: qk.portfolio })
-      void client.invalidateQueries({ queryKey: qk.radar })
+      void client.invalidateQueries({ queryKey: ["radar"] })  // prefix — any filter combination
     },
   })
 }

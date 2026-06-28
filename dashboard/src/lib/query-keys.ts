@@ -1,5 +1,7 @@
+import type { RadarFilters } from "./radar"
+
 export const qk = {
-  radar: ["radar"] as const,
+  radar: (filters?: RadarFilters) => ["radar", filters ?? null] as const,
   markets: (category?: string) => ["markets", category ?? null] as const,
   market: (id: string) => ["market", id] as const,
   estimate: (id: string) => ["estimate", id] as const,
