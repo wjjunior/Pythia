@@ -16,7 +16,7 @@ from pythia.api.schemas import (
     RosterEventItem,
     ScorecardView,
 )
-from pythia.common import RosterEvent, TraderScorecard, TraderState
+from pythia.common import ReviewStatus, RosterEvent, TraderScorecard, TraderState
 from pythia.common.ids import deterministic_id
 from pythia.db.repositories import EstimateRepository, MarketRepository, ScoreRepository
 from pythia.db.smartmoney import (
@@ -27,6 +27,7 @@ from pythia.db.smartmoney import (
     TraderScorecardRepo,
 )
 from pythia.scoring import recommended_side
+from pythia.services.review_status import review_status_by_market
 
 router = APIRouter(tags=["smartmoney"])
 
@@ -83,8 +84,12 @@ def candidates(
     markets = MarketRepository(session)
     estimates = EstimateRepository(session)
     scores = ScoreRepository(session)
+    feed = CandidateSignalRepo(session).recent(limit)
+    review = review_status_by_market(
+        session, [c.market_id for c in feed if c.market_id is not None]
+    )
     out: list[CandidateFeedItem] = []
-    for candidate in CandidateSignalRepo(session).recent(limit):
+    for candidate in feed:
         market = markets.get(candidate.market_id) if candidate.market_id else None
         score = None
         side = None
@@ -102,6 +107,7 @@ def candidates(
                 viable=score is not None and score.opportunity_score > 0.0,
                 opportunity_score=score.opportunity_score if score is not None else None,
                 recommended_side=side,
+                review_status=review.get(candidate.market_id or "", ReviewStatus.NONE),
             )
         )
     return out

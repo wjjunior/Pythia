@@ -224,6 +224,7 @@ class CandidateFeedItem(BaseModel):
     viable: bool
     opportunity_score: float | None
     recommended_side: Side | None
+    review_status: ReviewStatus
 
 
 class RosterEventItem(BaseModel):
