@@ -129,11 +129,17 @@ def roster_events(
 
 @router.get("/api/smartmoney/positions")
 def positions(session: SessionDep) -> list[TraderPositionItem]:
-    traders = TrackedTraderRepo(session)
-    wallets = {t.id: t.wallet for t in traders.list()}
+    # Current holdings of the *tracked* wallets only — a retired wallet's lingering rows (cleared on
+    # the next sweep) are filtered out here too, so the dashboard never links a stale wallet.
+    wallets = {
+        t.id: t.wallet
+        for t in TrackedTraderRepo(session).list()
+        if t.state is not TraderState.RETIRED
+    }
     return [
-        TraderPositionItem(position=position, wallet=wallets.get(position.trader_id, "unknown"))
+        TraderPositionItem(position=position, wallet=wallets[position.trader_id])
         for position in TraderPositionRepo(session).list_all()
+        if position.trader_id in wallets
     ]
 
 

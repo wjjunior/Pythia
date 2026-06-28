@@ -287,6 +287,29 @@ def test_positions_endpoint_returns_holdings_with_wallet(
     assert item["position"]["title"] == "Will it resolve YES?"
 
 
+def test_positions_endpoint_omits_retired_wallets(client: TestClient, session: Session) -> None:
+    trader = _trader(session, wallet="0xretiree", state=TraderState.RETIRED)
+    TraderPositionRepo(session).replace_for_trader(
+        trader.id,
+        [
+            HeldPosition(
+                condition_id="0xc9",
+                outcome="No",
+                size=1.0,
+                avg_price=0.5,
+                cur_price=0.5,
+                current_value=0.5,
+                cash_pnl=0.0,
+                title="stale",
+                end_date=_TS,
+            )
+        ],
+        asof=_TS,
+    )
+
+    assert client.get("/api/smartmoney/positions").json() == []  # retired ⇒ not a current holding
+
+
 def test_override_unknown_trader_is_404(client: TestClient) -> None:
     missing = str(uuid.uuid5(uuid.NAMESPACE_URL, "nope"))
     assert (

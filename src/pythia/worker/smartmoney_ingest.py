@@ -119,17 +119,22 @@ def run_detection(
 
 
 def run_positions_sweep(session: Session, positions: PositionsPort, *, now: datetime) -> None:
-    """One positions tick (§5, PYT-157): replace each non-retired wallet's current data-api holding.
+    """One positions tick (§5, PYT-157): refresh each tracked wallet's current data-api holding.
 
-    Pure visibility — positions feed no scoring/evidence path in v1. Fail-soft (§9): a geo block is
-    surfaced and the sweep stops (§8.6); the client already swallows a transient data-api outage.
+    Pure visibility — positions feed no scoring/evidence path in v1. A retired wallet is cleared
+    (no fetch) so retirement reliably empties its current-positions set, never leaving stale rows.
+    Fail-soft (§9): a geo block is surfaced and the sweep stops (§8.6); the client already swallows
+    a transient data-api outage.
     """
-    traders = [t for t in TrackedTraderRepo(session).list() if t.state is not TraderState.RETIRED]
+    traders = TrackedTraderRepo(session).list()
     if not traders:
         return
     repo = TraderPositionRepo(session)
     swept = 0
     for trader in traders:
+        if trader.state is TraderState.RETIRED:
+            repo.replace_for_trader(trader.id, [], asof=now)  # clear stale rows, no network call
+            continue
         try:
             held = positions.current_positions(trader.wallet)
         except LiveVenueAccessError:

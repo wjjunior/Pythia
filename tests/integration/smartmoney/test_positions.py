@@ -86,7 +86,20 @@ def test_positions_sweep_replaces_non_retired_wallets_only(session: Session) -> 
 
     repo = TraderPositionRepo(session)
     assert [p.condition_id for p in repo.list_for_trader(active)] == ["0xc1"]
-    assert repo.list_for_trader(retired) == []  # retired wallets are never swept
+    assert repo.list_for_trader(retired) == []  # retired wallets are cleared, never fetched
+
+
+def test_positions_sweep_clears_a_wallets_holdings_when_it_retires(session: Session) -> None:
+    trader_id = _trader(session, wallet="0xfalls")
+    positions = _FakePositions({"0xfalls": [_held("0xc1", 100.0)]})
+    run_positions_sweep(session, positions, now=_TS)
+    repo = TraderPositionRepo(session)
+    assert [p.condition_id for p in repo.list_for_trader(trader_id)] == ["0xc1"]  # active sweep
+
+    TrackedTraderRepo(session).set_state(trader_id, TraderState.RETIRED, at=_TS)
+    run_positions_sweep(session, positions, now=_TS)  # the wallet still "holds" upstream...
+
+    assert repo.list_for_trader(trader_id) == []  # ...but retirement clears its current positions
 
 
 def test_positions_sweep_surfaces_a_geo_block_without_crashing(session: Session) -> None:
