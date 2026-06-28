@@ -6,7 +6,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from pythia.common import EventType, Market, MarketSnapshot
-from pythia.scoring.events import build_event_group, classify_event, parse_threshold
+from pythia.scoring.events import (
+    LadderDirection,
+    build_event_group,
+    classify_event,
+    detect_arbitrage,
+    parse_threshold,
+    threshold_direction,
+)
 
 ASOF = datetime(2026, 3, 1, tzinfo=UTC)
 
@@ -64,6 +71,48 @@ def test_threshold_ladder_detected_without_negrisk() -> None:
 def test_non_negrisk_non_threshold_is_unknown() -> None:
     markets = [_market("a", "Will it rain?"), _market("b", "Will it snow?")]
     assert classify_event(markets) is EventType.UNKNOWN
+
+
+def test_threshold_direction_reads_above_and_below() -> None:
+    assert threshold_direction("Will Bitcoin reach $61,000?") is LadderDirection.ABOVE
+    assert threshold_direction("Will revenue exceed $5 billion?") is LadderDirection.ABOVE
+    assert threshold_direction("IPO cap above $800 billion?") is LadderDirection.ABOVE
+    assert threshold_direction("Will Bitcoin dip to $57,000?") is LadderDirection.BELOW
+    assert threshold_direction("Will the price drop to $50?") is LadderDirection.BELOW
+
+
+def test_threshold_direction_is_none_when_ambiguous() -> None:
+    assert threshold_direction("Will the cap be $5 billion?") is None  # neither keyword
+    assert threshold_direction("Will it go above $5 or drop to $4?") is None  # both directions
+
+
+def test_mixed_direction_threshold_event_is_unknown() -> None:
+    # PYT-149: "dip to $X" + "reach $X" is a pivot, not a monotone ladder.
+    markets = [
+        _market("a", "Will Bitcoin dip to $57,000 on June 27?"),
+        _market("b", "Will Bitcoin reach $61,000 on June 27?"),
+    ]
+    assert classify_event(markets) is EventType.UNKNOWN
+
+
+def test_below_type_threshold_event_is_unknown() -> None:
+    markets = [
+        _market("a", "Will Bitcoin dip to $57,000?"),
+        _market("b", "Will Bitcoin dip to $58,000?"),
+    ]
+    assert classify_event(markets) is EventType.UNKNOWN
+
+
+def test_no_ladder_arb_on_a_mixed_direction_event() -> None:
+    # The bitcoin "dip to / reach" pivot must yield no ladder_spread (the PYT-149 live false
+    # positive: the old classifier read these prices as a monotonicity violation worth ev 0.01).
+    options = [
+        (_market("lo", "Will Bitcoin dip to $57,000?"), _snap("lo", 0.004)),
+        (_market("hi", "Will Bitcoin reach $61,000?"), _snap("hi", 0.034)),
+    ]
+    group = build_event_group("btc", options)
+    assert group.event_type is EventType.UNKNOWN
+    assert detect_arbitrage(group) == []
 
 
 def test_single_option_negrisk_event_is_not_mutually_exclusive() -> None:

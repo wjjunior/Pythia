@@ -8,6 +8,7 @@ as input — no I/O, no clock.
 
 import re
 from collections.abc import Mapping, Sequence
+from enum import StrEnum
 
 from pythia.common import (
     ArbKind,
@@ -46,14 +47,49 @@ def parse_threshold(question: str) -> float | None:
     return amount * _SCALE.get((match.group(2) or "").lower(), 1.0)
 
 
+class LadderDirection(StrEnum):
+    """Which side of the threshold a question asks about — sets a ladder's monotonicity."""
+
+    ABOVE = "above"  # "reach/exceed $X": P is non-increasing in the threshold
+    BELOW = "below"  # "dip to $X": P is non-decreasing in the threshold
+
+
+_ABOVE_RE = re.compile(
+    r"\b(above|over|exceeds?|reach(es|ed)?|surpass(es|ed)?|hits?|at least|or higher|or more)\b",
+    re.IGNORECASE,
+)
+_BELOW_RE = re.compile(
+    r"\b(below|under|at most|or lower|or less)\b|\b(dips?|drops?|falls?) to\b",
+    re.IGNORECASE,
+)
+
+
+def threshold_direction(question: str) -> LadderDirection | None:
+    """ABOVE for 'reach/exceed $X', BELOW for 'dip to $X'; None if ambiguous (neither or both)."""
+    above = bool(_ABOVE_RE.search(question))
+    below = bool(_BELOW_RE.search(question))
+    if above and not below:
+        return LadderDirection.ABOVE
+    if below and not above:
+        return LadderDirection.BELOW
+    return None
+
+
 def classify_event(markets: Sequence[Market]) -> EventType:
-    """all-negRisk (>=2) ⇒ exclusive; >=2 distinct parseable $ thresholds ⇒ ladder; else unknown."""
+    """all-negRisk ⇒ exclusive; distinct $ thresholds, all 'above'-type ⇒ ladder; else unknown."""
     if len(markets) < 2:
         return EventType.UNKNOWN  # a single option is not a coupled set
     if all(market.neg_risk for market in markets):
         return EventType.MUTUALLY_EXCLUSIVE  # negRisk is event-level — every option carries it
-    distinct = {t for t in (parse_threshold(m.question) for m in markets) if t is not None}
-    if len(distinct) == len(markets):
+    thresholds = [parse_threshold(m.question) for m in markets]
+    directions = [threshold_direction(m.question) for m in markets]
+    # A ladder must be monotone in one direction; only above-type satisfies _ladder_spreads /
+    # isotonic. A below-type or mixed ("dip to" + "reach") event is not a ladder (PYT-149).
+    if (
+        all(t is not None for t in thresholds)
+        and len(set(thresholds)) == len(markets)
+        and all(d is LadderDirection.ABOVE for d in directions)
+    ):
         return EventType.THRESHOLD_LADDER
     return EventType.UNKNOWN
 
