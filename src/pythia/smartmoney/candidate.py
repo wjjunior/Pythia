@@ -160,7 +160,9 @@ class PipelineCandidateEvaluator:
             return None
         try:
             raw = self._fetcher.fetch_market_by_condition(external_market)
-        except (LiveVenueAccessError, TransientTransportError, httpx.HTTPStatusError) as exc:
+        except (LiveVenueAccessError, TransientTransportError, httpx.HTTPError, ValueError) as exc:
+            # httpx.HTTPError covers every transport/status failure; ValueError catches a malformed
+            # JSON body. Best-effort (§9): degrade to SKIPPED, never abort the detection tick.
             _log.warning(
                 "triggered_market_fetch_failed", external_market=external_market, error=str(exc)
             )

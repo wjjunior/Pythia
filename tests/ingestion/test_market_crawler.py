@@ -214,7 +214,7 @@ def test_httpx_fetch_event_markets_restores_the_event_back_reference(
     assert _event_slug(markets[0]) == "evt"  # was falling back to the market's own slug
 
 
-def test_httpx_fetch_market_by_condition_queries_markets_and_returns_the_first(
+def test_httpx_fetch_market_by_condition_queries_markets_and_filters_by_condition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # PYT-156: a single open market by condition_id, to ingest a smart-money trigger off-slate.
@@ -222,13 +222,14 @@ def test_httpx_fetch_market_by_condition_queries_markets_and_returns_the_first(
 
     def fake_get(url: str, params: dict[str, Any], timeout: float) -> _FakeResponse:
         calls.append(params)
-        return _FakeResponse([{"conditionId": "0xC"}, {"conditionId": "0xother"}])
+        return _FakeResponse([{"conditionId": "0xother"}, {"conditionId": "0xC"}])
 
     monkeypatch.setattr(httpx, "get", fake_get)
     market = HttpxTransport("https://gamma", use_live=True).fetch_market_by_condition("0xC")
 
-    assert market == {"conditionId": "0xC"}  # the first match
+    assert market == {"conditionId": "0xC"}  # the matching row, not data[0]
     assert calls[0]["condition_ids"] == "0xC" and calls[0]["closed"] == "false"
+    assert calls[0]["include_tag"] == "true"  # mirrors the open crawl's tag fallback
 
 
 def test_httpx_fetch_market_by_condition_returns_none_when_absent(

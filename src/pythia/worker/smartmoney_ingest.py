@@ -87,9 +87,14 @@ def run_detection(
     signals = CandidateSignalRepo(session)
     pipeline = _build_pipeline(session, settings, _guarded_llm(session, settings))
     # On-demand ingestion (PYT-156): a trigger on a market outside our crawl is fetched + evaluated.
-    transport = HttpxTransport(settings.polymarket_api_base, use_live=settings.use_live_venues)
+    # Only when live venues are on — offline this stays a local-only resolve, no fetch attempts.
+    fetcher = (
+        HttpxTransport(settings.polymarket_api_base, use_live=True)
+        if settings.use_live_venues
+        else None
+    )
     evaluator = PipelineCandidateEvaluator(
-        session, pipeline, market_fetcher=transport, clock=lambda: now
+        session, pipeline, market_fetcher=fetcher, clock=lambda: now
     )
     try:
         enqueued = detect_and_enqueue(

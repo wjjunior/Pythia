@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 import pytest
 from sqlmodel import Session
 
@@ -197,3 +198,14 @@ def test_pipeline_evaluator_skips_a_closed_triggered_market(session: Session) ->
 
     assert evaluator.evaluate("0xclosed", _TS, ["t"]) is None  # already resolved → not ingested
     assert MarketRepository(session).get_by_external_id("0xclosed") is None
+
+
+def test_pipeline_evaluator_degrades_when_the_triggered_fetch_raises(session: Session) -> None:
+    class _Boom:
+        def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
+            raise httpx.ReadError("connection reset")  # an httpx error _request never maps
+
+    evaluator = PipelineCandidateEvaluator(
+        session, _pipeline(session), market_fetcher=_Boom(), clock=lambda: _TS
+    )
+    assert evaluator.evaluate("0xboom", _TS, ["t"]) is None  # best-effort: never aborts the tick

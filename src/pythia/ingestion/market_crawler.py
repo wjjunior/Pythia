@@ -182,9 +182,12 @@ class HttpxTransport:
 
     def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
         # A single open market by its condition_id — to ingest a smart-money trigger on a market
-        # outside the crawled slate (PYT-156). Reuses _request's /markets error classification.
-        data = self._request({"condition_ids": condition_id, "closed": "false"})
-        return data[0] if data else None
+        # outside the crawled slate (PYT-156). Reuses _request's /markets error classification;
+        # include_tag mirrors the open crawl so derive_category sees the same tag fallback.
+        data = self._request(
+            {"condition_ids": condition_id, "closed": "false", "include_tag": "true"}
+        )
+        return next((m for m in data if m.get("conditionId") == condition_id), None)
 
 
 def _parse_json_list(value: str) -> list[Any]:
