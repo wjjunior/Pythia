@@ -49,3 +49,19 @@ def test_falcon_agent_ids_missing_colon_is_rejected() -> None:
     settings = Settings(_env_file=None, database_url=_DB, falcon_agent_ids="trader_trades")
     with pytest.raises(ValueError, match="expected 'dataset:id'"):
         _ = settings.falcon_agent_id_overrides
+
+
+def test_swapped_cohort_price_band_is_rejected() -> None:
+    # PYT-167: a min > max band would silently empty the midband (shortlist bias + MIDBAND cohort).
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            database_url=_DB,
+            eval_cohort_price_min=0.85,
+            eval_cohort_price_max=0.10,
+        )
+
+
+def test_default_cohort_price_band_is_ordered() -> None:
+    settings = Settings(_env_file=None, database_url=_DB)
+    assert settings.eval_cohort_price_min <= settings.eval_cohort_price_max

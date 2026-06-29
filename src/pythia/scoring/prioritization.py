@@ -32,6 +32,19 @@ def win_probability(side: Side, p_model: float) -> float:
     return p_model if side is Side.YES else 1.0 - p_model
 
 
+# Lower rank = estimated first. The midband [lo, hi] is the calibration-measurable price range — the
+# same bounds as the MIDBAND eval cohort (§4.11) — so the shortlist prioritises exactly the markets
+# whose Brier the gate can read, ahead of near-certain favourites that barely test calibration. It
+# orders WHICH markets are estimated first; it never changes a threshold, gate, or score (PYT-167).
+_MIDBAND_RANK = 0
+_TAIL_RANK = 1
+
+
+def price_band_priority(price: float, *, lo: float, hi: float) -> int:
+    """Rank by measurability: midband (lo..hi) ahead of the near-certain tails. Lower = first."""
+    return _MIDBAND_RANK if lo <= price <= hi else _TAIL_RANK
+
+
 def closes_in_days(close_time: datetime | None, asof: datetime) -> float | None:
     if close_time is None:
         return None

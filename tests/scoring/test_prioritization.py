@@ -10,6 +10,7 @@ from pythia.common import Side
 from pythia.scoring.prioritization import (
     closes_in_days,
     entry_price,
+    price_band_priority,
     radar_metrics,
     recommended_side,
     win_multiple,
@@ -110,3 +111,14 @@ def test_recommended_side_picks_the_underpriced_side(p: float, q: float) -> None
         assert p >= q
     else:
         assert p < q
+
+
+_PRICE = st.floats(min_value=0.0, max_value=1.0)
+
+
+@given(_PRICE, _PRICE, _PRICE)
+def test_price_band_priority_is_midband_iff_within_bounds(a: float, b: float, price: float) -> None:
+    lo, hi = sorted((a, b))  # PYT-167: midband (rank 0) exactly when lo <= price <= hi
+    rank = price_band_priority(price, lo=lo, hi=hi)
+    assert rank in (0, 1)
+    assert (rank == 0) == (lo <= price <= hi)
