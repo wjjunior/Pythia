@@ -8,6 +8,7 @@ import pytest
 from sqlmodel import Session, select
 
 from pythia.common import Estimate, Market, MarketSnapshot
+from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
     ArbRepository,
@@ -20,6 +21,10 @@ from pythia.orchestration.runner import run_event_pass
 pytestmark = pytest.mark.integration
 
 _NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+
+
+def _settings() -> Settings:
+    return Settings(_env_file=None, database_url="postgresql+psycopg://x/y")
 
 
 def _seed_option(
@@ -57,7 +62,7 @@ def test_event_pass_detects_and_persists_a_dutch_book(session: Session) -> None:
     for name in ("a", "b", "c"):
         _seed_option(session, "cup", name, yes_price=0.3)
 
-    count = run_event_pass(session, now=_NOW)
+    count = run_event_pass(session, _settings(), now=_NOW)
 
     assert count == 1
     arbs = ArbRepository(session).list_ranked()
@@ -69,7 +74,7 @@ def test_event_pass_detects_and_persists_a_dutch_book(session: Session) -> None:
 def test_event_pass_persists_nothing_for_a_consistently_priced_event(session: Session) -> None:
     _seed_option(session, "cup", "a", yes_price=0.6)
     _seed_option(session, "cup", "b", yes_price=0.5)  # asks sum 1.1 >= 1 → no arb
-    assert run_event_pass(session, now=_NOW) == 0
+    assert run_event_pass(session, _settings(), now=_NOW) == 0
     assert ArbRepository(session).list_ranked() == []
 
 
@@ -79,18 +84,29 @@ def test_event_pass_does_not_flag_a_complete_negrisk_event(session: Session) -> 
     _seed_option(session, "match", "home", yes_price=0.4)
     _seed_option(session, "match", "away", yes_price=0.4)
     _seed_option(session, "match", "draw", yes_price=0.3)
-    assert run_event_pass(session, now=_NOW) == 0
+    assert run_event_pass(session, _settings(), now=_NOW) == 0
     assert ArbRepository(session).list_ranked() == []
 
 
 def test_event_pass_excludes_resolved_options(session: Session) -> None:
-    # The two open options form a dutch book (asks 0.4 + 0.4 < 1); a resolved option must not enter
-    # the group — pulling it in (yes 1.0) would push the sum >= 1 and hide the real arb.
-    _seed_option(session, "cup", "a", yes_price=0.4)
-    _seed_option(session, "cup", "b", yes_price=0.4)
+    # The two open options form a near-complete dutch book (asks 0.45 + 0.45 = 0.9 < 1, above the
+    # coverage floor); a resolved option must not enter the group — pulling it in (yes 1.0) would
+    # push the sum >= 1 and hide the real arb.
+    _seed_option(session, "cup", "a", yes_price=0.45)
+    _seed_option(session, "cup", "b", yes_price=0.45)
     _seed_option(session, "cup", "done", yes_price=1.0, resolved=True)
-    assert run_event_pass(session, now=_NOW) == 1
+    assert run_event_pass(session, _settings(), now=_NOW) == 1
     assert len(ArbRepository(session).list_ranked()[0].legs) == 2  # only the open options
+
+
+def test_event_pass_rejects_a_grossly_incomplete_dutch_book(session: Session) -> None:
+    # PYT-170: two legs of a many-outcome event (e.g. 2 of ~30 exact scores) whose asks sum to 0.02
+    # are not a complete exhaustive set — buying YES on both is not an arb. Below the coverage floor
+    # it must NOT be flagged, even though 0.02 < 1.
+    _seed_option(session, "exact-score", "0-2", yes_price=0.013)
+    _seed_option(session, "exact-score", "3-3", yes_price=0.0075)
+    assert run_event_pass(session, _settings(), now=_NOW) == 0
+    assert ArbRepository(session).list_ranked() == []
 
 
 def _seed_committed(
@@ -169,7 +185,7 @@ def test_event_pass_couples_mutually_exclusive_committed_forecasts(session: Sess
         for name, c in (("a", 0.5), ("b", 0.4), ("c", 0.3))
     }
 
-    run_event_pass(session, now=_NOW)
+    run_event_pass(session, _settings(), now=_NOW)
 
     results = {name: _committed(session, mid) for name, (mid, _) in ids.items()}
     assert all(model == "event-coupled" for model, _ in results.values())
@@ -192,7 +208,7 @@ def test_event_pass_couples_threshold_ladder_to_non_increasing(session: Session)
         )
         mids[billions] = market_id
 
-    run_event_pass(session, now=_NOW)
+    run_event_pass(session, _settings(), now=_NOW)
 
     by_threshold = [_committed(session, mids[b]) for b in sorted(mids)]  # ascending threshold
     # Violating legs get re-coupled; a leg already consistent keeps its raw estimate (append-only).
@@ -207,9 +223,11 @@ def test_event_pass_coupling_is_idempotent(session: Session) -> None:
             session, "cup", name, question=f"Will {name} win?", calibrated=calibrated, neg_risk=True
         )
 
-    run_event_pass(session, now=_NOW)
+    run_event_pass(session, _settings(), now=_NOW)
     after_first = _estimate_count(session)
     assert after_first == 6  # 3 raw + 3 coupled ⇒ coupling actually appended
-    run_event_pass(session, now=_NOW)  # the latest per option is already coupled ⇒ no re-append
+    run_event_pass(
+        session, _settings(), now=_NOW
+    )  # the latest per option is already coupled ⇒ no re-append
     assert _estimate_count(session) == after_first
     assert _committed(session, _market_id("cup", "a"))[0] == "event-coupled"

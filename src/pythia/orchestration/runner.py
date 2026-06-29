@@ -70,7 +70,7 @@ class RunSummary:
     arbs: int = 0
 
 
-def run_event_pass(session: Session, *, now: datetime) -> int:
+def run_event_pass(session: Session, settings: Settings, *, now: datetime) -> int:
     """Group open markets by event, detect structural arbitrage, and refresh the stored set."""
     open_markets = MarketRepository(session).list(status=MarketStatus.OPEN)
     by_event: dict[str, int] = {}
@@ -87,7 +87,7 @@ def run_event_pass(session: Session, *, now: datetime) -> int:
         group = service.get_event_group(event_slug, now)
         if group is None:
             continue
-        arbs = detect_arbitrage(group)
+        arbs = detect_arbitrage(group, min_dutch_book_coverage=settings.min_dutch_book_coverage)
         arbs_repo.replace_for_event(event_slug, arbs, detected_at=now)
         total += len(arbs)
         _couple_event(estimates, group)
@@ -317,7 +317,7 @@ def run_open_markets(
             if publish_radar is not None:
                 publish_radar(market.id)
     _emit_funnel(truncated=False)
-    arbs = run_event_pass(session, now=datetime.now(UTC))
+    arbs = run_event_pass(session, settings, now=datetime.now(UTC))
     return RunSummary(markets=len(markets), scored=scored, halted=False, arbs=arbs)
 
 

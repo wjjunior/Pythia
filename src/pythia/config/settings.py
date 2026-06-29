@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     cap_per_market: float = 0.05
     cap_per_category: float = 0.10
     cap_per_event: float = 0.10  # total exposure across one multi-option event's legs (PYT-140)
+    # A dutch book is only real on the COMPLETE option set, which prices to ~1; require the YES asks
+    # to sum to at least this before flagging, so a grossly-incomplete set (e.g. 2 of ~30 exact
+    # scores summing to 0.02) is rejected instead of surfaced as an illusory arb (PYT-170). Not an
+    # edge bar — it caps the implied arb at 1 - this; a complete-set locked arb above ~15% would be
+    # taken instantly, so a larger "arb" is almost certainly an incomplete set.
+    min_dutch_book_coverage: float = 0.85
     cap_daily: float = 0.05
     cap_weekly: float = 0.15
     cap_absolute: float = 1.0

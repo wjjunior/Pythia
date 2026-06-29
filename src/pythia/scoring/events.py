@@ -123,19 +123,25 @@ def _bid(option: EventOption) -> float:
     return max(0.0, option.yes_price - option.spread / 2.0)
 
 
-def detect_arbitrage(group: EventGroup) -> list[ArbOpportunity]:
+def detect_arbitrage(
+    group: EventGroup, *, min_dutch_book_coverage: float = 0.0
+) -> list[ArbOpportunity]:
     """Locked arbitrage in an event, priced conservatively at the spread-adjusted ask/bid."""
     if group.event_type is EventType.MUTUALLY_EXCLUSIVE:
-        return _dutch_book(group)
+        return _dutch_book(group, min_coverage=min_dutch_book_coverage)
     if group.event_type is EventType.THRESHOLD_LADDER:
         return _ladder_spreads(group)
     return []
 
 
-def _dutch_book(group: EventGroup) -> list[ArbOpportunity]:
-    # negRisk ⇒ exactly one option resolves YES, so buying YES on all costs sum(ask) and pays $1.
+def _dutch_book(group: EventGroup, *, min_coverage: float) -> list[ArbOpportunity]:
+    # negRisk ⇒ exactly one option resolves YES, so buying YES on all costs sum(ask) and pays $1 —
+    # but only when the options are the COMPLETE exhaustive set. All-negRisk legs are not proof we
+    # hold them all (PYT-170): a complete set prices to ~1, so a total_ask far below 1 means most of
+    # the probability mass is missing (e.g. 2 of ~30 exact scores). Buying YES on that fraction is
+    # not an arb — an unheld outcome would resolve and every leg loses. min_coverage rejects it.
     total_ask = sum(_ask(option) for option in group.options)
-    if total_ask >= 1.0:
+    if not (min_coverage <= total_ask < 1.0):
         return []
     legs = [
         ArbLeg(market_id=o.market_id, side=Side.YES, price=_ask(o), question=o.question)

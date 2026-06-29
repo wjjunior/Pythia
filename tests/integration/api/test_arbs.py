@@ -26,6 +26,10 @@ pytestmark = pytest.mark.integration
 _NOW = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
+def _settings() -> Settings:
+    return Settings(_env_file=None, database_url="postgresql+psycopg://x/y")
+
+
 def _seed_dutch_book(session: Session) -> None:
     for name in ("a", "b", "c"):  # three exclusive options at 0.3 ⇒ a dutch book
         market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"cup-{name}"))
@@ -51,7 +55,7 @@ def _seed_dutch_book(session: Session) -> None:
                 liquidity=1.0,
             )
         )
-    run_event_pass(session, now=_NOW)
+    run_event_pass(session, _settings(), now=_NOW)
 
 
 @pytest.fixture
