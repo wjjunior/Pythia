@@ -58,6 +58,7 @@ def test_run_emits_a_reconciling_funnel(session: Session) -> None:
     assert funnel.crawled == 2 and funnel.tracked_open == 2
     assert funnel.scored == 2  # both open markets scored this tick
     assert funnel.categories == {"politics": 1, "sports": 1}  # per-category crawl representation
+    assert funnel.truncated is False  # a complete pass — the budget cap did not chop it (PYT-168)
 
 
 def test_make_funnel_sink_persists_a_funnel_row(session: Session) -> None:

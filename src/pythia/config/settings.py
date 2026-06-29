@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     evidence_sources: str = ""
     newsapi_key: SecretStr | None = None
     crawl_interval_seconds: int = 300
+    # Estimation cadence, decoupled from the (fast) crawl so the budget governs coverage, not the
+    # crawl (PYT-168). At ~$0.0047/market (measured, cost_events) and discovery_shortlist_size=50:
+    # 86400/2700 = 32 ticks/day, 32*50 = 1600 estimations/day, *$0.0047 ~= $7.52/day — under the
+    # $10/day kill switch (~25% headroom), covering the ~1540 open set ~once/day. The cap is then a
+    # safety net, not the routine stop. Refresh the $/market basis from cost_events before retuning.
+    pipeline_interval_seconds: int = 2700
     crawl_close_within_days: int | None = None
     crawl_volume_min: float | None = 1000.0
     crawl_max_markets: int = 500

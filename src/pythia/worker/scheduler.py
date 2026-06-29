@@ -160,7 +160,7 @@ def build_scheduler(
         scheduler.add_job(
             lambda: pipeline_tick(session_factory, settings),
             "interval",
-            seconds=interval_seconds,
+            seconds=settings.pipeline_interval_seconds,  # estimation cadence, budget-bound (168)
             id="pipeline-run",
             next_run_time=now,
         )

@@ -85,6 +85,7 @@ def funnel_from_gates(
     scored: int,
     gates: Mapping[RadarGate, int],
     categories: Mapping[str, int],
+    truncated: bool = False,
 ) -> PipelineFunnel:
     """Assemble a funnel from the stage counts and the per-gate tally of the scored markets."""
     return PipelineFunnel(
@@ -99,4 +100,5 @@ def funnel_from_gates(
         dropped_win_probability=gates.get(RadarGate.DROPPED_WIN_PROBABILITY, 0),
         dropped_extreme_disagreement=gates.get(RadarGate.DROPPED_EXTREME_DISAGREEMENT, 0),
         categories=dict(categories),
+        truncated=truncated,
     )
