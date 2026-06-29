@@ -162,6 +162,17 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _cohort_price_band_ordered(self) -> "Settings":
+        # A swapped band would silently empty the midband: the shortlist bias and the MIDBAND eval
+        # cohort share these bounds, so misordering breaks selection/measurement alignment.
+        if self.eval_cohort_price_min > self.eval_cohort_price_max:
+            raise ValueError(
+                f"eval_cohort_price_min ({self.eval_cohort_price_min}) exceeds "
+                f"eval_cohort_price_max ({self.eval_cohort_price_max}); the midband would be empty"
+            )
+        return self
+
     @property
     def cross_venue_source_list(self) -> list[str]:
         return [s.strip() for s in self.cross_venue_sources.split(",") if s.strip()]

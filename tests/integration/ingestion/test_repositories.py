@@ -36,8 +36,14 @@ def _market(*, resolved: bool = False) -> Market:
 
 
 def _snapshot(ts: datetime, yes_price: float) -> MarketSnapshot:
+    return _snapshot_with_id(
+        str(uuid.uuid5(uuid.NAMESPACE_URL, f"{_EXTERNAL_ID}@{ts.isoformat()}")), ts, yes_price
+    )
+
+
+def _snapshot_with_id(snapshot_id: str, ts: datetime, yes_price: float) -> MarketSnapshot:
     return MarketSnapshot(
-        id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{_EXTERNAL_ID}@{ts.isoformat()}")),
+        id=snapshot_id,
         market_id=_MARKET_ID,
         ts=ts,
         yes_price=yes_price,
@@ -64,6 +70,29 @@ def test_snapshots_are_append_only_and_immutable(session: Session) -> None:
     snapshots = repo.list_for_market(_MARKET_ID)
     assert [s.yes_price for s in snapshots] == [0.4, 0.6]
     assert not hasattr(repo, "update")
+
+
+def test_latest_yes_prices_returns_the_freshest_per_market(session: Session) -> None:
+    MarketRepository(session).upsert(_market())
+    repo = SnapshotRepository(session)
+    repo.append(_snapshot(datetime(2026, 6, 18, 12, 0, tzinfo=UTC), 0.4))
+    repo.append(_snapshot(datetime(2026, 6, 18, 12, 5, tzinfo=UTC), 0.6))
+
+    assert repo.latest_yes_prices([_MARKET_ID]) == {_MARKET_ID: 0.6}  # freshest ts
+    assert repo.latest_yes_prices([]) == {}
+
+
+def test_latest_yes_prices_breaks_a_ts_tie_deterministically(session: Session) -> None:
+    # PYT-167: equal-ts snapshots must resolve to a stable price (highest snapshot id), so the
+    # shortlist's price-band ordering can never flip between runs.
+    MarketRepository(session).upsert(_market())
+    repo = SnapshotRepository(session)
+    ts = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
+    ids = sorted(str(uuid.uuid5(uuid.NAMESPACE_URL, f"tie-{n}")) for n in ("a", "b"))
+    repo.append(_snapshot_with_id(ids[0], ts, 0.30))
+    repo.append(_snapshot_with_id(ids[1], ts, 0.70))
+
+    assert repo.latest_yes_prices([_MARKET_ID]) == {_MARKET_ID: 0.70}  # higher id wins the tie
 
 
 def test_source_registry_persists_reliability(session: Session) -> None:

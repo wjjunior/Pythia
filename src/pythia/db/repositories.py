@@ -219,7 +219,11 @@ class SnapshotRepository:
             select(models.MarketSnapshot.market_id, models.MarketSnapshot.yes_price)
             .where(col(models.MarketSnapshot.market_id).in_(ids))
             .distinct(col(models.MarketSnapshot.market_id))
-            .order_by(col(models.MarketSnapshot.market_id), col(models.MarketSnapshot.ts).desc())
+            .order_by(
+                col(models.MarketSnapshot.market_id),
+                col(models.MarketSnapshot.ts).desc(),
+                col(models.MarketSnapshot.id).desc(),  # deterministic tiebreaker on equal ts
+            )
         ).all()
         return {str(market_id): price for market_id, price in rows}
 
