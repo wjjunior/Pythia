@@ -209,6 +209,20 @@ class SnapshotRepository:
         row = self._session.get(models.MarketSnapshot, uuid.UUID(snapshot_id))
         return _from_db_snapshot(row) if row is not None else None
 
+    def latest_yes_prices(self, market_ids: list[str]) -> dict[str, float]:
+        # Latest yes_price per market in one query — feeds the shortlist's price-band ordering
+        # (PYT-167) without a per-market round trip. DISTINCT ON keeps the freshest snapshot.
+        if not market_ids:
+            return {}
+        ids = [uuid.UUID(market_id) for market_id in market_ids]
+        rows = self._session.exec(
+            select(models.MarketSnapshot.market_id, models.MarketSnapshot.yes_price)
+            .where(col(models.MarketSnapshot.market_id).in_(ids))
+            .distinct(col(models.MarketSnapshot.market_id))
+            .order_by(col(models.MarketSnapshot.market_id), col(models.MarketSnapshot.ts).desc())
+        ).all()
+        return {str(market_id): price for market_id, price in rows}
+
     def latest_for_market_asof(self, market_id: str, *, asof: datetime) -> MarketSnapshot | None:
         # Point-in-time: the freshest snapshot NOT after asof — the price as the trader saw it.
         row = self._session.exec(

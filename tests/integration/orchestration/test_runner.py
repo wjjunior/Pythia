@@ -321,3 +321,38 @@ def test_shortlist_cursor_rotates_estimation_across_ticks(session: Session) -> N
     run_open_markets(session, settings)
 
     assert len(_estimated_market_ids(session)) == 5  # three ticks rotate through all five markets
+
+
+def _seed_priced_market(session: Session, name: str, price: float) -> str:
+    market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+    MarketRepository(session).upsert(
+        Market(
+            id=market_id, external_id=name, question="q", category="politics", resolution_rule="r"
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{name}-snap")),
+            market_id=market_id,
+            ts=ASOF,
+            yes_price=price,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    return market_id
+
+
+def test_shortlist_prioritizes_midband_before_near_certain_markets(session: Session) -> None:
+    # 2 midband (q=0.5) + 2 near-certain (q=0.97), 2 estimated/tick: the midband markets — where
+    # calibration is measurable — are estimated first; the tails wait for the next tick (PYT-167).
+    midband = {_seed_priced_market(session, f"mid{i}", 0.5) for i in range(2)}
+    tails = {_seed_priced_market(session, f"tail{i}", 0.97) for i in range(2)}
+    settings = _discovery_settings(2)
+
+    run_open_markets(session, settings)
+    assert _estimated_market_ids(session) == midband  # midband first, tails not yet
+
+    run_open_markets(session, settings)
+    assert _estimated_market_ids(session) == midband | tails  # tails reached next — not excluded

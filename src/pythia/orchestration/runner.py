@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlmodel import Session
 
@@ -51,6 +52,7 @@ from pythia.scoring.funnel import (
     classify_radar_gate,
     funnel_from_gates,
 )
+from pythia.scoring.prioritization import price_band_priority
 from pythia.services.events import EventService
 from pythia.smartmoney.evidence import SmartMoneyEvidencePort
 
@@ -184,22 +186,32 @@ def _evidence_port(session: Session, settings: Settings, base: EvidencePort) -> 
 
 
 def rotate_shortlist(
-    markets: Sequence[Market], *, after_id: str | None, size: int
+    markets: Sequence[Market],
+    *,
+    after_id: str | None,
+    size: int,
+    # Sort key over markets; default is id order (PYT-165). PYT-167 passes a (band, id) key to put
+    # midband markets first. Any is justified: the key value is heterogeneous (a str or a tuple).
+    key: Callable[[Market], Any] | None = None,
 ) -> tuple[list[Market], str | None]:
-    """The next ``size``-market slice in stable id order after ``after_id``, wrapping (PYT-165).
+    """The next ``size``-market slice in ``key`` order after ``after_id``, wrapping (PYT-165/167).
 
     Returns the slice and the new cursor (the slice's last id). Advancing it each tick walks
-    estimation coverage through the whole open set instead of re-picking the same top markets. Pure
+    estimation coverage through the whole open set instead of re-picking the same markets. Pure
     selection — never reads a score, threshold, or risk value; it chooses *which* markets the
-    pipeline judges, never *how* they are judged.
+    pipeline judges and in what order, never *how* they are judged.
     """
     if not markets:
         return [], after_id
-    ordered = sorted(markets, key=lambda market: market.id)
+    sort_key = key if key is not None else (lambda market: market.id)
+    ordered = sorted(markets, key=sort_key)
     count = len(ordered)
     start = 0
     if after_id is not None:
-        start = next((i for i, market in enumerate(ordered) if market.id > after_id), 0)
+        # Resume after the cursor's market (matched by id, so the key order may change); if it has
+        # left the open set (resolved), restart from the front — every market still gets covered.
+        idx = next((i for i, market in enumerate(ordered) if market.id == after_id), None)
+        start = idx + 1 if idx is not None else 0
     chosen = [ordered[(start + offset) % count] for offset in range(min(size, count))]
     return chosen, chosen[-1].id
 
@@ -208,8 +220,19 @@ def _shortlist(session: Session, settings: Settings, markets: list[Market]) -> l
     size = settings.discovery_shortlist_size
     if size is None or size <= 0 or len(markets) <= size:
         return markets  # no throttle, or the whole open set already fits in one tick
+    # PYT-167: order midband (calibration-measurable) markets ahead of near-certain tails WITHIN the
+    # rotation — priority, not exclusion. Bias is by price band only; category is never a sort key.
+    prices = SnapshotRepository(session).latest_yes_prices([market.id for market in markets])
+    lo, hi = settings.eval_cohort_price_min, settings.eval_cohort_price_max
+
+    def _band_then_id(market: Market) -> tuple[int, str]:
+        price = prices.get(market.id, hi + 1.0)  # no snapshot → out of band → estimated later
+        return (price_band_priority(price, lo=lo, hi=hi), market.id)
+
     cursor = ShortlistCursorRepository(session)
-    chosen, new_after = rotate_shortlist(markets, after_id=cursor.get(), size=size)
+    chosen, new_after = rotate_shortlist(
+        markets, after_id=cursor.get(), size=size, key=_band_then_id
+    )
     cursor.set(new_after)
     _log.info("discovery_shortlist_rotated", open_markets=len(markets), shortlisted=len(chosen))
     return chosen
