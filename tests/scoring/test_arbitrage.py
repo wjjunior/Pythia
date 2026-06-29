@@ -43,6 +43,22 @@ def test_no_dutch_book_when_asks_sum_to_at_least_one() -> None:
     assert detect_arbitrage(_exclusive(0.5, 0.5)) == []  # ask 0.51 + 0.51 > 1
 
 
+def test_incomplete_dutch_book_is_rejected_below_the_coverage_floor() -> None:
+    # PYT-170: two legs of a many-outcome event (asks ~0.04 total) are not the complete exhaustive
+    # set — buying YES on both is not an arb. Below the coverage floor it is rejected, even though
+    # the sum is < 1; a near-complete set (asks 0.93) is still flagged.
+    assert detect_arbitrage(_exclusive(0.013, 0.0075), min_dutch_book_coverage=0.9) == []
+    [arb] = detect_arbitrage(_exclusive(0.30, 0.30, 0.30), min_dutch_book_coverage=0.9)
+    assert arb.kind is ArbKind.DUTCH_BOOK
+
+
+def test_dutch_book_coverage_floor_defaults_off() -> None:
+    # Default coverage 0.0 keeps the core sum<1 behaviour; the floor is applied at the composition
+    # root (run_event_pass) from settings, mirroring the radar min_liquidity pattern.
+    [arb] = detect_arbitrage(_exclusive(0.013, 0.0075))
+    assert arb.kind is ArbKind.DUTCH_BOOK
+
+
 def test_ladder_spread_arb_on_a_monotonicity_violation() -> None:
     # Higher threshold (1000) priced above the lower (800) — a monotonicity violation (PYT-138).
     group = _ladder((0.60, 800.0), (0.75, 1000.0))

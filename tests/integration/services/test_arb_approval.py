@@ -62,7 +62,7 @@ def _seed_option(session: Session, name: str) -> None:
 def _detect_arb(session: Session) -> str:
     for name in ("a", "b", "c"):
         _seed_option(session, name)
-    assert run_event_pass(session, now=_NOW) == 1  # one dutch book detected + persisted
+    assert run_event_pass(session, _SETTINGS, now=_NOW) == 1  # one dutch book detected + persisted
     arb = ArbRepository(session).list_ranked()[0]
     assert arb.id is not None
     return arb.id
