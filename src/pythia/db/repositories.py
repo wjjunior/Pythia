@@ -659,6 +659,7 @@ class PipelineRunFunnelRepository:
                 dropped_win_probability=funnel.dropped_win_probability,
                 dropped_extreme_disagreement=funnel.dropped_extreme_disagreement,
                 categories=funnel.categories,
+                truncated=funnel.truncated,
             )
         )
         self._session.commit()

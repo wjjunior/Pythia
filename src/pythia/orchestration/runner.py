@@ -261,7 +261,7 @@ def run_open_markets(
     estimated = 0
     scored = 0
 
-    def _emit_funnel() -> None:
+    def _emit_funnel(*, truncated: bool) -> None:
         if funnel_sink is None:
             return
         funnel_sink(
@@ -273,6 +273,7 @@ def run_open_markets(
                 scored=scored,
                 gates=gates,
                 categories=categories,
+                truncated=truncated,
             )
         )
 
@@ -290,8 +291,10 @@ def run_open_markets(
         try:
             result = pipeline.run(market, snapshot)
         except BudgetExceeded:
+            # The daily cap chopped this rotation pass mid-way (§8 kill switch). Flag the funnel so
+            # a partial day's coverage is never mistaken for a full pass (PYT-168).
             _log.warning("pipeline_budget_halt", market_id=market.id)
-            _emit_funnel()
+            _emit_funnel(truncated=True)
             return RunSummary(markets=len(markets), scored=scored, halted=True)
         except Exception:
             _log.exception("pipeline_market_failed", market_id=market.id)
@@ -313,7 +316,7 @@ def run_open_markets(
             ] += 1
             if publish_radar is not None:
                 publish_radar(market.id)
-    _emit_funnel()
+    _emit_funnel(truncated=False)
     arbs = run_event_pass(session, now=datetime.now(UTC))
     return RunSummary(markets=len(markets), scored=scored, halted=False, arbs=arbs)
 

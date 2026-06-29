@@ -485,6 +485,7 @@ class PipelineFunnel(_Frozen):
     dropped_win_probability: int
     dropped_extreme_disagreement: int
     categories: dict[str, int]
+    truncated: bool = False  # the daily cost cap halted this pass mid-rotation (PYT-168)
 
     @property
     def reconciles(self) -> bool:

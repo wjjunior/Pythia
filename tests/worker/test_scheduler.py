@@ -48,6 +48,24 @@ def test_build_scheduler_registers_pipeline_and_resolution_jobs_with_settings() 
     assert ids == {"market-crawl", "pipeline-run", "resolution-ingest", "recalibration-fit"}
 
 
+def test_pipeline_run_uses_the_decoupled_estimation_cadence() -> None:
+    # PYT-168: the pipeline tick runs on pipeline_interval_seconds (budget-bound), not the fast
+    # crawl interval, so the $10/day cap governs coverage instead of the crawl cadence.
+    settings = _settings()
+    scheduler = build_scheduler(
+        _crawler(),
+        lambda _pairs: None,
+        interval_seconds=300,
+        session_factory=session_scope,
+        settings=settings,
+    )
+    jobs = {job.id: job for job in scheduler.get_jobs()}
+    assert (
+        jobs["pipeline-run"].trigger.interval.total_seconds() == settings.pipeline_interval_seconds
+    )
+    assert jobs["market-crawl"].trigger.interval.total_seconds() == 300  # crawl stays fast
+
+
 def test_build_scheduler_registers_smartmoney_jobs_when_falcon_is_wired() -> None:
     scheduler = build_scheduler(
         _crawler(),

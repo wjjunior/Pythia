@@ -636,3 +636,7 @@ class PipelineRunFunnel(SQLModel, table=True):
     dropped_win_probability: int = Field(sa_column=Column(Integer, nullable=False))
     dropped_extreme_disagreement: int = Field(sa_column=Column(Integer, nullable=False))
     categories: dict[str, int] = Field(sa_column=Column(JSONB, nullable=False))
+    truncated: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )

@@ -17,6 +17,7 @@ from pythia.common import (
     LLMPort,
     Market,
     MarketSnapshot,
+    PipelineFunnel,
     Source,
 )
 from pythia.config import Settings
@@ -210,6 +211,28 @@ def test_run_open_markets_halts_when_the_daily_budget_is_breached(session: Sessi
 
     assert summary.halted is True
     assert summary.scored == 0
+
+
+def test_funnel_flags_truncation_when_the_daily_budget_halts_the_pass(session: Session) -> None:
+    # PYT-168: a budget halt mid-pass must mark the funnel truncated, so partial coverage is never
+    # mistaken for a full pass.
+    _seed_open_market(session)
+    settings = _settings()
+    CostRepository(session).record(_cost(settings.cost_budget_daily + 1.0))
+    captured: list[PipelineFunnel] = []
+
+    def factory(market_id: str) -> LLMPort:
+        return _guarded_llm(
+            session,
+            market_id,
+            run_cap=settings.cost_cap_per_run,
+            daily_cap=settings.cost_budget_daily,
+        )
+
+    summary = run_open_markets(session, settings, llm_factory=factory, funnel_sink=captured.append)
+
+    assert summary.halted is True
+    assert len(captured) == 1 and captured[0].truncated is True
 
 
 def test_run_open_markets_attributes_pipeline_cost_to_the_market_category(
