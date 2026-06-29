@@ -215,6 +215,7 @@ def _seed_calibration_market(
     opp: float,
     resolves_at: datetime | None = None,
     resolved: bool = False,
+    liquidity: float = 1.0,
 ) -> str:
     market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, key))
     snapshot_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{key}-snap"))
@@ -239,7 +240,7 @@ def _seed_calibration_market(
             yes_price=yes_price,
             spread=0.0,
             volume=1.0,
-            liquidity=1.0,
+            liquidity=liquidity,
         )
     )
     session.commit()
@@ -435,6 +436,38 @@ def test_radar_excludes_a_market_whose_trading_has_already_closed(
     body = client.get("/api/radar?max_days_to_resolve=7").json()
 
     assert [r["market"]["id"] for r in body] == [enterable]  # closed-trading market excluded
+
+
+def test_radar_excludes_an_untraded_zero_liquidity_market(
+    client: TestClient, session: Session
+) -> None:
+    # PYT-169: an untraded negRisk leg sits at a default 0.5 with zero liquidity — not enterable, so
+    # it must not be surfaced as an opportunity even when its metrics look attractive.
+    now = datetime.now(UTC)
+    tradeable = _seed_calibration_market(
+        session,
+        key="liq-real",
+        close_time=now + timedelta(days=3),
+        resolves_at=now + timedelta(days=3),
+        yes_price=0.4,
+        p_model=0.6,
+        opp=0.05,
+        liquidity=5000.0,
+    )
+    _seed_calibration_market(  # placeholder leg: default 0.5 price, zero liquidity, can't be filled
+        session,
+        key="liq-placeholder",
+        close_time=now + timedelta(days=1),
+        resolves_at=now + timedelta(days=1),
+        yes_price=0.5,
+        p_model=0.02,
+        opp=-0.3,
+        liquidity=0.0,
+    )
+
+    body = client.get("/api/radar?max_days_to_resolve=7").json()
+
+    assert [r["market"]["id"] for r in body] == [tradeable]  # zero-liquidity placeholder excluded
 
 
 def test_radar_orders_by_soonest_resolution_not_trading_close(

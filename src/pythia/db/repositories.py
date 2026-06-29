@@ -540,11 +540,14 @@ class ScoreRepository:
         return _from_db_score(row) if row is not None else None
 
     def radar(
-        self, *, asof: datetime, max_days_to_resolve: int | None = None
+        self, *, asof: datetime, max_days_to_resolve: int | None = None, min_liquidity: float = 0.0
     ) -> list[tuple[Score, Estimate, Market, float]]:
         """Bounded candidate set as raw domain rows (Score, Estimate, Market, yes_price).
 
         Ranking, per-row metrics and win filters live in scoring.rank_radar — db stays scoring-free.
+        ``min_liquidity`` is an entry gate, not an edge bar: an untraded leg (e.g. a placeholder
+        negRisk option) sits at a default 0.5 price with zero liquidity and cannot be filled, so it
+        is excluded rather than surfaced as an illusory opportunity (PYT-169).
         """
         latest_per_market = (
             select(models.Score.id)
@@ -568,6 +571,7 @@ class ScoreRepository:
             )
             .where(col(models.Score.id).in_(latest_per_market))
             .where(col(models.Market.resolved).is_(False))
+            .where(col(models.MarketSnapshot.liquidity) >= min_liquidity)
             .where(
                 or_(
                     col(models.Market.close_time).is_(None),
