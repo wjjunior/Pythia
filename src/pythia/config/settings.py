@@ -108,6 +108,10 @@ class Settings(BaseSettings):
     cap_absolute: float = 1.0
     min_source_reliability: float = 0.5
     min_confidence: float = 0.5
+    # Radar entry gate, not an edge bar (PYT-169): an untraded leg (e.g. a placeholder negRisk
+    # option) sits at a default 0.5 with zero liquidity and cannot be filled — exclude it instead of
+    # surfacing an illusory opportunity. A real market has orders of magnitude more depth than this.
+    radar_min_liquidity: float = 1.0
     max_p_resol_severity: float = 0.5
     max_category_invalid_rate: float = 0.15
     divergence_penalty_weight: float = 1.0

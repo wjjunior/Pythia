@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from pythia.api.deps import SessionDep
+from pythia.api.deps import SessionDep, SettingsDep
 from pythia.api.schemas import RadarItem
 from pythia.db.repositories import ScoreRepository
 from pythia.scoring import rank_radar
@@ -19,13 +19,18 @@ _MAX_RADAR_LIMIT = 200
 @router.get("/api/radar")
 def radar(
     session: SessionDep,
+    settings: SettingsDep,
     limit: Annotated[int, Query(ge=1, le=_MAX_RADAR_LIMIT)] = 20,
     max_days_to_resolve: Annotated[int | None, Query(ge=1)] = None,
     min_win_multiple: Annotated[float | None, Query(ge=1.0)] = None,
     min_win_probability: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
 ) -> list[RadarItem]:
     asof = datetime.now(UTC)
-    candidates = ScoreRepository(session).radar(asof=asof, max_days_to_resolve=max_days_to_resolve)
+    candidates = ScoreRepository(session).radar(
+        asof=asof,
+        max_days_to_resolve=max_days_to_resolve,
+        min_liquidity=settings.radar_min_liquidity,
+    )
     rows = rank_radar(
         candidates,
         asof=asof,
