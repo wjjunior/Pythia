@@ -8,7 +8,7 @@ a breached budget halts the batch.
 """
 
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -18,8 +18,6 @@ from pythia.agents import (
     BudgetExceeded,
     BudgetGuard,
     CachingLLMPort,
-    DiscoveryAgent,
-    LLMResponseError,
     make_llm_port,
 )
 from pythia.common import (
@@ -41,6 +39,7 @@ from pythia.db.repositories import (
     EstimateRepository,
     MarketRepository,
     PipelineRunFunnelRepository,
+    ShortlistCursorRepository,
     SnapshotRepository,
 )
 from pythia.db.smartmoney import CandidateSignalRepo, TraderEntryRepo
@@ -184,35 +183,36 @@ def _evidence_port(session: Session, settings: Settings, base: EvidencePort) -> 
     )
 
 
-def _discovery_llm(session: Session, settings: Settings) -> LLMPort:
-    guard = BudgetGuard(
-        CostRepository(session),
-        run_cap=settings.cost_cap_per_run,
-        daily_cap=settings.cost_budget_daily,
-    )
-    return make_llm_port(settings, cost_sink=guard.record, budget_check=guard.check)
+def rotate_shortlist(
+    markets: Sequence[Market], *, after_id: str | None, size: int
+) -> tuple[list[Market], str | None]:
+    """The next ``size``-market slice in stable id order after ``after_id``, wrapping (PYT-165).
+
+    Returns the slice and the new cursor (the slice's last id). Advancing it each tick walks
+    estimation coverage through the whole open set instead of re-picking the same top markets. Pure
+    selection — never reads a score, threshold, or risk value; it chooses *which* markets the
+    pipeline judges, never *how* they are judged.
+    """
+    if not markets:
+        return [], after_id
+    ordered = sorted(markets, key=lambda market: market.id)
+    count = len(ordered)
+    start = 0
+    if after_id is not None:
+        start = next((i for i, market in enumerate(ordered) if market.id > after_id), 0)
+    chosen = [ordered[(start + offset) % count] for offset in range(min(size, count))]
+    return chosen, chosen[-1].id
 
 
-def _shortlist(
-    session: Session,
-    settings: Settings,
-    markets: list[Market],
-    discovery_llm: LLMPort | None = None,
-) -> list[Market]:
+def _shortlist(session: Session, settings: Settings, markets: list[Market]) -> list[Market]:
     size = settings.discovery_shortlist_size
-    if size is None or size <= 0 or not markets:
-        return markets
-    llm = discovery_llm if discovery_llm is not None else _discovery_llm(session, settings)
-    try:
-        shortlist = DiscoveryAgent(llm).shortlist(markets, size)
-    except BudgetExceeded:
-        _log.warning("discovery_budget_halt")
-        return markets[:size]
-    except LLMResponseError as exc:
-        _log.warning("discovery_failed", error=str(exc))
-        return markets[:size]
-    _log.info("discovery_shortlist", candidates=len(markets), shortlisted=len(shortlist))
-    return shortlist
+    if size is None or size <= 0 or len(markets) <= size:
+        return markets  # no throttle, or the whole open set already fits in one tick
+    cursor = ShortlistCursorRepository(session)
+    chosen, new_after = rotate_shortlist(markets, after_id=cursor.get(), size=size)
+    cursor.set(new_after)
+    _log.info("discovery_shortlist_rotated", open_markets=len(markets), shortlisted=len(chosen))
+    return chosen
 
 
 def run_open_markets(
@@ -221,12 +221,11 @@ def run_open_markets(
     *,
     publish_radar: Callable[[str], None] | None = None,
     llm_factory: LlmFactory | None = None,
-    discovery_llm: LLMPort | None = None,
     funnel_sink: Callable[[PipelineFunnel], None] | None = None,
 ) -> RunSummary:
     asof = datetime.now(UTC)
     open_markets = MarketRepository(session).list(status=MarketStatus.OPEN)
-    markets = _shortlist(session, settings, open_markets, discovery_llm)
+    markets = _shortlist(session, settings, open_markets)
     snapshots = SnapshotRepository(session)
     estimates = EstimateRepository(session)
     evidence = _evidence_port(session, settings, EvidenceStore(session, make_embedder(settings)))

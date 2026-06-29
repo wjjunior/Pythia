@@ -605,6 +605,17 @@ class TraderPosition(SQLModel, table=True):
     asof: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
+class ShortlistCursor(SQLModel, table=True):
+    __tablename__ = "shortlist_cursor"
+
+    name: str = Field(sa_column=Column(Text, primary_key=True))
+    last_market_id: uuid.UUID | None = Field(default=None, sa_column=Column(UUID(as_uuid=True)))
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+    )
+
+
 class PipelineRunFunnel(SQLModel, table=True):
     __tablename__ = "pipeline_run_funnel"
     __table_args__ = (Index("pipeline_run_funnel_ts", "ts"),)

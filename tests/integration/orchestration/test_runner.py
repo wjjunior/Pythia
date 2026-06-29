@@ -304,44 +304,20 @@ def test_run_open_markets_should_ignore_a_non_positive_discovery_size(session: S
     assert summary.markets == 3
 
 
-def test_run_open_markets_should_fall_back_when_discovery_budget_is_breached(
-    session: Session,
-) -> None:
-    _seed_open_markets(session, 3)
+def _estimated_market_ids(session: Session) -> set[str]:
+    return {str(mid) for mid in session.exec(select(models.Estimate.market_id)).all()}
+
+
+def test_shortlist_cursor_rotates_estimation_across_ticks(session: Session) -> None:
+    # 5 open markets, 2 estimated per tick: the cursor advances each tick so the *set* of estimated
+    # markets grows through the whole open set, not the same top-2 re-picked every run (PYT-165).
+    _seed_open_markets(session, 5)
     settings = _discovery_settings(2)
-    CostRepository(session).record(_cost(settings.cost_budget_daily + 1.0))
-    guard = BudgetGuard(
-        CostRepository(session),
-        run_cap=settings.cost_cap_per_run,
-        daily_cap=settings.cost_budget_daily,
-    )
-    discovery_llm = OpenRouterLLMPort(
-        _CountingTransport(), ModelRouter(), cost_sink=guard.record, budget_check=guard.check
-    )
 
-    summary = run_open_markets(session, settings, discovery_llm=discovery_llm)
+    run_open_markets(session, settings)
+    assert len(_estimated_market_ids(session)) == 2  # only 2 estimated on the first tick
 
-    assert summary.markets == 2
+    run_open_markets(session, settings)
+    run_open_markets(session, settings)
 
-
-class _MalformedDiscoveryTransport:
-    def complete(
-        self, *, model: str, messages: list[dict[str, str]], max_price: float | None
-    ) -> dict[str, Any]:
-        return {
-            "model": model,
-            "provider": "p",
-            "choices": [{"message": {"content": '{"shortlist": ["da75'}}],
-            "usage": {"prompt_tokens": 5, "completion_tokens": 5, "cost": 0.0},
-        }
-
-
-def test_run_open_markets_should_fall_back_when_discovery_json_is_malformed(
-    session: Session,
-) -> None:
-    _seed_open_markets(session, 3)
-    discovery_llm = OpenRouterLLMPort(_MalformedDiscoveryTransport(), ModelRouter())
-
-    summary = run_open_markets(session, _discovery_settings(2), discovery_llm=discovery_llm)
-
-    assert summary.markets == 2
+    assert len(_estimated_market_ids(session)) == 5  # three ticks rotate through all five markets

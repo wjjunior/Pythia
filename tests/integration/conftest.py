@@ -46,6 +46,7 @@ def session(migrated_engine: Engine) -> Iterator[Session]:
             text(
                 "TRUNCATE markets, market_snapshots, sources, audit_events, "
                 "recalibration_models, tracked_traders, trader_scorecards, trader_entries, "
-                "candidate_signals, roster_events, arb_opportunities, pipeline_run_funnel CASCADE"
+                "candidate_signals, roster_events, arb_opportunities, pipeline_run_funnel, "
+                "shortlist_cursor CASCADE"
             )
         )

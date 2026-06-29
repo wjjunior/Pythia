@@ -46,7 +46,11 @@ class Settings(BaseSettings):
     model_routing: str | None = None
     model_routing_strategy: RoutingStrategy = "static"
     max_price_per_call: float | None = None
-    discovery_shortlist_size: int | None = None
+    # Markets estimated per pipeline tick, rotated through the open set by a persistent cursor
+    # (PYT-165). At the measured ~$0.005/market this is ~$0.25/tick — well under COST_CAP_PER_RUN
+    # ($1) — and the daily kill switch remains the ceiling; covers ~1540 open markets in ~31 ticks
+    # vs ~192 at the old 8. None = estimate every open market (the budget guards still bound spend).
+    discovery_shortlist_size: int | None = 50
 
     # Venues
     polymarket_api_base: str = "https://gamma-api.polymarket.com"

@@ -598,6 +598,29 @@ class PipelineRunRepository:
         self._session.commit()
 
 
+class ShortlistCursorRepository:
+    """Persistent cursor over the open-market set so the discovery shortlist rotates (PYT-165)."""
+
+    _NAME = "discovery"
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get(self) -> str | None:
+        row = self._session.get(models.ShortlistCursor, self._NAME)
+        return str(row.last_market_id) if row is not None and row.last_market_id else None
+
+    def set(self, last_market_id: str | None) -> None:
+        value = uuid.UUID(last_market_id) if last_market_id is not None else None
+        row = self._session.get(models.ShortlistCursor, self._NAME)
+        if row is None:
+            self._session.add(models.ShortlistCursor(name=self._NAME, last_market_id=value))
+        else:
+            row.last_market_id = value
+            row.updated_at = datetime.now(UTC)
+        self._session.commit()
+
+
 class PipelineRunFunnelRepository:
     """Append-only per-tick stage funnel (PYT-164). Diagnostic — queryable, never a gate."""
 
