@@ -7,11 +7,12 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from pythia.agents import StubLLMPort
 from pythia.common import Market, MarketSnapshot, TrackedTrader, TraderState
 from pythia.config import Settings
+from pythia.db import models
 from pythia.db.repositories import (
     EstimateRepository,
     MarketRepository,
@@ -129,6 +130,43 @@ def test_pipeline_evaluator_runs_the_pipeline_and_persists_a_verdict(session: Se
     estimate = EstimateRepository(session).latest_for_market(market.id)
     assert estimate is not None  # the pipeline ran, point-in-time
     assert ScoreRepository(session).get_by_estimate(estimate.id) is not None  # verdict persisted
+
+
+def test_pipeline_evaluator_is_idempotent_on_an_already_estimated_snapshot(
+    session: Session,
+) -> None:
+    # PYT-171: re-evaluating a market already estimated at its snapshot (by the pipeline tick or a
+    # prior candidate) must NOT re-run — the deterministic estimate id would collide on
+    # estimates_pkey and crash the detection tick. The candidate stays evaluated, idempotently.
+    market = MarketRepository(session).upsert(
+        Market(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "dupmkt")),
+            external_id="0xdupmkt",
+            question="Will it resolve YES?",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, "dupmkt-snap")),
+            market_id=market.id,
+            ts=_TS,
+            yes_price=0.5,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
+        )
+    )
+    evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
+
+    assert evaluator.evaluate("0xdupmkt", _TS, ["t1"]) == market.id  # first run estimates + scores
+    assert evaluator.evaluate("0xdupmkt", _TS, ["t2"]) == market.id  # second run must not raise
+
+    estimates = session.exec(
+        select(models.Estimate).where(models.Estimate.market_id == uuid.UUID(market.id))
+    ).all()
+    assert len(estimates) == 1  # the re-run was skipped, not duplicated
 
 
 def test_pipeline_evaluator_skips_an_untracked_market(session: Session) -> None:

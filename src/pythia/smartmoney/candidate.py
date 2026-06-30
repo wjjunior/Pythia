@@ -24,7 +24,7 @@ from pythia.common import (
 )
 from pythia.common.ids import deterministic_id
 from pythia.common.logging import get_logger
-from pythia.db.repositories import MarketRepository, SnapshotRepository
+from pythia.db.repositories import EstimateRepository, MarketRepository, SnapshotRepository
 from pythia.db.smartmoney import TraderEntryRepo
 from pythia.ingestion.falcon import FalconPort
 from pythia.ingestion.market_crawler import (
@@ -138,6 +138,7 @@ class PipelineCandidateEvaluator:
     ) -> None:
         self._markets = MarketRepository(session)
         self._snapshots = SnapshotRepository(session)
+        self._estimates = EstimateRepository(session)
         self._pipeline = pipeline
         self._fetcher = market_fetcher  # None ⇒ local-only resolve (offline / no live venues)
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -189,6 +190,11 @@ class PipelineCandidateEvaluator:
         if snapshot is None:
             _log.info("candidate_skipped_no_snapshot", market_id=market_id)
             return False
+        if self._estimates.exists_for_snapshot(snapshot.id):
+            # Already estimated at this snapshot — by the pipeline tick or a prior candidate. The
+            # estimate id is deterministic on the snapshot (PYT-73), so re-running would collide on
+            # estimates_pkey and crash the detection tick. Stays evaluated, idempotently.
+            return True
         market = self._markets.get(market_id)
         if market is None:
             return False
