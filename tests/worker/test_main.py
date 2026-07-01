@@ -45,6 +45,8 @@ def test_should_start_the_worker_when_use_live_venues_is_true(
     monkeypatch.setattr(worker_main, "_configure", lambda settings: None)
     scheduler = _FakeScheduler()
     monkeypatch.setattr(worker_main, "build_scheduler", lambda *a, **k: scheduler)
+    # Startup reconciliation opens a real session + venue call; mock the boundary (tested apart).
+    monkeypatch.setattr(worker_main, "reconcile_on_startup", lambda *a, **k: None)
 
     worker_main.main()
 
