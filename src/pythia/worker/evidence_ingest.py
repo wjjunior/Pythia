@@ -5,11 +5,11 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
-from pythia.common import EmbeddingPort, MarketStatus, Source
+from pythia.common import EmbeddingPort, Market, MarketStatus, Source
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db import models
-from pythia.db.repositories import MarketRepository, SourceRepository
+from pythia.db.repositories import MarketRepository, SnapshotRepository, SourceRepository
 from pythia.ingestion.evidence import (
     EvidenceClient,
     EvidenceRateLimitedError,
@@ -18,6 +18,7 @@ from pythia.ingestion.evidence import (
 )
 from pythia.ingestion.market_crawler import LiveVenueAccessError
 from pythia.rag import EvidenceStore
+from pythia.scoring import price_band_priority
 
 _log = get_logger(__name__)
 
@@ -77,6 +78,39 @@ def _markets_with_recent_evidence(session: Session, cutoff: datetime) -> set[str
     return {str(market_id) for market_id in rows}
 
 
+def _target_key(
+    market: Market, prices: dict[str, float], now: datetime, lo: float, hi: float
+) -> tuple[int, float]:
+    # Match the estimation shortlist's priority (PYT-174): midband first, then soonest resolution,
+    # so the scarce free-tier budget lands on the markets the pipeline will actually score.
+    band = price_band_priority(prices.get(market.id, 0.5), lo=lo, hi=hi)
+    deadline = market.resolves_at or market.close_time
+    resolves_in = (deadline - now).total_seconds() if deadline is not None else float("inf")
+    return (band, resolves_in)
+
+
+def _select_targets(
+    session: Session,
+    *,
+    now: datetime,
+    recent: set[str],
+    max_markets: int | None,
+    midband: tuple[float, float] | None,
+) -> list[Market]:
+    # Exclude markets that lack fresh evidence AND are still open for trading — a closed market can
+    # never be entered, so spending evidence budget on it is wasted (PYT-174).
+    candidates = [
+        market
+        for market in MarketRepository(session).list(status=MarketStatus.OPEN)
+        if market.id not in recent and (market.close_time is None or market.close_time >= now)
+    ]
+    if midband is not None:
+        lo, hi = midband
+        prices = SnapshotRepository(session).latest_yes_prices([m.id for m in candidates])
+        candidates.sort(key=lambda market: _target_key(market, prices, now, lo, hi))
+    return candidates[:max_markets] if max_markets is not None else candidates
+
+
 def ingest_tick(
     session: Session,
     embedder: EmbeddingPort,
@@ -85,10 +119,12 @@ def ingest_tick(
     ts: datetime | None = None,
     max_markets: int | None = None,
     refresh_hours: int = 24,
+    midband: tuple[float, float] | None = None,
 ) -> int:
-    """Fetch evidence for open markets that lack fresh evidence and persist via EvidenceStore.
+    """Fetch evidence for the markets the pipeline will score and persist via EvidenceStore.
 
-    Free-tier aware (PYT-173): skips markets that already have evidence within ``refresh_hours``,
+    Free-tier aware (PYT-173/174): skips markets with evidence within ``refresh_hours`` and closed
+    markets, orders by the estimation shortlist's priority (``midband`` first, soonest resolution),
     bounds the burst to ``max_markets`` per tick, and assigns each market ONE source round-robin
     (not every source times every market). A 429 stops that source for the tick. Returns
     the count persisted. Idempotent per (market, source, ts). A LiveVenueAccessError propagates.
@@ -97,11 +133,9 @@ def ingest_tick(
         return 0
     tick_ts = ts or datetime.now(UTC)
     recent = _markets_with_recent_evidence(session, tick_ts - timedelta(hours=refresh_hours))
-    targets = [
-        m for m in MarketRepository(session).list(status=MarketStatus.OPEN) if m.id not in recent
-    ]
-    if max_markets is not None:
-        targets = targets[:max_markets]
+    targets = _select_targets(
+        session, now=tick_ts, recent=recent, max_markets=max_markets, midband=midband
+    )
 
     store = EvidenceStore(session, embedder)
     sources = SourceRepository(session)
