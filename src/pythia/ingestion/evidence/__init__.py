@@ -1,4 +1,4 @@
-from pythia.ingestion.evidence import mediastack, newsapi, newsdata
+from pythia.ingestion.evidence import mediastack, newsapi, newsdata, weather
 from pythia.ingestion.evidence.base import (
     EvidenceArticle,
     EvidenceClient,
@@ -20,4 +20,5 @@ __all__ = [
     "newsapi",
     "newsdata",
     "redact_credentials",
+    "weather",
 ]

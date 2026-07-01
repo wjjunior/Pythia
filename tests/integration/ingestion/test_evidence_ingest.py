@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from pythia.common import Market, MarketSnapshot
 from pythia.config import Settings
@@ -98,17 +98,62 @@ def test_source_is_registered_on_ingest(session: Session) -> None:
     assert source.reliability == pytest.approx(0.6)
 
 
-def _seed_market(session: Session, key: str, *, close_time: datetime | None = None) -> Market:
+def _seed_market(
+    session: Session, key: str, *, close_time: datetime | None = None, category: str = "politics"
+) -> Market:
     return MarketRepository(session).upsert(
         Market(
             id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"ev-{key}")),
             external_id=f"ev-{key}",
             question=f"Will event {key} resolve YES?",
-            category="politics",
+            category=category,
             resolution_rule="r",
             close_time=close_time,
         )
     )
+
+
+class _CategoryTransport:
+    """A domain transport that serves only its declared categories (PYT-178 routing)."""
+
+    reliability = 0.9
+
+    def __init__(self, name: str, categories: frozenset[str]) -> None:
+        self.name = name
+        self.categories = categories
+
+    def fetch(self, query: str) -> list[dict[str, Any]]:
+        return [{"content": f"{self.name}:{query}"}]
+
+    def to_article(self, raw: dict[str, Any]) -> EvidenceArticle | None:
+        return EvidenceArticle(content=raw["content"], url=None, published_at=None)
+
+
+def test_ingest_tick_routes_by_category(session: Session) -> None:
+    weather = _seed_market(session, "w", category="Weather")
+    politics = _seed_market(session, "p", category="politics")
+    transports: list[EvidenceTransport] = [
+        _CategoryTransport("open-meteo", frozenset({"weather"})),
+        FixtureEvidenceTransport(
+            FIXTURES / "newsapi_results.json",
+            to_article=newsapi.to_article,
+            extract=lambda data: data["articles"],
+            source_name="newsapi",  # general (no categories) → serves everything else
+            source_reliability=0.6,
+        ),
+    ]
+    ingest_tick(session, StubEmbeddingPort(), transports, ts=T1)
+
+    def _source_name(market_id: str) -> str | None:
+        row = session.exec(
+            select(models.Source.name)
+            .join(models.Evidence, col(models.Evidence.source_id) == col(models.Source.id))
+            .where(models.Evidence.market_id == uuid.UUID(market_id))
+        ).first()
+        return row
+
+    assert _source_name(weather.id) == "open-meteo"  # weather market → the domain source
+    assert _source_name(politics.id) == "newsapi"  # everything else → the news source
 
 
 def _seed_snapshot(session: Session, market_id: str, *, yes_price: float, ts: datetime) -> None:
