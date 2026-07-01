@@ -9,8 +9,14 @@ import pytest
 from sqlmodel import Session, select
 
 from pythia.common import Market, MarketSnapshot
+from pythia.config import Settings
 from pythia.db import models
-from pythia.db.repositories import MarketRepository, SnapshotRepository, SourceRepository
+from pythia.db.repositories import (
+    MarketRepository,
+    ShortlistCursorRepository,
+    SnapshotRepository,
+    SourceRepository,
+)
 from pythia.ingestion.evidence import (
     EvidenceArticle,
     EvidenceRateLimitedError,
@@ -131,15 +137,46 @@ def test_ingest_tick_excludes_closed_markets(session: Session) -> None:
     assert _markets_with_evidence(session) == {open_market.id}  # the closed market is skipped
 
 
-def test_ingest_tick_prioritizes_midband_over_tail(session: Session) -> None:
-    midband = _seed_market(session, "mid")
-    tail = _seed_market(session, "tail")
-    _seed_snapshot(session, midband.id, yes_price=0.5, ts=T1)  # inside 0.1..0.85 → estimated
-    _seed_snapshot(session, tail.id, yes_price=0.02, ts=T1)  # extreme longshot → deprioritized
-    ingest_tick(
-        session, StubEmbeddingPort(), [_transport()], ts=T1, max_markets=1, midband=(0.1, 0.85)
+def _shortlist_settings(size: int) -> Settings:
+    return Settings(
+        _env_file=None, database_url="postgresql+psycopg://x/y", discovery_shortlist_size=size
     )
-    assert _markets_with_evidence(session) == {midband.id}  # scarce budget lands on the candidate
+
+
+def test_ingest_tick_targets_the_peeked_shortlist_window(session: Session) -> None:
+    midband = _seed_market(session, "mid")
+    _seed_market(session, "tail")
+    _seed_snapshot(
+        session, midband.id, yes_price=0.5, ts=T1
+    )  # inside 0.1..0.85 → shortlisted first
+    _seed_snapshot(session, str(uuid.uuid5(uuid.NAMESPACE_URL, "ev-tail")), yes_price=0.02, ts=T1)
+    # Shortlist size 1 ⇒ the window is the single midband market the pipeline would estimate next.
+    ingest_tick(
+        session,
+        StubEmbeddingPort(),
+        [_transport()],
+        ts=T1,
+        max_markets=1,
+        settings=_shortlist_settings(1),
+    )
+    assert _markets_with_evidence(session) == {midband.id}  # the peeked window, not the tail
+
+
+def test_ingest_tick_does_not_advance_the_shortlist_cursor(session: Session) -> None:
+    for key in ("a", "b", "c"):
+        market = _seed_market(session, key)
+        _seed_snapshot(session, market.id, yes_price=0.5, ts=T1)
+    ingest_tick(
+        session,
+        StubEmbeddingPort(),
+        [_transport()],
+        ts=T1,
+        max_markets=1,
+        settings=_shortlist_settings(1),
+    )
+    assert (
+        ShortlistCursorRepository(session).get() is None
+    )  # peek is read-only; only the pipeline advances
 
 
 def test_ingest_tick_skips_markets_with_recent_evidence(session: Session) -> None:

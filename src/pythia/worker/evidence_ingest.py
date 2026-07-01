@@ -10,7 +10,7 @@ from pythia.common import EmbeddingPort, Market, MarketStatus, Source
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db import models
-from pythia.db.repositories import MarketRepository, SnapshotRepository, SourceRepository
+from pythia.db.repositories import MarketRepository, SourceRepository
 from pythia.ingestion.evidence import (
     EvidenceClient,
     EvidenceRateLimitedError,
@@ -18,8 +18,8 @@ from pythia.ingestion.evidence import (
     redact_credentials,
 )
 from pythia.ingestion.market_crawler import LiveVenueAccessError
+from pythia.orchestration.runner import select_shortlist
 from pythia.rag import EvidenceStore
-from pythia.scoring import price_band_priority
 
 _log = get_logger(__name__)
 
@@ -86,38 +86,27 @@ def _markets_with_recent_evidence(
     return {str(market_id) for market_id in rows}
 
 
-def _target_key(
-    market: Market, prices: dict[str, float], now: datetime, lo: float, hi: float
-) -> tuple[int, float]:
-    # Match the estimation shortlist's priority (PYT-174): midband first, then soonest resolution,
-    # so the scarce free-tier budget lands on the markets the pipeline will actually score.
-    band = price_band_priority(prices.get(market.id, 0.5), lo=lo, hi=hi)
-    deadline = market.resolves_at or market.close_time
-    resolves_in = (deadline - now).total_seconds() if deadline is not None else float("inf")
-    return (band, resolves_in)
-
-
 def _select_targets(
     session: Session,
     *,
     now: datetime,
     cutoff: datetime,
     max_markets: int | None,
-    midband: tuple[float, float] | None,
+    settings: Settings | None,
 ) -> list[Market]:
-    # Only markets still open for trading — a closed market can never be entered, so spending
-    # evidence budget on it is wasted (PYT-174). Fetch-once: drop those with evidence since cutoff.
-    open_markets = [
-        market
-        for market in MarketRepository(session).list(status=MarketStatus.OPEN)
-        if market.close_time is None or market.close_time >= now
-    ]
-    recent = _markets_with_recent_evidence(session, [m.id for m in open_markets], cutoff)
-    candidates = [market for market in open_markets if market.id not in recent]
-    if midband is not None:
-        lo, hi = midband
-        prices = SnapshotRepository(session).latest_yes_prices([m.id for m in candidates])
-        candidates.sort(key=lambda market: _target_key(market, prices, now, lo, hi))
+    open_markets = MarketRepository(session).list(status=MarketStatus.OPEN)
+    # Peek the SAME shortlist window the pipeline will estimate next (PYT-176) — read-only, so the
+    # rotation cursor is untouched. Without settings, fall back to the whole open set.
+    window = (
+        select_shortlist(session, settings, open_markets, advance=False)
+        if settings is not None
+        else open_markets
+    )
+    # Drop closed legs (a closed market can't be entered → wasted budget, PYT-174) and, fetch-once,
+    # those with evidence since cutoff.
+    open_window = [m for m in window if m.close_time is None or m.close_time >= now]
+    recent = _markets_with_recent_evidence(session, [m.id for m in open_window], cutoff)
+    candidates = [market for market in open_window if market.id not in recent]
     return candidates[:max_markets] if max_markets is not None else candidates
 
 
@@ -129,15 +118,15 @@ def ingest_tick(
     ts: datetime | None = None,
     max_markets: int | None = None,
     refresh_hours: int = 24,
-    midband: tuple[float, float] | None = None,
+    settings: Settings | None = None,
 ) -> int:
     """Fetch evidence for the markets the pipeline will score and persist via EvidenceStore.
 
-    Free-tier aware (PYT-173/174): skips markets with evidence within ``refresh_hours`` and closed
-    markets, orders by the estimation shortlist's priority (``midband`` first, soonest resolution),
-    bounds the burst to ``max_markets`` per tick, and assigns each market ONE source round-robin
-    (not every source times every market). A 429 stops that source for the tick. Returns
-    the count persisted. Idempotent per (market, source, ts). A LiveVenueAccessError propagates.
+    Free-tier aware (PYT-173/174/176): targets the peeked discovery-shortlist window (the exact
+    markets the pipeline estimates next), skips closed markets and those with evidence within
+    ``refresh_hours``, bounds the burst to ``max_markets`` per tick, and assigns each market ONE
+    source round-robin (not every source times every market). A 429 stops that source for the tick.
+    Returns the count persisted; idempotent per (market, source, ts). Venue errors propagate.
     """
     if not transports:
         return 0
@@ -147,7 +136,7 @@ def ingest_tick(
         now=tick_ts,
         cutoff=tick_ts - timedelta(hours=refresh_hours),
         max_markets=max_markets,
-        midband=midband,
+        settings=settings,
     )
 
     store = EvidenceStore(session, embedder)
