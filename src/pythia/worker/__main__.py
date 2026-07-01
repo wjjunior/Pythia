@@ -11,6 +11,7 @@ from pythia.ingestion.polymarket_positions import (
 )
 from pythia.rag.embeddings import make_embedder
 from pythia.worker.evidence_ingest import build_evidence_transports
+from pythia.worker.reconcile import reconcile_on_startup
 from pythia.worker.scheduler import build_scheduler, make_persist_sink
 from pythia.worker.venue_ingest import build_venue_clients
 
@@ -86,6 +87,7 @@ def main() -> None:
         venue_count=len(venue_clients),
         evidence_source_count=len(evidence_transports),
     )
+    reconcile_on_startup(session_scope, settings, crawler)  # settle current positions first (§5)
     scheduler.start()
 
 
