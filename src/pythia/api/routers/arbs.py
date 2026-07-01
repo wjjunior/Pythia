@@ -9,13 +9,14 @@ from pythia.api.deps import BroadcasterDep, SessionDep, SettingsDep
 from pythia.api.events import SseChannel
 from pythia.api.schemas import ArbApproveRequest, ArbApproveResult, ArbItem, ArbLegItem
 from pythia.config import ExecutionModeError
-from pythia.db.repositories import ArbRepository
+from pythia.db.repositories import ArbRepository, MarketRepository
 from pythia.paper import PaperLedger, PaperLedgerError
 from pythia.services.arbs import (
     ArbAlreadyApprovedError,
     ArbApprovalService,
     UnknownArbError,
     approved_arb_ids,
+    drop_stale_arbs,
 )
 
 router = APIRouter(tags=["arbs"])
@@ -24,7 +25,10 @@ router = APIRouter(tags=["arbs"])
 @router.get("/api/arbs")
 def arbs(session: SessionDep) -> list[ArbItem]:
     ranked = [arb for arb in ArbRepository(session).list_ranked() if arb.id is not None]
-    approved = approved_arb_ids(session, ranked)  # one batch query for the whole list
+    leg_ids = {leg.market_id for arb in ranked for leg in arb.legs}
+    stale = MarketRepository(session).resolved_or_closed_ids(list(leg_ids), now=datetime.now(UTC))
+    visible = drop_stale_arbs(ranked, stale)  # hide baskets with a resolved/closed leg (PYT-175)
+    approved = approved_arb_ids(session, visible)  # one batch query for the whole list
     return [
         ArbItem(
             id=arb.id,
@@ -43,7 +47,7 @@ def arbs(session: SessionDep) -> list[ArbItem]:
             detected_at=arb.detected_at,
             approved=arb.id in approved,
         )
-        for arb in ranked
+        for arb in visible
         if arb.id is not None  # persisted rows always carry an id; never fabricate one (narrows id)
     ]
 

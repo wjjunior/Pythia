@@ -30,6 +30,17 @@ class ArbAlreadyApprovedError(RuntimeError):
     """This arb's basket is already open — its deterministic leg ids would collide."""
 
 
+def drop_stale_arbs(
+    arbs: Sequence[ArbOpportunity], stale_market_ids: set[str]
+) -> list[ArbOpportunity]:
+    """Arbs with no stale leg — none references a resolved/closed market (PYT-175).
+
+    An arb is only tradeable if you can enter all legs; a single resolved/closed leg makes the whole
+    basket stale, so it is dropped from the panel (query-time, non-destructive).
+    """
+    return [arb for arb in arbs if not any(leg.market_id in stale_market_ids for leg in arb.legs)]
+
+
 def arb_leg_trade_id(arb_id: str, market_id: str, side: Side) -> str:
     """The deterministic paper-trade id for an arb leg — the approve path and the approved-state
     check share it so they cannot diverge."""

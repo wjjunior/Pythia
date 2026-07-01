@@ -4,6 +4,7 @@ markets upsert idempotently by external_id (DO UPDATE on metadata); market_snaps
 append-only (no update path); sources upsert by name. Contract ids are used as primary keys.
 """
 
+import contextlib
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -170,6 +171,33 @@ class MarketRepository:
     def get(self, market_id: str) -> Market | None:
         row = self._session.get(models.Market, uuid.UUID(market_id))
         return _from_db_market(row) if row is not None else None
+
+    def resolved_or_closed_ids(self, market_ids: Sequence[str], *, now: datetime) -> set[str]:
+        """The subset of market_ids no longer actionable — resolved or past trading close (PYT-175).
+
+        An id that doesn't parse as a UUID can't match a real market, so it's treated as not-stale
+        rather than crashing the panel (the filter only ever hides what it can positively verify).
+        """
+        parsed: list[uuid.UUID] = []
+        for market_id in market_ids:
+            with contextlib.suppress(ValueError):
+                parsed.append(uuid.UUID(market_id))
+        if not parsed:
+            return set()
+        rows = self._session.exec(
+            select(models.Market.id)
+            .where(col(models.Market.id).in_(parsed))
+            .where(
+                or_(
+                    col(models.Market.resolved).is_(True),
+                    and_(
+                        col(models.Market.close_time).is_not(None),
+                        col(models.Market.close_time) < now,
+                    ),
+                )
+            )
+        ).all()
+        return {str(market_id) for market_id in rows}
 
     def list_by_event_slug(self, event_slug: str) -> Sequence[Market]:
         rows = self._session.exec(

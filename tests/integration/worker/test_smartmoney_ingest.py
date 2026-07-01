@@ -5,7 +5,7 @@ Proves AC-S2 (detection → pipeline verdict), AC-S4 (discover → score → ros
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,9 @@ import pytest
 from sqlmodel import Session
 
 from pythia.common import (
+    CandidateSignal,
     CandidateSignalStatus,
+    CandidateSource,
     Market,
     MarketSnapshot,
     TrackedTrader,
@@ -94,7 +96,7 @@ def test_detection_tick_turns_an_entry_into_a_paper_verdict(session: Session) ->
 
     run_detection(session, _settings(), _falcon(), now=_NOW)
 
-    signals = CandidateSignalRepo(session).recent(10)
+    signals = CandidateSignalRepo(session).recent(10, now=_NOW)
     assert len(signals) == 1  # two fixture trades on one market → one merged candidate (AC-S2)
     assert signals[0].status is CandidateSignalStatus.EVALUATED
     assert EstimateRepository(session).latest_for_market(market_id) is not None  # verdict persisted
@@ -110,13 +112,54 @@ def test_roster_review_discovers_scores_and_audits(session: Session) -> None:
     assert len(events) >= 3  # each discovery is audited with a reason
 
 
+def _enqueue_candidate(
+    session: Session, key: str, *, resolved: bool = False, close_time: datetime | None = None
+) -> str:
+    market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"cand-{key}"))
+    MarketRepository(session).upsert(
+        Market(
+            id=market_id,
+            external_id=f"cand-{key}",
+            question="q",
+            category="politics",
+            resolution_rule="r",
+            resolved=resolved,
+            close_time=close_time,
+        )
+    )
+    CandidateSignalRepo(session).enqueue(
+        CandidateSignal(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"sig-{key}")),
+            market_id=market_id,
+            asof=_NOW,
+            trader_ids=[str(uuid.uuid5(uuid.NAMESPACE_URL, "t"))],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.EVALUATED,
+            created_at=_NOW,
+        )
+    )
+    return market_id
+
+
+def test_candidate_feed_hides_resolved_and_closed_markets(session: Session) -> None:
+    live = _enqueue_candidate(session, "live")
+    _enqueue_candidate(session, "resolved", resolved=True)
+    _enqueue_candidate(session, "closed", close_time=_NOW - timedelta(hours=1))
+
+    feed = CandidateSignalRepo(session).recent(10, now=_NOW)
+
+    assert [c.market_id for c in feed] == [live]  # resolved + closed are hidden (PYT-175)
+
+
 def test_detection_is_fail_soft_when_falcon_is_down(session: Session) -> None:
     _active_trader(session)
     _seed_traded_market(session)
 
     run_detection(session, _settings(), _dead_falcon(), now=_NOW)  # must not raise
 
-    assert CandidateSignalRepo(session).recent(10) == []  # no candidates; v1 path untouched
+    assert (
+        CandidateSignalRepo(session).recent(10, now=_NOW) == []
+    )  # no candidates; v1 path untouched
 
 
 def test_roster_review_is_fail_soft_when_falcon_is_down(session: Session) -> None:
