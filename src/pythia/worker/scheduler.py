@@ -57,7 +57,7 @@ def evidence_tick(
     *,
     max_markets: int | None = None,
     refresh_hours: int = 24,
-    midband: tuple[float, float] | None = None,
+    settings: Settings | None = None,
 ) -> None:
     with session_factory() as session:
         evidence_ingest_tick(
@@ -66,7 +66,7 @@ def evidence_tick(
             transports,
             max_markets=max_markets,
             refresh_hours=refresh_hours,
-            midband=midband,
+            settings=settings,
         )
 
 
@@ -162,11 +162,6 @@ def build_scheduler(
     if session_factory is not None and embedder is not None and evidence_transports:
         evidence_cap = settings.evidence_max_markets_per_tick if settings is not None else None
         evidence_refresh = settings.evidence_refresh_hours if settings is not None else 24
-        evidence_midband = (
-            (settings.eval_cohort_price_min, settings.eval_cohort_price_max)
-            if settings is not None
-            else None
-        )
         scheduler.add_job(
             lambda: evidence_tick(
                 session_factory,
@@ -174,7 +169,7 @@ def build_scheduler(
                 evidence_transports,
                 max_markets=evidence_cap,
                 refresh_hours=evidence_refresh,
-                midband=evidence_midband,
+                settings=settings,
             ),
             "interval",
             seconds=interval_seconds,

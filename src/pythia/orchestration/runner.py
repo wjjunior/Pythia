@@ -216,7 +216,15 @@ def rotate_shortlist(
     return chosen, chosen[-1].id
 
 
-def _shortlist(session: Session, settings: Settings, markets: list[Market]) -> list[Market]:
+def select_shortlist(
+    session: Session, settings: Settings, markets: list[Market], *, advance: bool = True
+) -> list[Market]:
+    """The next shortlist window in (band, id) order after the persisted cursor (PYT-165/167).
+
+    ``advance=True`` moves the cursor — the pipeline walks estimation coverage forward each run.
+    ``advance=False`` peeks it read-only, so evidence-ingest can target the SAME markets the
+    pipeline will estimate next without disturbing the rotation (PYT-176).
+    """
     size = settings.discovery_shortlist_size
     if size is None or size <= 0 or len(markets) <= size:
         return markets  # no throttle, or the whole open set already fits in one tick
@@ -233,8 +241,9 @@ def _shortlist(session: Session, settings: Settings, markets: list[Market]) -> l
     chosen, new_after = rotate_shortlist(
         markets, after_id=cursor.get(), size=size, key=_band_then_id
     )
-    cursor.set(new_after)
-    _log.info("discovery_shortlist_rotated", open_markets=len(markets), shortlisted=len(chosen))
+    if advance:
+        cursor.set(new_after)
+        _log.info("discovery_shortlist_rotated", open_markets=len(markets), shortlisted=len(chosen))
     return chosen
 
 
@@ -248,7 +257,7 @@ def run_open_markets(
 ) -> RunSummary:
     asof = datetime.now(UTC)
     open_markets = MarketRepository(session).list(status=MarketStatus.OPEN)
-    markets = _shortlist(session, settings, open_markets)
+    markets = select_shortlist(session, settings, open_markets)
     snapshots = SnapshotRepository(session)
     estimates = EstimateRepository(session)
     evidence = _evidence_port(session, settings, EvidenceStore(session, make_embedder(settings)))
