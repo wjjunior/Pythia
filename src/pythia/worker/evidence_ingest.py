@@ -66,8 +66,30 @@ def _make_transport(name: str, settings: Settings) -> EvidenceTransport | None:
         return MediastackTransport(
             settings.mediastack_key.get_secret_value(), use_live=settings.use_live_venues
         )
+    if name == "open-meteo":
+        return _make_weather_transport(settings)  # no key; needs no config to run offline fixtures
     _log.warning("unknown_evidence_source_skipped", source=name)
     return None
+
+
+def _make_weather_transport(settings: Settings) -> EvidenceTransport:
+    from pythia.ingestion.evidence.weather import (
+        CompositeExtractor,
+        LLMWeatherExtractor,
+        RegexWeatherExtractor,
+        WeatherQueryExtractor,
+        WeatherTransport,
+    )
+
+    extractors: list[WeatherQueryExtractor] = [RegexWeatherExtractor()]
+    if settings.openrouter_api_key:  # cheap-LLM fallback only when a key is configured
+        from pythia.agents.llm_port import HttpxChatTransport
+
+        chat = HttpxChatTransport(
+            settings.openrouter_api_key.get_secret_value(), settings.openrouter_base_url
+        )
+        extractors.append(LLMWeatherExtractor(chat, settings.weather_extract_model))
+    return WeatherTransport(CompositeExtractor(extractors), use_live=settings.use_live_venues)
 
 
 def _markets_with_recent_evidence(
@@ -153,6 +175,9 @@ def ingest_tick(
                     reliability=transport.reliability,
                 )
             ),
+            getattr(
+                transport, "categories", None
+            ),  # domain source ⇒ its categories; None ⇒ general
         )
         for transport in transports
     ]
@@ -161,9 +186,9 @@ def ingest_tick(
     total = 0
     rotation = 0
     for market in targets:
-        chosen = _next_source(clients, rate_limited, rotation)
+        chosen = _next_source(clients, rate_limited, rotation, market.category)
         if chosen is None:
-            break  # every source is rate-limited this tick — stop rather than keep failing
+            continue  # this market's eligible sources are all rate-limited — others may still run
         rotation, name, client, source = chosen
         try:
             articles = client.articles(market.question)
@@ -200,12 +225,20 @@ def ingest_tick(
     return total
 
 
+_Client = tuple[str, EvidenceClient, Source, "frozenset[str] | None"]
+
+
 def _next_source(
-    clients: list[tuple[str, EvidenceClient, Source]], rate_limited: set[str], rotation: int
+    clients: list[_Client], rate_limited: set[str], rotation: int, category: str
 ) -> tuple[int, str, EvidenceClient, Source] | None:
-    """Round-robin pick of the next non-rate-limited source; None if all are rate-limited."""
-    for _ in range(len(clients)):
-        name, client, source = clients[rotation % len(clients)]
+    """Route by category (PYT-178): a domain source serves only its categories, a general source
+    (categories None) serves the rest. Round-robin the next non-rate-limited eligible source."""
+    specific = [c for c in clients if c[3] is not None and category.lower() in c[3]]
+    eligible = specific if specific else [c for c in clients if c[3] is None]
+    if not eligible:
+        return None
+    for _ in range(len(eligible)):
+        name, client, source, _categories = eligible[rotation % len(eligible)]
         rotation += 1
         if name not in rate_limited:
             return rotation, name, client, source
