@@ -159,10 +159,10 @@ def test_ingest_tick_refetches_once_evidence_is_stale(session: Session) -> None:
     # 25h later the evidence is stale → the market is a target again.
     count = ingest_tick(session, embedder, [_transport()], ts=T1 + timedelta(hours=25))
     assert count >= 1
-    later = EvidenceStore(session, embedder).retrieve(
-        market.id, asof=T1 + timedelta(hours=25), k=10
-    )
-    assert len(later) >= 2  # both the original and the refreshed evidence are retained (immutable)
+    observed = session.exec(
+        select(models.Evidence.observed_at).where(models.Evidence.market_id == uuid.UUID(market.id))
+    ).all()
+    assert {T1, T1 + timedelta(hours=25)} <= set(observed)  # both ingest ticks persisted, immutably
 
 
 def test_ingest_tick_respects_the_per_tick_cap(session: Session) -> None:

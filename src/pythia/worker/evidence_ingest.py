@@ -1,5 +1,6 @@
 """Evidence-ingest tick: fetch articles for open markets and write to pgvector (§2.1, §4.5)."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
@@ -69,9 +70,16 @@ def _make_transport(name: str, settings: Settings) -> EvidenceTransport | None:
     return None
 
 
-def _markets_with_recent_evidence(session: Session, cutoff: datetime) -> set[str]:
+def _markets_with_recent_evidence(
+    session: Session, market_ids: list[str], cutoff: datetime
+) -> set[str]:
+    # Scope by market_id so the composite (market_id, observed_at) index is used — an observed_at
+    # filter alone can't use the leading column and would scan the growing evidence table.
+    if not market_ids:
+        return set()
     rows = session.exec(
         select(models.Evidence.market_id)
+        .where(col(models.Evidence.market_id).in_([uuid.UUID(m) for m in market_ids]))
         .where(col(models.Evidence.observed_at) >= cutoff)
         .distinct()
     ).all()
@@ -93,17 +101,19 @@ def _select_targets(
     session: Session,
     *,
     now: datetime,
-    recent: set[str],
+    cutoff: datetime,
     max_markets: int | None,
     midband: tuple[float, float] | None,
 ) -> list[Market]:
-    # Exclude markets that lack fresh evidence AND are still open for trading — a closed market can
-    # never be entered, so spending evidence budget on it is wasted (PYT-174).
-    candidates = [
+    # Only markets still open for trading — a closed market can never be entered, so spending
+    # evidence budget on it is wasted (PYT-174). Fetch-once: drop those with evidence since cutoff.
+    open_markets = [
         market
         for market in MarketRepository(session).list(status=MarketStatus.OPEN)
-        if market.id not in recent and (market.close_time is None or market.close_time >= now)
+        if market.close_time is None or market.close_time >= now
     ]
+    recent = _markets_with_recent_evidence(session, [m.id for m in open_markets], cutoff)
+    candidates = [market for market in open_markets if market.id not in recent]
     if midband is not None:
         lo, hi = midband
         prices = SnapshotRepository(session).latest_yes_prices([m.id for m in candidates])
@@ -132,9 +142,12 @@ def ingest_tick(
     if not transports:
         return 0
     tick_ts = ts or datetime.now(UTC)
-    recent = _markets_with_recent_evidence(session, tick_ts - timedelta(hours=refresh_hours))
     targets = _select_targets(
-        session, now=tick_ts, recent=recent, max_markets=max_markets, midband=midband
+        session,
+        now=tick_ts,
+        cutoff=tick_ts - timedelta(hours=refresh_hours),
+        max_markets=max_markets,
+        midband=midband,
     )
 
     store = EvidenceStore(session, embedder)
