@@ -54,9 +54,14 @@ def evidence_tick(
     session_factory: SessionFactory,
     embedder: EmbeddingPort,
     transports: list[EvidenceTransport],
+    *,
+    max_markets: int | None = None,
+    refresh_hours: int = 24,
 ) -> None:
     with session_factory() as session:
-        evidence_ingest_tick(session, embedder, transports)
+        evidence_ingest_tick(
+            session, embedder, transports, max_markets=max_markets, refresh_hours=refresh_hours
+        )
 
 
 def pipeline_tick(session_factory: SessionFactory, settings: Settings) -> None:
@@ -149,8 +154,16 @@ def build_scheduler(
             next_run_time=now,
         )
     if session_factory is not None and embedder is not None and evidence_transports:
+        evidence_cap = settings.evidence_max_markets_per_tick if settings is not None else None
+        evidence_refresh = settings.evidence_refresh_hours if settings is not None else 24
         scheduler.add_job(
-            lambda: evidence_tick(session_factory, embedder, evidence_transports),
+            lambda: evidence_tick(
+                session_factory,
+                embedder,
+                evidence_transports,
+                max_markets=evidence_cap,
+                refresh_hours=evidence_refresh,
+            ),
             "interval",
             seconds=interval_seconds,
             id="evidence-ingest",

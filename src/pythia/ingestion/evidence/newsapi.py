@@ -50,8 +50,10 @@ class NewsApiTransport:
                 "language": "en",
                 "sortBy": "relevancy",
                 "pageSize": self._page_size,
-                "apiKey": self._api_key,
             },
+            headers={
+                "X-Api-Key": self._api_key
+            },  # header auth keeps the key out of the URL (rule 12)
         )
         articles: list[dict[str, Any]] = payload.get("articles") or []
         return articles
