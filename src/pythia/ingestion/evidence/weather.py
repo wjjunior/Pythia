@@ -99,6 +99,16 @@ class RegexWeatherExtractor:
         )
 
 
+def _strip_json_fences(text: str) -> str:
+    # Some models wrap JSON in a ```json fence despite the "JSON only" instruction (as agents/
+    # llm_port.py also defends against); drop the fences before parsing.
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.split("\n", 1)[-1] if "\n" in stripped else ""
+        stripped = stripped.rsplit("```", 1)[0]
+    return stripped.strip()
+
+
 class LLMWeatherExtractor:
     """Cheap-LLM fallback for questions the regex misses; returns None on any failure (safe)."""
 
@@ -128,7 +138,7 @@ class LLMWeatherExtractor:
                 max_price=self._max_price,
             )
             content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
+            parsed = json.loads(_strip_json_fences(content))
             return WeatherQuery(
                 city=str(parsed["city"]).strip(),
                 target=date.fromisoformat(str(parsed["date"])),
@@ -157,11 +167,12 @@ class CompositeExtractor:
 
 
 def to_article(raw: dict[str, Any]) -> EvidenceArticle | None:
+    city = str(raw.get("city") or "").strip()
     daily = raw.get("daily") or {}
     times = daily.get("time") or []
     highs = daily.get("temperature_2m_max") or []
     lows = daily.get("temperature_2m_min") or []
-    if not times or len(highs) != len(times) or len(lows) != len(times):
+    if not city or not times or len(highs) != len(times) or len(lows) != len(times):
         return None
     unit = "°F" if raw.get("fahrenheit") else "°C"
     lines = [
@@ -169,7 +180,7 @@ def to_article(raw: dict[str, Any]) -> EvidenceArticle | None:
         for t, hi, lo in zip(times, highs, lows, strict=True)
     ]
     content = (
-        f"Open-Meteo temperatures for {raw.get('city')} (recent days through the target date):\n"
+        f"Open-Meteo temperatures for {city} (recent days through the target date):\n"
         + "\n".join(lines)
     )
     return EvidenceArticle(content=content, url=None, published_at=None)
@@ -197,16 +208,17 @@ class WeatherTransport:
             params={"name": parsed.city, "count": 1},
         )
         results = geo.get("results") or []
-        if not results:
-            return []
-        location = results[0]
+        latitude = results[0].get("latitude") if results else None
+        longitude = results[0].get("longitude") if results else None
+        if latitude is None or longitude is None:
+            return []  # unserviceable location — no coordinates to forecast from
         payload = fetch_json_evidence(
             _FORECAST_URL,
             source=SOURCE_NAME,
             use_live=self._use_live,
             params={
-                "latitude": location["latitude"],
-                "longitude": location["longitude"],
+                "latitude": latitude,
+                "longitude": longitude,
                 "daily": "temperature_2m_max,temperature_2m_min",
                 "start_date": (parsed.target - timedelta(days=_PRIOR_DAYS)).isoformat(),
                 "end_date": parsed.target.isoformat(),

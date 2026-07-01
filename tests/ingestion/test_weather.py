@@ -8,6 +8,7 @@ import pytest
 from pythia.ingestion.evidence import weather
 from pythia.ingestion.evidence.weather import (
     CompositeExtractor,
+    LLMWeatherExtractor,
     RegexWeatherExtractor,
     WeatherQuery,
     WeatherTransport,
@@ -118,3 +119,28 @@ def test_composite_falls_back_to_the_next_extractor() -> None:
     hit = WeatherQuery("Paris", date(2026, 7, 1), False)
     composite = CompositeExtractor([_FixedExtractor(None), _FixedExtractor(hit)])
     assert composite.extract("q") == hit
+
+
+class _FakeChat:
+    def __init__(self, content: str) -> None:
+        self._content = content
+
+    def complete(self, **_: Any) -> dict[str, Any]:
+        return {"choices": [{"message": {"content": self._content}}]}
+
+
+def test_llm_extractor_strips_json_fences() -> None:
+    fenced = '```json\n{"city": "Paris", "date": "2026-07-01", "fahrenheit": false}\n```'
+    extractor = LLMWeatherExtractor(_FakeChat(fenced), "m", clock=_CLOCK)
+    assert extractor.extract("q") == WeatherQuery("Paris", date(2026, 7, 1), False)
+
+
+def test_to_article_drops_a_payload_with_no_city() -> None:
+    raw = {
+        "daily": {
+            "time": ["2026-07-01"],
+            "temperature_2m_max": [33.0],
+            "temperature_2m_min": [20.0],
+        }
+    }
+    assert weather.to_article(raw) is None

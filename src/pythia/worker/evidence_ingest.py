@@ -163,24 +163,7 @@ def ingest_tick(
 
     store = EvidenceStore(session, embedder)
     sources = SourceRepository(session)
-    clients = [
-        (
-            transport.name,
-            EvidenceClient(transport),
-            sources.upsert(
-                Source(
-                    id=_source_id(transport.name),
-                    name=transport.name,
-                    kind="news",
-                    reliability=transport.reliability,
-                )
-            ),
-            getattr(
-                transport, "categories", None
-            ),  # domain source ⇒ its categories; None ⇒ general
-        )
-        for transport in transports
-    ]
+    clients = [_build_client(transport, sources) for transport in transports]
 
     rate_limited: set[str] = set()
     total = 0
@@ -225,7 +208,20 @@ def ingest_tick(
     return total
 
 
-_Client = tuple[str, EvidenceClient, Source, "frozenset[str] | None"]
+_Client = tuple[str, EvidenceClient, Source, frozenset[str] | None]
+
+
+def _build_client(transport: EvidenceTransport, sources: SourceRepository) -> _Client:
+    categories = getattr(transport, "categories", None)  # domain source ⇒ its categories
+    source = sources.upsert(
+        Source(
+            id=_source_id(transport.name),
+            name=transport.name,
+            kind="domain" if categories else "news",  # a category-scoped source isn't a news feed
+            reliability=transport.reliability,
+        )
+    )
+    return (transport.name, EvidenceClient(transport), source, categories)
 
 
 def _next_source(
