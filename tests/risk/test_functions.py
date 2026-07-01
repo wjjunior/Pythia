@@ -21,6 +21,7 @@ LIMITS = RiskLimits(
     min_source_reliability=0.5,
     min_confidence=0.5,
     max_p_resol_severity=0.5,
+    evidence_required_categories=frozenset({"politics"}),
 )
 EMPTY = ExposureState(
     per_group={}, per_category={}, daily_total=0.0, weekly_total=0.0, absolute_total=0.0
@@ -62,6 +63,15 @@ def test_low_source_reliability_vetoes() -> None:
     decision = evaluate(replace(PROPOSAL, source_reliability=0.3), LIMITS, EMPTY)
     assert decision.vetoed
     assert RiskReason.MIN_SOURCE_RELIABILITY in decision.reasons
+
+
+def test_evidence_not_required_outside_whitelisted_categories() -> None:
+    # PYT-177: a sports market has no informative news, so no evidence must NOT veto it — otherwise
+    # the calibration engine can never collect data on the bulk of the market universe.
+    decision = evaluate(replace(PROPOSAL, category="Sports", source_reliability=0.0), LIMITS, EMPTY)
+    assert not decision.vetoed
+    assert RiskReason.MIN_SOURCE_RELIABILITY not in decision.reasons
+    assert decision.approved_size > 0.0
 
 
 def test_high_p_resol_severity_vetoes() -> None:

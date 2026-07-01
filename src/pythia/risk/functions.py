@@ -21,7 +21,13 @@ def gate_reasons(proposal: TradeProposal, limits: RiskLimits) -> tuple[RiskReaso
         reasons.append(RiskReason.ZERO_OPPORTUNITY)
     if proposal.confidence < limits.min_confidence:
         reasons.append(RiskReason.MIN_CONFIDENCE)
-    if proposal.source_reliability < limits.min_source_reliability:
+    # News evidence is a hard requirement only where it is meaningful (PYT-177). Elsewhere (sports,
+    # weather, short-term) no article predicts the outcome, so requiring one would block the
+    # calibration data the engine collects; evidence still raises confidence via the critic.
+    if (
+        proposal.category.lower() in limits.evidence_required_categories
+        and proposal.source_reliability < limits.min_source_reliability
+    ):
         reasons.append(RiskReason.MIN_SOURCE_RELIABILITY)
     if proposal.p_resol_severity > limits.max_p_resol_severity:
         reasons.append(RiskReason.MAX_P_RESOL_SEVERITY)
