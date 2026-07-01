@@ -5,11 +5,13 @@ and live HTTP transports that raise LiveVenueAccessError on geo-block — surfac
 operator to enable the VPN (§8.6) rather than retrying blindly.
 """
 
+import contextlib
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -21,6 +23,33 @@ from pythia.ingestion.market_crawler import (
 )
 
 _log = get_logger(__name__)
+
+
+class EvidenceRateLimitedError(Exception):
+    """A source returned 429 — stop calling it for this tick (circuit-break) rather than hammer."""
+
+
+class EvidenceFetchError(Exception):
+    """A non-retryable evidence fetch failure (e.g. 401/403); the message never carries a key."""
+
+
+_CREDENTIAL_QUERY_RE = re.compile(r"(?i)(api_?key|access_key|x-access-key|token)=[^&\s\"']+")
+
+
+def redact_credentials(text: str) -> str:
+    """Mask API keys/tokens in query strings before logging — some providers only take the key as a
+    query param, so the URL (and any error string built from it) must be sanitized (rule 12)."""
+    return _CREDENTIAL_QUERY_RE.sub(lambda match: f"{match.group(1)}=***", text)
+
+
+def parse_iso_datetime(value: Any) -> datetime | None:
+    """Best-effort ISO-8601 parse; naive means UTC. None on absence or parse failure."""
+    if not value:
+        return None
+    with contextlib.suppress(ValueError):
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,19 +104,25 @@ def fetch_json_evidence(
     require_live(use_live, source)  # §8.6 defense-in-depth: no live egress unless the flag is on
     import httpx
 
+    safe_url = redact_credentials(url)  # base url carries no key today, but redact defensively
     try:
         response = httpx.get(url, params=params, headers=headers, timeout=timeout)
         response.raise_for_status()
     except httpx.ConnectError as exc:
         raise LiveVenueAccessError(
-            f"cannot reach {source} at {url}; enable the VPN before a live call (§8.6)"
+            f"cannot reach {source} at {safe_url}; enable the VPN before a live call (§8.6)"
         ) from exc
     except httpx.TimeoutException as exc:
-        raise TransientTransportError(f"timeout calling {source} at {url}") from exc
+        raise TransientTransportError(f"timeout calling {source} at {safe_url}") from exc
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code >= 500:
-            raise TransientTransportError(f"{exc.response.status_code} from {source}") from exc
-        raise
+        # Raise clean, credential-free messages — never re-raise the httpx error, whose str()
+        # carries the full URL with query-param keys (the PYT-173 leak). Drop the cause too.
+        status = exc.response.status_code
+        if status == 429:
+            raise EvidenceRateLimitedError(f"{source} rate-limited (429)") from None
+        if status >= 500:
+            raise TransientTransportError(f"{status} from {source}") from None
+        raise EvidenceFetchError(f"{status} from {source}") from None
     return response.json()
 
 
