@@ -29,6 +29,7 @@ limits_st = st.builds(
     min_source_reliability=unit,
     min_confidence=unit,
     max_p_resol_severity=unit,
+    evidence_required_categories=st.frozensets(names, max_size=3),
 )
 exposure_st = st.builds(
     ExposureState,
@@ -76,7 +77,10 @@ def test_gate_failure_forces_zero_size(
 ) -> None:
     gate_failed = (
         proposal.confidence < limits.min_confidence
-        or proposal.source_reliability < limits.min_source_reliability
+        or (
+            proposal.category.lower() in limits.evidence_required_categories
+            and proposal.source_reliability < limits.min_source_reliability
+        )
         or proposal.p_resol_severity > limits.max_p_resol_severity
     )
     decision = evaluate(proposal, limits, exposure)

@@ -34,6 +34,9 @@ class RiskLimits:
     min_confidence: float
     max_p_resol_severity: float
     cap_per_event: float = 1.0  # total exposure across one event's options; 1.0 ⇒ effectively off
+    # Categories (lowercased) where news evidence is meaningful and thus hard-required (PYT-177).
+    # Empty ⇒ evidence is never a hard-veto; it still raises confidence via the critic when present.
+    evidence_required_categories: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

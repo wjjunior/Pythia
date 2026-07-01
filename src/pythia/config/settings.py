@@ -117,7 +117,11 @@ class Settings(BaseSettings):
     cap_weekly: float = 0.15
     cap_absolute: float = 1.0
     min_source_reliability: float = 0.5
-    min_confidence: float = 0.5
+    min_confidence: float = 0.4  # calibration-phase floor (PYT-177): admit more data to score
+    # News evidence is hard-required (min_source_reliability) only in these categories, where an
+    # article can actually inform the outcome (PYT-177). Sports/weather/short-term markets have no
+    # relevant news, so requiring it would block calibration; evidence still lifts confidence there.
+    evidence_required_categories: str = "politics,finance,economy,business,crypto"
     # Radar entry gate, not an edge bar (PYT-169): an untraded leg (e.g. a placeholder negRisk
     # option) sits at a default 0.5 with zero liquidity and cannot be filled — exclude it instead of
     # surfacing an illusory opportunity. A real market has orders of magnitude more depth than this.
@@ -200,6 +204,12 @@ class Settings(BaseSettings):
     @property
     def evidence_source_list(self) -> list[str]:
         return [s.strip() for s in self.evidence_sources.split(",") if s.strip()]
+
+    @property
+    def evidence_required_category_set(self) -> frozenset[str]:
+        return frozenset(
+            s.strip().lower() for s in self.evidence_required_categories.split(",") if s.strip()
+        )
 
     @property
     def falcon_agent_id_overrides(self) -> dict[str, int]:

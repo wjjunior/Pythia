@@ -399,6 +399,7 @@ class Pipeline:
             min_source_reliability=settings.min_source_reliability,
             min_confidence=settings.min_confidence,
             max_p_resol_severity=settings.max_p_resol_severity,
+            evidence_required_categories=settings.evidence_required_category_set,
         )
 
     def _source_reliability(self, evidence: list[Evidence]) -> float:
