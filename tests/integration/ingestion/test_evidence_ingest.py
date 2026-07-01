@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 from sqlmodel import Session, select
 
-from pythia.common import Market
+from pythia.common import Market, MarketSnapshot
 from pythia.db import models
-from pythia.db.repositories import MarketRepository, SourceRepository
+from pythia.db.repositories import MarketRepository, SnapshotRepository, SourceRepository
 from pythia.ingestion.evidence import (
     EvidenceArticle,
     EvidenceRateLimitedError,
@@ -92,7 +92,7 @@ def test_source_is_registered_on_ingest(session: Session) -> None:
     assert source.reliability == pytest.approx(0.6)
 
 
-def _seed_market(session: Session, key: str) -> Market:
+def _seed_market(session: Session, key: str, *, close_time: datetime | None = None) -> Market:
     return MarketRepository(session).upsert(
         Market(
             id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"ev-{key}")),
@@ -100,6 +100,21 @@ def _seed_market(session: Session, key: str) -> Market:
             question=f"Will event {key} resolve YES?",
             category="politics",
             resolution_rule="r",
+            close_time=close_time,
+        )
+    )
+
+
+def _seed_snapshot(session: Session, market_id: str, *, yes_price: float, ts: datetime) -> None:
+    SnapshotRepository(session).append(
+        MarketSnapshot(
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"snap-{market_id}")),
+            market_id=market_id,
+            ts=ts,
+            yes_price=yes_price,
+            spread=0.02,
+            volume=1.0,
+            liquidity=1.0,
         )
     )
 
@@ -107,6 +122,24 @@ def _seed_market(session: Session, key: str) -> Market:
 def _markets_with_evidence(session: Session) -> set[str]:
     rows = session.exec(select(models.Evidence.market_id).distinct()).all()
     return {str(m) for m in rows}
+
+
+def test_ingest_tick_excludes_closed_markets(session: Session) -> None:
+    open_market = _seed_market(session, "open", close_time=T1 + timedelta(hours=1))
+    _seed_market(session, "closed", close_time=T1 - timedelta(hours=1))  # trading already ended
+    ingest_tick(session, StubEmbeddingPort(), [_transport()], ts=T1)
+    assert _markets_with_evidence(session) == {open_market.id}  # the closed market is skipped
+
+
+def test_ingest_tick_prioritizes_midband_over_tail(session: Session) -> None:
+    midband = _seed_market(session, "mid")
+    tail = _seed_market(session, "tail")
+    _seed_snapshot(session, midband.id, yes_price=0.5, ts=T1)  # inside 0.1..0.85 → estimated
+    _seed_snapshot(session, tail.id, yes_price=0.02, ts=T1)  # extreme longshot → deprioritized
+    ingest_tick(
+        session, StubEmbeddingPort(), [_transport()], ts=T1, max_markets=1, midband=(0.1, 0.85)
+    )
+    assert _markets_with_evidence(session) == {midband.id}  # scarce budget lands on the candidate
 
 
 def test_ingest_tick_skips_markets_with_recent_evidence(session: Session) -> None:
@@ -126,10 +159,10 @@ def test_ingest_tick_refetches_once_evidence_is_stale(session: Session) -> None:
     # 25h later the evidence is stale → the market is a target again.
     count = ingest_tick(session, embedder, [_transport()], ts=T1 + timedelta(hours=25))
     assert count >= 1
-    later = EvidenceStore(session, embedder).retrieve(
-        market.id, asof=T1 + timedelta(hours=25), k=10
-    )
-    assert len(later) >= 2  # both the original and the refreshed evidence are retained (immutable)
+    observed = session.exec(
+        select(models.Evidence.observed_at).where(models.Evidence.market_id == uuid.UUID(market.id))
+    ).all()
+    assert {T1, T1 + timedelta(hours=25)} <= set(observed)  # both ingest ticks persisted, immutably
 
 
 def test_ingest_tick_respects_the_per_tick_cap(session: Session) -> None:
