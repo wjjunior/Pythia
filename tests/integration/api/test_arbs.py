@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -13,6 +13,7 @@ from pythia.api.app import create_app
 from pythia.api.deps import get_session, settings_dependency
 from pythia.common import ArbKind, ArbLeg, ArbOpportunity, Market, MarketSnapshot, Side
 from pythia.config import Settings
+from pythia.db import models
 from pythia.db.repositories import (
     ArbRepository,
     MarketRepository,
@@ -103,6 +104,39 @@ def test_arbs_endpoint_lists_persisted_baskets_by_ev(client: TestClient, session
 
 def test_arbs_endpoint_is_empty_with_no_baskets(client: TestClient) -> None:
     assert client.get("/api/arbs").json() == []
+
+
+def _cup_market_id(name: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"cup-{name}")
+
+
+def test_arbs_endpoint_hides_a_basket_with_a_resolved_leg(
+    client: TestClient, session: Session
+) -> None:
+    _seed_dutch_book(session)
+    assert len(client.get("/api/arbs").json()) == 1  # the basket is visible while all legs are open
+
+    leg = session.get(models.Market, _cup_market_id("a"))
+    assert leg is not None
+    leg.resolved = True  # one leg resolves → the whole basket is no longer tradeable
+    session.add(leg)
+    session.commit()
+
+    assert client.get("/api/arbs").json() == []  # PYT-175: stale basket hidden from the panel
+
+
+def test_arbs_endpoint_hides_a_basket_with_a_closed_leg(
+    client: TestClient, session: Session
+) -> None:
+    _seed_dutch_book(session)
+
+    leg = session.get(models.Market, _cup_market_id("b"))
+    assert leg is not None
+    leg.close_time = _NOW - timedelta(hours=1)  # trading on one leg has already closed
+    session.add(leg)
+    session.commit()
+
+    assert client.get("/api/arbs").json() == []  # PYT-175: can't enter a closed leg → hidden
 
 
 def test_arb_panel_carries_question_detected_at_and_approved(

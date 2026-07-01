@@ -86,7 +86,7 @@ def candidates(
     markets = MarketRepository(session)
     estimates = EstimateRepository(session)
     scores = ScoreRepository(session)
-    feed = CandidateSignalRepo(session).recent(limit)
+    feed = CandidateSignalRepo(session).recent(limit, now=datetime.now(UTC))
     review = review_status_by_market(
         session, [c.market_id for c in feed if c.market_id is not None]
     )

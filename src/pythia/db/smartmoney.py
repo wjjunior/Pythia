@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, or_
 from sqlmodel import Session, col, select
 
 from pythia.common import (
@@ -315,13 +315,20 @@ class CandidateSignalRepo:
         ).all()
         return [_from_db_candidate(row) for row in rows]
 
-    def recent(self, limit: int) -> list[CandidateSignal]:
+    def recent(self, limit: int, *, now: datetime) -> list[CandidateSignal]:
         # Feed of *actionable* candidates only. A SKIPPED candidate has no market_id — it is a
         # trigger on a market we could not track (closed/resolved by the time we fetched it), so it
         # never entered the pipeline and would surface as a meaningless "unresolved" row (PYT-157).
+        # The Market join also drops candidates whose market has since resolved or closed (PYT-175),
+        # matching the radar — an outdated opportunity is never actionable.
         rows = self._session.exec(
             select(models.CandidateSignal)
+            .join(models.Market, col(models.CandidateSignal.market_id) == col(models.Market.id))
             .where(models.CandidateSignal.status != CandidateSignalStatus.SKIPPED.value)
+            .where(col(models.Market.resolved).is_(False))
+            .where(
+                or_(col(models.Market.close_time).is_(None), col(models.Market.close_time) >= now)
+            )
             .order_by(col(models.CandidateSignal.created_at).desc())
             .limit(limit)
         ).all()
