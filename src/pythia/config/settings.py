@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     cross_venue_sources: str = ""
     evidence_sources: str = ""
     newsapi_key: SecretStr | None = None
+    newsdata_key: SecretStr | None = None
+    mediastack_key: SecretStr | None = None
+    evidence_max_markets_per_tick: int = 20  # bound the burst; 429 handles the daily/monthly cap
+    evidence_refresh_hours: int = 24  # skip a market that already has evidence this fresh
     crawl_interval_seconds: int = 300
     # Estimation cadence, decoupled from the (fast) crawl so the budget governs coverage, not the
     # crawl (PYT-168). At ~$0.0047/market (measured, cost_events) and discovery_shortlist_size=50:
