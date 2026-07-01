@@ -44,6 +44,7 @@ class RadarItem(BaseModel):
     closes_in_days: float | None
     resolves_in_days: float | None
     review_status: ReviewStatus
+    suggested_size: float
 
 
 class EstimateDetail(BaseModel):

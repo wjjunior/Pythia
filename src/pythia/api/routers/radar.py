@@ -10,6 +10,7 @@ from pythia.api.schemas import RadarItem
 from pythia.db.repositories import ScoreRepository
 from pythia.scoring import rank_radar
 from pythia.services.review_status import review_status_by_market
+from pythia.services.risk_decision import suggested_size_by_estimate
 
 router = APIRouter(tags=["radar"])
 
@@ -40,6 +41,9 @@ def radar(
         min_win_probability=min_win_probability,
     )
     review = review_status_by_market(session, [market.id for _, _, market, _ in rows])
+    sizes = suggested_size_by_estimate(
+        session, [(market.id, estimate.id) for _, estimate, market, _ in rows]
+    )
     return [
         RadarItem(
             market=market,
@@ -52,6 +56,7 @@ def radar(
             closes_in_days=metrics.closes_in_days,
             resolves_in_days=metrics.resolves_in_days,
             review_status=review[market.id],
+            suggested_size=sizes[estimate.id],
         )
         for score, estimate, market, metrics in rows
     ]

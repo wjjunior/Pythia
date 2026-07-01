@@ -573,6 +573,32 @@ def _seed_risk_decision(session: Session, *, vetoed: bool, approved_size: float)
     )
 
 
+def test_radar_item_exposes_the_risk_approved_suggested_size(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=False, approved_size=12.5)
+    item = client.get("/api/radar?limit=10").json()[0]
+    assert item["suggested_size"] == pytest.approx(12.5)  # PYT-172: drives the 1-click approve size
+
+
+def test_radar_item_suggested_size_is_zero_when_vetoed(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=True, approved_size=0.0)
+    item = client.get("/api/radar?limit=10").json()[0]
+    assert item["suggested_size"] == 0.0  # vetoed ⇒ not approvable from the radar
+
+
+def test_radar_item_suggested_size_is_zero_without_a_risk_decision(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)  # scored but never risk-evaluated
+    item = client.get("/api/radar?limit=10").json()[0]
+    assert item["suggested_size"] == 0.0
+
+
 def test_list_markets_filters_by_category(client: TestClient, session: Session) -> None:
     _seed_scored_market(session, category="politics")
     assert len(client.get("/api/markets").json()) == 1
