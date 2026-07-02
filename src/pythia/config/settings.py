@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     evidence_max_markets_per_tick: int = 20  # bound the burst; 429 handles the daily/monthly cap
     evidence_refresh_hours: int = 24  # skip a market that already has evidence this fresh
     weather_extract_model: str = "google/gemini-3-flash-preview"  # cheap LLM for the parse fallback
+    thesportsdb_key: str = "123"  # free test key; replace with a premium key for higher limits
+    sports_categories: str = "sports,tennis,soccer,esports"  # categories routed to TheSportsDB
     crawl_interval_seconds: int = 300
     # Estimation cadence, decoupled from the (fast) crawl so the budget governs coverage, not the
     # crawl (PYT-168). At ~$0.0047/market (measured, cost_events) and discovery_shortlist_size=50:
@@ -211,6 +213,10 @@ class Settings(BaseSettings):
         return frozenset(
             s.strip().lower() for s in self.evidence_required_categories.split(",") if s.strip()
         )
+
+    @property
+    def sports_category_set(self) -> frozenset[str]:
+        return frozenset(s.strip().lower() for s in self.sports_categories.split(",") if s.strip())
 
     @property
     def falcon_agent_id_overrides(self) -> dict[str, int]:
