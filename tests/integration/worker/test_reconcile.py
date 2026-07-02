@@ -2,7 +2,7 @@
 
 import uuid
 from contextlib import nullcontext
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -15,7 +15,7 @@ from pythia.db.repositories import EstimateRepository, MarketRepository, Snapsho
 from pythia.ingestion import MarketCrawler
 from pythia.ingestion.market_crawler import LiveVenueAccessError
 from pythia.paper import PaperLedger
-from pythia.worker.reconcile import reconcile_on_startup
+from pythia.worker.reconcile import reconcile_on_startup, settle_stale_positions
 
 pytestmark = pytest.mark.integration
 
@@ -133,6 +133,77 @@ def test_reconcile_settles_open_positions_on_startup(session: Session) -> None:
     assert (
         trade.status == TradeStatus.RESOLVED and trade.pnl is not None
     )  # settled before discovery
+
+
+class _Fetcher:
+    def __init__(self, raw: dict[str, Any] | None) -> None:
+        self._raw = raw
+        self.include_closed_calls: list[bool] = []
+
+    def fetch_market_by_condition(
+        self, condition_id: str, *, include_closed: bool = False
+    ) -> dict[str, Any] | None:
+        self.include_closed_calls.append(include_closed)
+        return self._raw
+
+
+def _mark_closed(session: Session, market_id: str) -> None:
+    market = session.get(models.Market, uuid.UUID(market_id))
+    assert market is not None
+    market.close_time = AT  # trading closed in the past, market not marked resolved
+    session.add(market)
+    session.commit()
+
+
+def test_settle_stale_positions_settles_a_closed_market_resolved_on_gamma(session: Session) -> None:
+    market_id = _seed_open_trade(session)
+    _mark_closed(session, market_id)  # closed for trading but resolution-ingest never caught it
+
+    fetcher = _Fetcher(_resolved_raw(EXTERNAL_ID))
+    settled = settle_stale_positions(session, _settings(), fetcher, now=AT + timedelta(days=10))
+
+    assert settled == 1
+    assert fetcher.include_closed_calls == [True]  # else Gamma's closed=false hides it
+    trade = session.get(models.PaperTrade, uuid.UUID(_uid(f"{EXTERNAL_ID}-trade")))
+    assert trade is not None
+    assert trade.status == TradeStatus.RESOLVED and trade.pnl is not None
+
+
+def test_settle_stale_leaves_a_closed_but_unresolved_market_open(session: Session) -> None:
+    market_id = _seed_open_trade(session)
+    _mark_closed(session, market_id)
+    raw = _resolved_raw(EXTERNAL_ID)
+    raw["outcomePrices"] = '["0.5", "0.5"]'  # closed but not cleanly resolved (ambiguous)
+
+    settled = settle_stale_positions(
+        session, _settings(), _Fetcher(raw), now=AT + timedelta(days=10)
+    )
+
+    assert settled == 0
+    trade = session.get(models.PaperTrade, uuid.UUID(_uid(f"{EXTERNAL_ID}-trade")))
+    assert trade is not None and trade.status == TradeStatus.OPEN  # left open, no invented result
+
+
+class _BoomFetcher:
+    def fetch_market_by_condition(
+        self, condition_id: str, *, include_closed: bool = False
+    ) -> dict[str, Any] | None:
+        raise LiveVenueAccessError("geo-blocked; enable the VPN (§8.6)")
+
+
+def test_reconcile_degrades_when_only_stale_settlement_fails(session: Session) -> None:
+    market_id = _seed_open_trade(session)
+    _mark_closed(session, market_id)  # open-on-closed, so stale settlement will call the fetcher
+    # Resolution ingest succeeds (finds nothing); the stale-settlement venue error must degrade
+    # independently — the worker still starts and the position is left untouched, not crashed.
+    reconcile_on_startup(
+        lambda: nullcontext(session),
+        _settings(),
+        _crawler(_ResolvedTransport([])),
+        fetcher=_BoomFetcher(),
+    )
+    trade = session.get(models.PaperTrade, uuid.UUID(_uid(f"{EXTERNAL_ID}-trade")))
+    assert trade is not None and trade.status == TradeStatus.OPEN
 
 
 def test_reconcile_degrades_when_the_venue_is_unreachable(session: Session) -> None:

@@ -877,6 +877,30 @@ class PaperTradeRepository:
         ).all()
         return [_from_db_trade(row) for row in rows]
 
+    def list_with_market(self) -> list[tuple[PaperTrade, Market]]:
+        """Every trade joined to its market (question, event_slug, resolved, close_time) for the
+        paper page — the Polymarket link + a stale flag (PYT-181), newest first."""
+        rows = self._session.exec(
+            select(models.PaperTrade, models.Market)
+            .join(models.Market, col(models.PaperTrade.market_id) == col(models.Market.id))
+            .order_by(col(models.PaperTrade.opened_at).desc())
+        ).all()
+        return [(_from_db_trade(trade), _from_db_market(market)) for trade, market in rows]
+
+    def open_on_closed_markets(self, *, now: datetime) -> list[Market]:
+        """Distinct markets of OPEN positions whose trading has closed but that are not yet resolved
+        — the candidates a stale-position settlement must re-check on Gamma (PYT-181)."""
+        rows = self._session.exec(
+            select(models.Market)
+            .join(models.PaperTrade, col(models.PaperTrade.market_id) == col(models.Market.id))
+            .where(models.PaperTrade.status == TradeStatus.OPEN)
+            .where(col(models.Market.resolved).is_(False))
+            .where(col(models.Market.close_time).is_not(None))
+            .where(col(models.Market.close_time) < now)
+            .distinct()
+        ).all()
+        return [_from_db_market(market) for market in rows]
+
     def realized_pnl(self) -> float:
         statement = select(func.coalesce(func.sum(models.PaperTrade.pnl), 0.0)).where(
             models.PaperTrade.status == TradeStatus.RESOLVED

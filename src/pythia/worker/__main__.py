@@ -56,15 +56,13 @@ def main() -> None:
     if not settings.use_live_venues:
         _log.info("worker_disabled", reason="USE_LIVE_VENUES is false; enable VPN (§8.6)")
         return
-    crawler = MarketCrawler(
-        HttpxTransport(
-            settings.polymarket_api_base,
-            use_live=settings.use_live_venues,
-            volume_min=settings.crawl_volume_min,
-            max_markets=settings.crawl_max_markets,
-        ),
-        close_within_days=settings.crawl_close_within_days,
+    transport = HttpxTransport(
+        settings.polymarket_api_base,
+        use_live=settings.use_live_venues,
+        volume_min=settings.crawl_volume_min,
+        max_markets=settings.crawl_max_markets,
     )
+    crawler = MarketCrawler(transport, close_within_days=settings.crawl_close_within_days)
     venue_clients = build_venue_clients(settings)
     evidence_transports = build_evidence_transports(settings)
     embedder = make_embedder(settings)
@@ -87,7 +85,8 @@ def main() -> None:
         venue_count=len(venue_clients),
         evidence_source_count=len(evidence_transports),
     )
-    reconcile_on_startup(session_scope, settings, crawler)  # settle current positions first (§5)
+    # settle current positions first (§5), incl. stale open positions re-checked on Gamma (PYT-181)
+    reconcile_on_startup(session_scope, settings, crawler, fetcher=transport)
     scheduler.start()
 
 

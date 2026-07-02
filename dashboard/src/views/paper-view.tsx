@@ -1,7 +1,11 @@
+import { ExternalLink } from "lucide-react"
+import { useState } from "react"
+
 import { EmptyState, QueryState } from "@/components/async-boundary"
 import { PageHeader } from "@/components/page"
 import { Stat } from "@/components/stat"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -11,9 +15,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { usePaper, usePortfolio } from "@/hooks/use-api"
+import { useClosePosition, usePaper, usePortfolio } from "@/hooks/use-api"
 import { isoDate, pct, signedNum, usd } from "@/lib/format"
+import { polymarketUrl } from "@/lib/polymarket"
 import { exposureSeverity } from "@/lib/ranking"
+import type { PaperPositionView } from "@/lib/types"
 
 const SEVERITY_VARIANT = { ok: "positive", warn: "muted", high: "negative" } as const
 
@@ -58,6 +64,105 @@ function ExposureCard({
   )
 }
 
+function SideBadge({ side }: { side: PaperPositionView["trade"]["side"] }) {
+  return <Badge variant={side === "YES" ? "positive" : "negative"}>{side}</Badge>
+}
+
+function MarketCell({ view }: { view: PaperPositionView }) {
+  const url = polymarketUrl(view.event_slug)
+  return (
+    <div className="flex max-w-[24rem] flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <span className="truncate font-medium" title={view.question}>
+          {view.question}
+        </span>
+        {view.market_closed ? <Badge variant="negative">stale</Badge> : null}
+      </div>
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+        >
+          Polymarket <ExternalLink className="h-3 w-3" />
+        </a>
+      ) : null}
+    </div>
+  )
+}
+
+function OpenPositionRow({ view }: { view: PaperPositionView }) {
+  const close = useClosePosition()
+  const [confirming, setConfirming] = useState(false)
+  const { trade } = view
+  return (
+    <TableRow>
+      <TableCell>
+        <MarketCell view={view} />
+      </TableCell>
+      <TableCell className="tabular-nums text-muted-foreground">{isoDate(trade.opened_at)}</TableCell>
+      <TableCell>
+        <SideBadge side={trade.side} />
+      </TableCell>
+      <TableCell className="text-right tabular-nums">{pct(trade.entry_price)}</TableCell>
+      <TableCell className="text-right tabular-nums">{usd(trade.size)}</TableCell>
+      <TableCell className="text-right">
+        <span className="inline-flex items-center justify-end gap-2">
+          {close.isError ? <span className="text-xs text-destructive">failed</span> : null}
+          {confirming ? (
+            <>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={close.isPending}
+                onClick={() => close.mutate(trade.id, { onSuccess: () => setConfirming(false) })}
+              >
+                {close.isPending ? "Closing…" : "Confirm close"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>
+                cancel
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setConfirming(true)}>
+              Close
+            </Button>
+          )}
+        </span>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+const RESOLVED_STATUS_VARIANT = { resolved: "muted", void: "outline" } as const
+
+function ResolvedRow({ view }: { view: PaperPositionView }) {
+  const { trade } = view
+  const variant = trade.status === "void" ? RESOLVED_STATUS_VARIANT.void : RESOLVED_STATUS_VARIANT.resolved
+  return (
+    <TableRow>
+      <TableCell>
+        <MarketCell view={view} />
+      </TableCell>
+      <TableCell className="tabular-nums text-muted-foreground">
+        {trade.resolved_at ? isoDate(trade.resolved_at) : "—"}
+      </TableCell>
+      <TableCell>
+        <SideBadge side={trade.side} />
+      </TableCell>
+      <TableCell className="text-right tabular-nums">{pct(trade.entry_price)}</TableCell>
+      <TableCell className="text-right tabular-nums">{usd(trade.size)}</TableCell>
+      <TableCell>
+        <Badge variant={variant}>{trade.status}</Badge>
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {trade.pnl == null ? "—" : signedNum(trade.pnl, 2)}
+      </TableCell>
+    </TableRow>
+  )
+}
+
 export function PaperView() {
   const paper = usePaper()
   const portfolio = usePortfolio()
@@ -69,7 +174,7 @@ export function PaperView() {
         description="Capital is recomputed from the ledger: available = bankroll + realized − locked."
       />
       <QueryState query={paper}>
-        {({ capital, positions }) => {
+        {({ capital, positions, resolved }) => {
           const severity = exposureSeverity(capital.exposure_fraction)
           return (
             <div className="flex flex-col gap-4">
@@ -120,7 +225,37 @@ export function PaperView() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Market</TableHead>
                           <TableHead>Opened</TableHead>
+                          <TableHead>Side</TableHead>
+                          <TableHead className="text-right">Entry</TableHead>
+                          <TableHead className="text-right">Size</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {positions.map((view) => (
+                          <OpenPositionRow key={view.trade.id} view={view} />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Resolved & closed ({resolved.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {resolved.length === 0 ? (
+                    <EmptyState message="No settled positions yet." />
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Market</TableHead>
+                          <TableHead>Settled</TableHead>
                           <TableHead>Side</TableHead>
                           <TableHead className="text-right">Entry</TableHead>
                           <TableHead className="text-right">Size</TableHead>
@@ -129,29 +264,8 @@ export function PaperView() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {positions.map((trade) => (
-                          <TableRow key={trade.id}>
-                            <TableCell className="tabular-nums text-muted-foreground">
-                              {isoDate(trade.opened_at)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={trade.side === "YES" ? "positive" : "negative"}>
-                                {trade.side}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {pct(trade.entry_price)}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {usd(trade.size)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="muted">{trade.status}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {trade.pnl == null ? "—" : signedNum(trade.pnl, 2)}
-                            </TableCell>
-                          </TableRow>
+                        {resolved.map((view) => (
+                          <ResolvedRow key={view.trade.id} view={view} />
                         ))}
                       </TableBody>
                     </Table>

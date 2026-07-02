@@ -60,8 +60,17 @@ class CapitalState(BaseModel):
     exposure_fraction: float
 
 
+class PaperPositionView(BaseModel):
+    trade: PaperTrade
+    question: str
+    event_slug: str | None  # drives the Polymarket deep-link
+    market_resolved: bool
+    market_closed: bool  # trading has ended but not yet settled ⇒ a stale-position flag (PYT-181)
+
+
 class PaperPortfolio(BaseModel):
-    positions: list[PaperTrade]
+    positions: list[PaperPositionView]  # open
+    resolved: list[PaperPositionView]  # settled + voided, newest first
     capital: CapitalState
 
 

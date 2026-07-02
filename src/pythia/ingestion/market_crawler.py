@@ -180,13 +180,20 @@ class HttpxTransport:
             market.setdefault("events", [{"slug": event_slug}])
         return markets
 
-    def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
-        # A single open market by its condition_id — to ingest a smart-money trigger on a market
-        # outside the crawled slate (PYT-156). Reuses _request's /markets error classification;
-        # include_tag mirrors the open crawl so derive_category sees the same tag fallback.
-        data = self._request(
-            {"condition_ids": condition_id, "closed": "false", "include_tag": "true"}
-        )
+    def fetch_market_by_condition(
+        self, condition_id: str, *, include_closed: bool = False
+    ) -> dict[str, Any] | None:
+        # A single market by its condition_id. Default open-only, to ingest a smart-money trigger
+        # on an off-slate market (PYT-156). include_closed drops the open filter so stale settlement
+        # can re-check an already-closed market (PYT-181) — else Gamma hides exactly the closed
+        # markets it targets. include_tag mirrors the open crawl's tag fallback for derive_category.
+        params: dict[str, str | int | float] = {
+            "condition_ids": condition_id,
+            "include_tag": "true",
+        }
+        if not include_closed:
+            params["closed"] = "false"
+        data = self._request(params)
         return next((m for m in data if m.get("conditionId") == condition_id), None)
 
 

@@ -736,6 +736,11 @@ def test_paper_positions_reports_capital_state(client: TestClient, session: Sess
     )
     body = client.get("/api/paper/positions").json()
     assert len(body["positions"]) == 1
+    pos = body["positions"][0]
+    assert pos["trade"]["side"] == "YES"  # PYT-181: the trade is nested under an enriched view
+    assert pos["question"] == "Will it resolve YES?"  # market metadata for the page
+    assert pos["event_slug"] == "will-it-resolve-yes"  # drives the Polymarket deep-link
+    assert body["resolved"] == []
     assert body["capital"]["locked_in_open"] == pytest.approx(100.0)
     assert body["capital"]["available_capital"] == pytest.approx(10_000.0 - 100.0)
 
@@ -905,8 +910,45 @@ def test_paper_positions_excludes_resolved_trades(client: TestClient, session: S
     )
     PaperLedger(session).resolve(MARKET_ID, outcome=1, at=TS + timedelta(days=5))
     body = client.get("/api/paper/positions").json()
-    assert body["positions"] == []
+    assert body["positions"] == []  # not among OPEN positions
+    assert len(body["resolved"]) == 1  # PYT-181: shown in the resolved history instead
+    assert body["resolved"][0]["trade"]["status"] == "resolved"
     assert body["capital"]["realized_pnl"] > 0.0
+
+
+def test_close_position_voids_an_open_trade_and_releases_capital(
+    client: TestClient, session: Session
+) -> None:
+    _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=False, approved_size=1000.0)
+    client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
+    )
+    trade_id = client.get("/api/paper/positions").json()["positions"][0]["trade"]["id"]
+
+    closed = client.post(f"/api/paper/positions/{trade_id}/close")
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "void" and closed.json()["pnl"] == 0.0
+
+    after = client.get("/api/paper/positions").json()
+    assert after["positions"] == []  # no longer open
+    assert after["capital"]["locked_in_open"] == pytest.approx(0.0)  # capital released
+    assert after["capital"]["realized_pnl"] == pytest.approx(0.0)  # void ⇒ no realized PnL
+
+
+def test_close_position_rejects_a_non_open_trade(client: TestClient, session: Session) -> None:
+    _seed_scored_market(session)
+    _seed_risk_decision(session, vetoed=False, approved_size=1000.0)
+    client.post(
+        f"/api/review/{ESTIMATE_ID}", json={"action": "approve", "side": "YES", "size": 100.0}
+    )
+    trade_id = client.get("/api/paper/positions").json()["positions"][0]["trade"]["id"]
+    assert client.post(f"/api/paper/positions/{trade_id}/close").status_code == 200
+    assert client.post(f"/api/paper/positions/{trade_id}/close").status_code == 409  # already void
+
+
+def test_close_position_unknown_is_404(client: TestClient) -> None:
+    assert client.post(f"/api/paper/positions/{uuid.uuid4()}/close").status_code == 404
 
 
 def test_radar_rejects_invalid_limit(client: TestClient) -> None:

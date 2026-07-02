@@ -18,6 +18,7 @@ class Side(StrEnum):
 class TradeStatus(StrEnum):
     OPEN = "open"
     RESOLVED = "resolved"
+    VOID = "void"  # manually removed (PYT-181): capital released, no PnL
 
 
 class MarketStatus(StrEnum):
