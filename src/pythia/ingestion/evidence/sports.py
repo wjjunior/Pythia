@@ -23,12 +23,15 @@ DEFAULT_CATEGORIES = frozenset({"sports", "tennis", "soccer", "esports"})
 _RECENT_EVENTS = 5
 
 _VS_RE = re.compile(r"\s+vs\.?\s+", re.IGNORECASE)  # "{A} vs {B}" or "{A} vs. {B}"
+# Single-team formats (PYT-180): moneyline "Will {Team} win …" and "Spread: {Team} (-1.5)".
+_WIN_RE = re.compile(r"\bWill\s+(?P<team>.+?)\s+win\b", re.IGNORECASE)
+_SPREAD_RE = re.compile(r"\bSpread:\s*(?P<team>.+?)\s*\(", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
 class SportsQuery:
     team_a: str
-    team_b: str
+    team_b: str | None = None  # head-to-head sets both; a single-team market leaves this None
 
 
 class SportsQueryExtractor(Protocol):
@@ -36,17 +39,20 @@ class SportsQueryExtractor(Protocol):
 
 
 class RegexSportsExtractor:
-    """Split "{A} vs {B}", dropping a "League: " prefix and a ": market" suffix. No LLM, no I/O."""
+    """Parse "{A} vs {B}" or a single-team market ("Will {Team} win", "Spread: {Team}"). No I/O."""
 
     def extract(self, question: str) -> SportsQuery | None:
         match = _VS_RE.search(question)
-        if match is None:
-            return None  # single-team / non-head-to-head format → out of MVP scope, no evidence
-        team_a = question[: match.start()].rsplit(": ", 1)[-1].strip()
-        team_b = question[match.end() :].split(":", 1)[0].strip()
-        if not team_a or not team_b:
-            return None
-        return SportsQuery(team_a=team_a, team_b=team_b)
+        if match is not None:
+            team_a = question[: match.start()].rsplit(": ", 1)[-1].strip()
+            team_b = question[match.end() :].split(":", 1)[0].strip()
+            return SportsQuery(team_a=team_a, team_b=team_b) if team_a and team_b else None
+        for pattern in (_WIN_RE, _SPREAD_RE):
+            single = pattern.search(question)
+            if single is not None:
+                team = single.group("team").strip()
+                return SportsQuery(team_a=team) if team else None
+        return None
 
 
 class LLMSportsExtractor:
@@ -59,9 +65,10 @@ class LLMSportsExtractor:
 
     def extract(self, question: str) -> SportsQuery | None:
         prompt = (
-            "Extract the two teams/players facing each other in this sports market question. "
+            "Extract the team(s)/player(s) this sports market is about. "
             'Reply with JSON only: {"team_a": str, "team_b": str}. '
-            "If it is not a head-to-head between two sides, reply {}. "
+            "For a single-team market (e.g. moneyline or spread), put the team in team_a and leave "
+            'team_b "". If no team is identifiable, reply {}. '
             f"Question: {question}"
         )
         try:
@@ -71,9 +78,9 @@ class LLMSportsExtractor:
                 max_price=self._max_price,
             )
             parsed = json.loads(_strip_json_fences(data["choices"][0]["message"]["content"]))
-            team_a = str(parsed["team_a"]).strip()
-            team_b = str(parsed["team_b"]).strip()
-            return SportsQuery(team_a=team_a, team_b=team_b) if team_a and team_b else None
+            team_a = str(parsed.get("team_a") or "").strip()
+            team_b = str(parsed.get("team_b") or "").strip()
+            return SportsQuery(team_a=team_a, team_b=team_b or None) if team_a else None
         except (KeyError, IndexError, ValueError, TypeError) as exc:
             _log.warning("sports_llm_extract_failed", error=str(exc))
             return None
@@ -153,9 +160,10 @@ class SportsTransport:
         parsed = self._extractor.extract(query)
         if parsed is None:
             return []
+        teams = [parsed.team_a] + ([parsed.team_b] if parsed.team_b else [])  # single-team ⇒ one
         forms = [
             {"team": team, "events": events}
-            for team in (parsed.team_a, parsed.team_b)
+            for team in teams
             if (events := self._recent_events(team)) is not None
         ]
         return [{"forms": forms}] if forms else []

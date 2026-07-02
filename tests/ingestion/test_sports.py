@@ -27,10 +27,14 @@ def test_regex_extracts_both_teams(question: str, team_a: str, team_b: str) -> N
     assert RegexSportsExtractor().extract(question) == SportsQuery(team_a=team_a, team_b=team_b)
 
 
-def test_regex_returns_none_for_single_team_or_non_head_to_head() -> None:
+def test_regex_parses_single_team_formats() -> None:
     extractor = RegexSportsExtractor()
-    assert extractor.extract("Will DR Congo win on 2026-07-01?") is None
-    assert extractor.extract("Spread: Boston Red Sox (-1.5)") is None
+    assert extractor.extract("Will Mjallby AIF win on 2026-07-03?") == SportsQuery("Mjallby AIF")
+    assert extractor.extract("Spread: Boston Red Sox (-1.5)") == SportsQuery("Boston Red Sox")
+
+
+def test_regex_returns_none_when_no_team_is_identifiable() -> None:
+    assert RegexSportsExtractor().extract("Who lifts the trophy in 2026?") is None
 
 
 def test_to_article_serializes_both_teams_recent_form() -> None:
@@ -95,6 +99,20 @@ def test_transport_drops_a_team_the_search_cannot_resolve(monkeypatch: pytest.Mo
 
 def test_transport_returns_nothing_when_unparseable() -> None:
     assert SportsTransport(_FixedExtractor(None)).fetch("not head to head") == []
+
+
+def test_transport_fetches_a_single_team_form(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fake_fetch(url: str, **kwargs: Any) -> dict[str, Any]:
+        if "searchteams" in url:
+            return {"teams": [{"idTeam": "1"}]}
+        return {"results": [{"strHomeTeam": "A", "strAwayTeam": "B", "dateEvent": "2026-06-20"}]}
+
+    monkeypatch.setattr(sports, "fetch_json_evidence", _fake_fetch)
+    transport = SportsTransport(_FixedExtractor(SportsQuery("Mjallby AIF")))
+
+    raw = transport.fetch("Will Mjallby AIF win?")
+
+    assert len(raw) == 1 and len(raw[0]["forms"]) == 1  # single team → one recent-form block
 
 
 class _FakeChat:
