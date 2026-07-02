@@ -142,8 +142,12 @@ def build_scheduler(
     clock: Callable[[], datetime] = _now,
 ) -> BlockingScheduler:
     # next_run_time = now makes each job fire once immediately at startup, then on the interval.
+    # misfire_grace_time=None so the startup fire is never dropped: reconcile_on_startup runs
+    # (blocking) between build and start, pushing next_run_time past APScheduler's 1s default grace
+    # — which would otherwise skip every job's first run. Ticks read clock() fresh, so a late start
+    # never replays a stale instant, and coalesce (default) collapses any accumulated fires.
     now = clock()
-    scheduler = BlockingScheduler()
+    scheduler = BlockingScheduler(job_defaults={"misfire_grace_time": None})
     scheduler.add_job(
         lambda: tick(crawler, sink),
         "interval",

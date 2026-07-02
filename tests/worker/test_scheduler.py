@@ -92,3 +92,6 @@ def test_build_scheduler_runs_each_job_immediately_at_startup() -> None:
     jobs = scheduler.get_jobs()
     assert jobs
     assert all(job.next_run_time == fixed for job in jobs)
+    # grace=None so the blocking reconcile before scheduler.start() never skips the first fire;
+    # applied via job_defaults (only stamped onto jobs at start(), so assert on the config here).
+    assert scheduler._job_defaults["misfire_grace_time"] is None
