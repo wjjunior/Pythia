@@ -10,6 +10,7 @@ import type {
   MarketDetail,
   OverrideAction,
   PaperPortfolio,
+  PaperTrade,
   PortfolioResponse,
   RadarItem,
   ReviewRequest,
@@ -81,6 +82,8 @@ export const api = {
   estimate: (id: string) => get<EstimateDetail>(`/estimates/${id}`),
   portfolio: () => get<PortfolioResponse>("/portfolio"),
   paper: () => get<PaperPortfolio>("/paper/positions"),
+  closePosition: (tradeId: string) =>
+    request<PaperTrade>(withParams(`/paper/positions/${tradeId}/close`), { method: "POST" }),
   calibration: (category?: string) => get<CalibrationResponse>("/calibration", { category }),
   cost: () => get<CostResponse>("/cost"),
   arbs: () => get<ArbItem[]>("/arbs"),

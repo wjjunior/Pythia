@@ -23,6 +23,17 @@ export const usePortfolio = () => useQuery({ queryKey: qk.portfolio, queryFn: ap
 
 export const usePaper = () => useQuery({ queryKey: qk.paper, queryFn: api.paper })
 
+export const useClosePosition = () => {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (tradeId: string) => api.closePosition(tradeId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: qk.paper })
+      void client.invalidateQueries({ queryKey: qk.portfolio })
+    },
+  })
+}
+
 export const useCalibration = (category?: string) =>
   useQuery({ queryKey: qk.calibration(category), queryFn: () => api.calibration(category) })
 

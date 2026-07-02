@@ -195,7 +195,9 @@ class _FakeFetcher:
     def __init__(self, by_condition: dict[str, dict[str, Any]]) -> None:
         self._by = by_condition
 
-    def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
+    def fetch_market_by_condition(
+        self, condition_id: str, *, include_closed: bool = False
+    ) -> dict[str, Any] | None:
         return self._by.get(condition_id)
 
 
@@ -240,7 +242,9 @@ def test_pipeline_evaluator_skips_a_closed_triggered_market(session: Session) ->
 
 def test_pipeline_evaluator_degrades_when_the_triggered_fetch_raises(session: Session) -> None:
     class _Boom:
-        def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None:
+        def fetch_market_by_condition(
+            self, condition_id: str, *, include_closed: bool = False
+        ) -> dict[str, Any] | None:
             raise httpx.ReadError("connection reset")  # an httpx error _request never maps
 
     evaluator = PipelineCandidateEvaluator(

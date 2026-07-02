@@ -122,7 +122,9 @@ def enqueue_candidates(
 class MarketFetcher(Protocol):
     """Fetch a single Polymarket market by condition_id — the live HttpxTransport satisfies it."""
 
-    def fetch_market_by_condition(self, condition_id: str) -> dict[str, Any] | None: ...
+    def fetch_market_by_condition(
+        self, condition_id: str, *, include_closed: bool = False
+    ) -> dict[str, Any] | None: ...
 
 
 class PipelineCandidateEvaluator:

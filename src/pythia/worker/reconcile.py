@@ -42,7 +42,7 @@ def settle_stale_positions(
     for market in markets:
         if resolutions.exists(market.id):
             continue
-        raw = fetcher.fetch_market_by_condition(market.external_id)
+        raw = fetcher.fetch_market_by_condition(market.external_id, include_closed=True)
         if raw is None or not bool(raw.get("closed", False)):
             continue
         outcome = resolved_outcome(raw)
@@ -66,12 +66,23 @@ def reconcile_on_startup(
     try:
         with session_factory() as session:
             settled = resolution_ingest_tick(session, settings, crawler)
-            stale = (
-                settle_stale_positions(session, settings, fetcher, now=datetime.now(UTC))
-                if fetcher is not None
-                else 0
-            )
     except (LiveVenueAccessError, TransientTransportError) as exc:
         _log.warning("startup_reconcile_skipped", reason="venue unreachable", error=str(exc))
         return
+    stale = _settle_stale_best_effort(session_factory, settings, fetcher)
     _log.info("startup_reconciled", settled=settled, stale_settled=stale)
+
+
+def _settle_stale_best_effort(
+    session_factory: SessionFactory, settings: Settings, fetcher: MarketFetcher | None
+) -> int:
+    """Stale settlement degrades independently of resolution ingest: a venue error here must not
+    mask an already-successful ingest (its positions are settled and its info line still owed)."""
+    if fetcher is None:
+        return 0
+    try:
+        with session_factory() as session:
+            return settle_stale_positions(session, settings, fetcher, now=datetime.now(UTC))
+    except (LiveVenueAccessError, TransientTransportError) as exc:
+        _log.warning("startup_stale_settle_skipped", reason="venue unreachable", error=str(exc))
+        return 0
