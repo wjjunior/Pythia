@@ -68,8 +68,35 @@ def _make_transport(name: str, settings: Settings) -> EvidenceTransport | None:
         )
     if name == "open-meteo":
         return _make_weather_transport(settings)  # no key; needs no config to run offline fixtures
+    if name == "thesportsdb":
+        return _make_sports_transport(settings)  # free test key by default
     _log.warning("unknown_evidence_source_skipped", source=name)
     return None
+
+
+def _make_sports_transport(settings: Settings) -> EvidenceTransport:
+    from pythia.ingestion.evidence.sports import (
+        CompositeExtractor,
+        LLMSportsExtractor,
+        RegexSportsExtractor,
+        SportsQueryExtractor,
+        SportsTransport,
+    )
+
+    extractors: list[SportsQueryExtractor] = [RegexSportsExtractor()]
+    if settings.openrouter_api_key:  # cheap-LLM fallback only when a key is configured
+        from pythia.agents.llm_port import HttpxChatTransport
+
+        chat = HttpxChatTransport(
+            settings.openrouter_api_key.get_secret_value(), settings.openrouter_base_url
+        )
+        extractors.append(LLMSportsExtractor(chat, settings.weather_extract_model))
+    return SportsTransport(
+        CompositeExtractor(extractors),
+        api_key=settings.thesportsdb_key,
+        use_live=settings.use_live_venues,
+        categories=settings.sports_category_set,
+    )
 
 
 def _make_weather_transport(settings: Settings) -> EvidenceTransport:
