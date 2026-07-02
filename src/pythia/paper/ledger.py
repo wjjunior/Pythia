@@ -24,6 +24,14 @@ class PaperLedgerError(RuntimeError):
     """No price to fill at — the estimate, its snapshot, or the market's snapshot is missing."""
 
 
+class UnknownTradeError(LookupError):
+    """No paper trade matches the id."""
+
+
+class NotOpenError(RuntimeError):
+    """Only an OPEN position can be voided — a resolved/void one is terminal."""
+
+
 def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
     return PaperTrade(
         id=str(row.id),
@@ -117,3 +125,18 @@ class PaperLedger:
             row.resolved_at = at
             self._session.add(row)
         self._session.commit()
+
+    def void(self, trade_id: str, at: datetime) -> PaperTrade:
+        """Manually remove an OPEN position (PYT-181): pnl=0, VOID — the locked capital is released
+        and it never counts toward realized PnL. A resolved/void trade cannot be voided."""
+        row = self._session.get(models.PaperTrade, uuid.UUID(trade_id))
+        if row is None:
+            raise UnknownTradeError(trade_id)
+        if row.status != TradeStatus.OPEN:
+            raise NotOpenError(trade_id)
+        row.status = TradeStatus.VOID
+        row.pnl = 0.0
+        row.resolved_at = at
+        self._session.add(row)
+        self._session.commit()
+        return _from_db_trade(row)

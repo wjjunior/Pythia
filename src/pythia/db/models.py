@@ -237,7 +237,7 @@ class PaperTrade(SQLModel, table=True):
     __tablename__ = "paper_trades"
     __table_args__ = (
         CheckConstraint("side IN ('YES','NO')", name="paper_trades_side_check"),
-        CheckConstraint("status IN ('open','resolved')", name="paper_trades_status_check"),
+        CheckConstraint("status IN ('open','resolved','void')", name="paper_trades_status_check"),
     )
 
     id: uuid.UUID | None = _id()
