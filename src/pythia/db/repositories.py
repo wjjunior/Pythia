@@ -330,6 +330,7 @@ def _to_db_estimate(estimate: Estimate) -> models.Estimate:
         critic_notes=estimate.critic_notes,
         evidence_ids=[uuid.UUID(evidence_id) for evidence_id in estimate.evidence_ids],
         model_name=estimate.model_name,
+        signal_source=estimate.signal_source.value,
     )
 
 
@@ -348,7 +349,11 @@ def _from_db_estimate(row: models.Estimate) -> Estimate:
         evidence_ids=[str(evidence_id) for evidence_id in row.evidence_ids],
         model_name=row.model_name,
         critic_notes=row.critic_notes,
-        signal_source=SignalSource.UNKNOWN,
+        signal_source=(
+            SignalSource(row.signal_source)
+            if row.signal_source is not None
+            else SignalSource.UNKNOWN
+        ),
     )
 
 
@@ -548,6 +553,7 @@ def _to_db_score(score: Score) -> models.Score:
         p_corr=score.p_corr,
         opportunity_score=score.opportunity_score,
         kelly_fraction=score.kelly_fraction,
+        signal_source=score.signal_source.value,
     )
 
 
@@ -563,7 +569,11 @@ def _from_db_score(row: models.Score) -> Score:
         p_corr=row.p_corr,
         opportunity_score=row.opportunity_score,
         kelly_fraction=row.kelly_fraction,
-        signal_source=SignalSource.UNKNOWN,
+        signal_source=(
+            SignalSource(row.signal_source)
+            if row.signal_source is not None
+            else SignalSource.UNKNOWN
+        ),
     )
 
 
@@ -878,7 +888,11 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
         size=row.size,
         status=TradeStatus(row.status),
         opened_at=row.opened_at,
-        signal_source=SignalSource.UNKNOWN,
+        signal_source=(
+            SignalSource(row.signal_source)
+            if row.signal_source is not None
+            else SignalSource.UNKNOWN
+        ),
         resolved_at=row.resolved_at,
         pnl=row.pnl,
     )
