@@ -18,7 +18,7 @@ import {
 import { useClosePosition, usePaper, usePortfolio } from "@/hooks/use-api"
 import { isoDate, pct, signedNum, usd } from "@/lib/format"
 import { polymarketUrl } from "@/lib/polymarket"
-import { exposureSeverity, sortChannelPnlEntries } from "@/lib/ranking"
+import { exposureSeverity, pnlClass, sortChannelPnlEntries } from "@/lib/ranking"
 import type { ChannelPnl, PaperPositionView } from "@/lib/types"
 
 const SEVERITY_VARIANT = { ok: "positive", warn: "muted", high: "negative" } as const
@@ -89,11 +89,7 @@ function ChannelPnlCard({ byChannel }: { byChannel: Record<string, ChannelPnl> }
               {rows.map(([channel, stats]) => (
                 <TableRow key={channel}>
                   <TableCell className="font-medium">{channel}</TableCell>
-                  <TableCell
-                    className={`text-right tabular-nums ${
-                      stats.realized_pnl >= 0 ? "text-positive" : "text-negative"
-                    }`}
-                  >
+                  <TableCell className={`text-right tabular-nums ${pnlClass(stats.realized_pnl)}`}>
                     {signedNum(stats.realized_pnl, 2)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{usd(stats.locked_in_open)}</TableCell>

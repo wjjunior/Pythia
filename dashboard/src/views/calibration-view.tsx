@@ -80,8 +80,7 @@ function ChannelBrierCard({ byChannel }: { byChannel: Record<string, ChannelBrie
               <TableBody>
                 {rows.map(([channel, stats]) => {
                   const low = isLowN(stats.n)
-                  const delta = stats.brier_market - stats.brier_system
-                  const verdict = VERDICT[calibrationVerdict({ delta })]
+                  const verdict = VERDICT[calibrationVerdict(stats)]
                   const rowClass = low ? "text-muted-foreground" : ""
                   return (
                     <TableRow key={channel} className={rowClass}>
@@ -89,7 +88,7 @@ function ChannelBrierCard({ byChannel }: { byChannel: Record<string, ChannelBrie
                       <TableCell className="text-right tabular-nums">{stats.n}</TableCell>
                       <TableCell className="text-right tabular-nums">{num(stats.brier_system)}</TableCell>
                       <TableCell className="text-right tabular-nums">{num(stats.brier_market)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{signedNum(delta)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{signedNum(stats.delta)}</TableCell>
                       <TableCell>
                         {low ? (
                           <Badge variant="muted">{`low signal (n<${LOW_N})`}</Badge>

@@ -60,6 +60,8 @@ export const exposureSeverity = (fraction: number): ExposureSeverity => {
   return "ok"
 }
 
+export const pnlClass = (pnl: number): string => (pnl >= 0 ? "text-positive" : "text-negative")
+
 // Per-channel calibration (PYT-188): channels with fewer than LOW_N resolved markets are too noisy
 // to read as calibration signals — grey them out rather than hiding them.
 export const LOW_N = 10

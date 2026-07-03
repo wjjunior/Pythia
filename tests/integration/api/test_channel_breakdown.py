@@ -246,6 +246,45 @@ def test_paper_by_channel_empty_when_no_trades(client: TestClient) -> None:
     assert body["by_channel"] == {}
 
 
+def test_paper_by_channel_null_source_maps_to_unknown(client: TestClient, session: Session) -> None:
+    """A trade with signal_source=NULL (legacy/unknown) must appear under 'unknown', not dropped."""
+    from pythia.db import models as db_models
+
+    market_id = _uid("null-src-mkt")
+    MarketRepository(session).upsert(
+        Market(
+            id=market_id,
+            external_id="null-src",
+            question="Null source trade?",
+            category="politics",
+            resolution_rule="r",
+        )
+    )
+    # Insert a trade row with NULL signal_source directly via the ORM model
+    trade_id = _uid("null-src-trade")
+    session.add(
+        db_models.PaperTrade(
+            id=uuid.UUID(trade_id),
+            market_id=uuid.UUID(market_id),
+            estimate_id=None,
+            side="YES",
+            entry_price=0.5,
+            size=10.0,
+            status=TradeStatus.OPEN,
+            opened_at=_TS,
+            signal_source=None,  # NULL in DB
+        )
+    )
+    session.commit()
+
+    body = client.get("/api/paper/positions").json()
+    by_channel = body["by_channel"]
+
+    assert "unknown" in by_channel, "NULL-source trade must appear under 'unknown' channel"
+    assert by_channel["unknown"]["n_open"] == 1
+    assert by_channel["unknown"]["locked_in_open"] == pytest.approx(10.0)
+
+
 # ---------------------------------------------------------------------------
 # /api/calibration by_channel tests
 # ---------------------------------------------------------------------------
@@ -346,12 +385,16 @@ def test_calibration_by_channel_brier_and_n(client: TestClient, session: Session
     assert radar["brier_market"] == pytest.approx(0.305, abs=1e-6)
     assert "brier_system" in radar
     assert "brier_market" in radar
+    # delta = brier_market - brier_system (server-computed, not client-derived)
+    assert "delta" in radar
+    assert radar["delta"] == pytest.approx(radar["brier_market"] - radar["brier_system"], abs=1e-9)
 
     sm = by_channel["smartmoney"]
     assert sm["n"] == 1
     # brier_system = (0.6-1)^2 = 0.16; brier_market = (0.5-1)^2 = 0.25
     assert sm["brier_system"] == pytest.approx(0.16, abs=1e-6)
     assert sm["brier_market"] == pytest.approx(0.25, abs=1e-6)
+    assert sm["delta"] == pytest.approx(sm["brier_market"] - sm["brier_system"], abs=1e-9)
 
 
 def test_calibration_by_channel_low_n_channel_still_returns_n(

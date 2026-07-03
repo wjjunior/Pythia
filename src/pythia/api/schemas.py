@@ -79,6 +79,7 @@ class ChannelBrier(BaseModel):
     brier_system: float
     brier_market: float
     n: int
+    delta: float
 
 
 class PaperPortfolio(BaseModel):

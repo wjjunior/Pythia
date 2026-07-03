@@ -974,15 +974,17 @@ class PaperTradeRepository:
                 func.count().filter(is_resolved),
             ).group_by(col(models.PaperTrade.signal_source))
         ).all()
-        counts = {str(ch): (int(n_open), int(n_res)) for ch, n_open, n_res in count_rows}
+        counts = {
+            (ch if ch is not None else "unknown"): (int(n_open), int(n_res))
+            for ch, n_open, n_res in count_rows
+        }
         return {
-            str(channel): (
+            (channel if channel is not None else "unknown"): (
                 float(realized or 0.0),
                 float(locked or 0.0),
-                *counts.get(str(channel), (0, 0)),
+                *counts.get(channel if channel is not None else "unknown", (0, 0)),
             )
             for channel, realized, locked in pnl_rows
-            if channel is not None
         }
 
     def open_positions(self) -> list[tuple[float, str, str, datetime, str | None, str]]:
