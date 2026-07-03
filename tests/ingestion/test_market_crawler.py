@@ -232,10 +232,11 @@ def test_httpx_fetch_market_by_condition_queries_markets_and_filters_by_conditio
     assert calls[0]["include_tag"] == "true"  # mirrors the open crawl's tag fallback
 
 
-def test_httpx_fetch_market_by_condition_include_closed_drops_the_open_filter(
+def test_httpx_fetch_market_by_condition_include_closed_queries_closed_true(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # PYT-181: stale settlement re-checks already-closed markets; closed=false would hide them.
+    # PYT-181: stale settlement re-checks already-closed markets. Gamma returns 0 for a closed
+    # market unless closed=true is passed — omitting the param does NOT mean "any state".
     calls: list[dict[str, Any]] = []
 
     def fake_get(url: str, params: dict[str, Any], timeout: float) -> _FakeResponse:
@@ -248,7 +249,7 @@ def test_httpx_fetch_market_by_condition_include_closed_drops_the_open_filter(
     )
 
     assert market == {"conditionId": "0xC", "closed": True}
-    assert "closed" not in calls[0]  # no open-only filter, so a closed market is returned
+    assert calls[0]["closed"] == "true"  # must ask for closed explicitly, else Gamma hides it
 
 
 def test_httpx_fetch_market_by_condition_returns_none_when_absent(
