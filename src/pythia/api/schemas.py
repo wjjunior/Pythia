@@ -68,10 +68,24 @@ class PaperPositionView(BaseModel):
     market_closed: bool  # trading has ended but not yet settled ⇒ a stale-position flag (PYT-181)
 
 
+class ChannelPnl(BaseModel):
+    realized_pnl: float
+    locked_in_open: float
+    n_open: int
+    n_resolved: int
+
+
+class ChannelBrier(BaseModel):
+    brier_system: float
+    brier_market: float
+    n: int
+
+
 class PaperPortfolio(BaseModel):
     positions: list[PaperPositionView]  # open
     resolved: list[PaperPositionView]  # settled + voided, newest first
     capital: CapitalState
+    by_channel: dict[str, ChannelPnl]
 
 
 class ExposureView(BaseModel):
@@ -95,6 +109,7 @@ class CalibrationResponse(BaseModel):
     # The §8.5 gate per category: cleared iff Brier(system) beats the market by margin over min-n,
     # EV honest, resolution ok. The Brier/n/invalid components live in `categories` (join by name).
     gates: list[GateDecision]
+    by_channel: dict[str, ChannelBrier]
 
 
 class CostResponse(BaseModel):

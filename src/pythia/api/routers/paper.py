@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from pythia.api.deps import BroadcasterDep, SessionDep, SettingsDep
 from pythia.api.events import SseChannel
-from pythia.api.schemas import CapitalState, PaperPortfolio, PaperPositionView
+from pythia.api.schemas import CapitalState, ChannelPnl, PaperPortfolio, PaperPositionView
 from pythia.common import Market, PaperTrade, TradeStatus
 from pythia.db.repositories import PaperTradeRepository
 from pythia.paper import NotOpenError, PaperLedger, UnknownTradeError
@@ -32,9 +32,20 @@ def _view(trade: PaperTrade, market: Market, *, now: datetime) -> PaperPositionV
 @router.get("/api/paper/positions")
 def paper_positions(session: SessionDep, settings: SettingsDep) -> PaperPortfolio:
     now = datetime.now(UTC)
-    rows = PaperTradeRepository(session).list_with_market()
+    repo = PaperTradeRepository(session)
+    rows = repo.list_with_market()
     views = [_view(trade, market, now=now) for trade, market in rows]
     capital = PortfolioService(session, settings).capital()
+    channel_rows = repo.pnl_by_channel()
+    by_channel = {
+        channel: ChannelPnl(
+            realized_pnl=realized,
+            locked_in_open=locked,
+            n_open=n_open,
+            n_resolved=n_resolved,
+        )
+        for channel, (realized, locked, n_open, n_resolved) in channel_rows.items()
+    }
     return PaperPortfolio(
         positions=[v for v in views if v.trade.status is TradeStatus.OPEN],
         resolved=[v for v in views if v.trade.status is not TradeStatus.OPEN],
@@ -45,6 +56,7 @@ def paper_positions(session: SessionDep, settings: SettingsDep) -> PaperPortfoli
             available_capital=capital.available_capital,
             exposure_fraction=exposure_fraction(capital.locked_in_open, capital.total_capital),
         ),
+        by_channel=by_channel,
     )
 
 

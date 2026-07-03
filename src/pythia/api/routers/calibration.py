@@ -5,7 +5,8 @@ from typing import Literal
 from fastapi import APIRouter
 
 from pythia.api.deps import SessionDep, SettingsDep
-from pythia.api.schemas import CalibrationResponse
+from pythia.api.schemas import CalibrationResponse, ChannelBrier
+from pythia.eval.functions import brier_score
 from pythia.eval.models import RecalibrationReport
 from pythia.services.calibration import (
     CalibrationService,
@@ -30,12 +31,22 @@ def calibration(
     if category is not None:
         categories = [item for item in categories if item.category == category]
         gates = [gate for gate in gates if gate.category == category]
+    channel_records = svc.records_by_channel()
+    by_channel = {
+        channel: ChannelBrier(
+            brier_system=brier_score([p for p, _q, _o in samples], [o for _p, _q, o in samples]),
+            brier_market=brier_score([q for _p, q, _o in samples], [o for _p, _q, o in samples]),
+            n=len(samples),
+        )
+        for channel, samples in channel_records.items()
+    }
     return CalibrationResponse(
         categories=categories,
         reliability=report.reliability,
         ev=report.ev,
         cohorts=report.cohorts,
         gates=gates,
+        by_channel=by_channel,
     )
 
 

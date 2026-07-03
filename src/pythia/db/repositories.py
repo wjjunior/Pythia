@@ -950,6 +950,41 @@ class PaperTradeRepository:
         )
         return float(self._session.exec(statement).one())
 
+    def pnl_by_channel(self) -> dict[str, tuple[float, float, int, int]]:
+        """Aggregate PnL/counts grouped by signal_source.
+
+        Returns {channel: (realized_pnl, locked_in_open, n_open, n_resolved)}.
+
+        Structured so adding ``markets.category`` as a second GROUP BY key is one extra column
+        and one extra ``.join()`` — the category x channel matrix is one card away.
+        """
+        is_resolved = col(models.PaperTrade.status) == TradeStatus.RESOLVED
+        is_open = col(models.PaperTrade.status) == TradeStatus.OPEN
+        pnl_rows = self._session.exec(
+            select(
+                models.PaperTrade.signal_source,
+                func.coalesce(func.sum(models.PaperTrade.pnl).filter(is_resolved), 0.0),
+                func.coalesce(func.sum(models.PaperTrade.size).filter(is_open), 0.0),
+            ).group_by(col(models.PaperTrade.signal_source))
+        ).all()
+        count_rows = self._session.exec(
+            select(
+                models.PaperTrade.signal_source,
+                func.count().filter(is_open),
+                func.count().filter(is_resolved),
+            ).group_by(col(models.PaperTrade.signal_source))
+        ).all()
+        counts = {str(ch): (int(n_open), int(n_res)) for ch, n_open, n_res in count_rows}
+        return {
+            str(channel): (
+                float(realized or 0.0),
+                float(locked or 0.0),
+                *counts.get(str(channel), (0, 0)),
+            )
+            for channel, realized, locked in pnl_rows
+            if channel is not None
+        }
+
     def open_positions(self) -> list[tuple[float, str, str, datetime, str | None, str]]:
         rows = self._session.exec(
             select(models.PaperTrade, models.Market)
