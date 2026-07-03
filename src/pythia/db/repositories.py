@@ -134,6 +134,25 @@ class MarketRepository:
         ).one_or_none()
         return _from_db_market(row) if row is not None else None
 
+    def estimated_ended_unresolved(
+        self, *, now: datetime, limit: int | None = None
+    ) -> list[Market]:
+        """Markets that carry an estimate and have closed but still have no resolution row — the
+        calibration ground truth the window-bounded resolution crawl misses (PYT-187). Oldest close
+        first, so a per-tick `limit` drains the backlog deterministically."""
+        statement = (
+            select(models.Market)
+            .join(models.Estimate, col(models.Estimate.market_id) == col(models.Market.id))
+            .where(col(models.Market.resolved).is_(False))
+            .where(col(models.Market.close_time).is_not(None))
+            .where(col(models.Market.close_time) < now)
+            .distinct()
+            .order_by(col(models.Market.close_time))
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        return [_from_db_market(market) for market in self._session.exec(statement).all()]
+
     def upsert(self, market: Market) -> Market:
         row = self._session.exec(
             select(models.Market).where(models.Market.external_id == market.external_id)

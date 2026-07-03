@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pythia.common import Market, MarketSnapshot
 from pythia.config import Settings
@@ -77,6 +78,26 @@ def test_build_scheduler_registers_smartmoney_jobs_when_falcon_is_wired() -> Non
     )
     ids = {job.id for job in scheduler.get_jobs()}
     assert {"smartmoney-detection", "smartmoney-roster-review"} <= ids
+
+
+class _NullFetcher:
+    def fetch_market_by_condition(
+        self, condition_id: str, *, include_closed: bool = False
+    ) -> dict[str, Any] | None:
+        return None
+
+
+def test_build_scheduler_registers_the_backfill_job_when_a_fetcher_is_wired() -> None:
+    scheduler = build_scheduler(
+        _crawler(),
+        lambda _pairs: None,
+        interval_seconds=300,
+        session_factory=session_scope,
+        settings=_settings(),
+        resolution_fetcher=_NullFetcher(),
+    )
+    ids = {job.id for job in scheduler.get_jobs()}
+    assert "resolution-backfill" in ids
 
 
 def test_build_scheduler_runs_each_job_immediately_at_startup() -> None:
