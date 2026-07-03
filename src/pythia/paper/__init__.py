@@ -1,6 +1,4 @@
 from pythia.paper.ledger import (
-    DEFAULT_FEE,
-    DEFAULT_SLIPPAGE,
     NotOpenError,
     PaperLedger,
     PaperLedgerError,
@@ -9,8 +7,6 @@ from pythia.paper.ledger import (
 from pythia.paper.pricing import fill_price, realize_pnl
 
 __all__ = [
-    "DEFAULT_FEE",
-    "DEFAULT_SLIPPAGE",
     "NotOpenError",
     "PaperLedger",
     "PaperLedgerError",

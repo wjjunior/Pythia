@@ -65,8 +65,6 @@ from pythia.services.portfolio import PortfolioService
 
 DEFAULT_RESEARCH_K = 8
 NEUTRAL_PENALTY = 1.0
-DEFAULT_FEE = 0.0
-DEFAULT_SLIPPAGE = 0.0
 
 _log = get_logger(__name__)
 
@@ -334,8 +332,8 @@ class Pipeline:
             estimate,
             snapshot.yes_price,
             spread=snapshot.spread,
-            fee=DEFAULT_FEE,
-            slippage=DEFAULT_SLIPPAGE,
+            fee=self._settings.trade_fee,
+            slippage=self._settings.trade_slippage,
             p_resol=p_resol,
             p_liq=NEUTRAL_PENALTY,
             p_time=NEUTRAL_PENALTY,

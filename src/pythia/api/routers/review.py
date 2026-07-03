@@ -30,7 +30,11 @@ def review(
     broadcaster: BroadcasterDep,
 ) -> ReviewResult:
     estimate = str(estimate_id)
-    gate = ReviewGate(session, PaperLedger(session), settings)
+    gate = ReviewGate(
+        session,
+        PaperLedger(session, fee=settings.trade_fee, slippage=settings.trade_slippage),
+        settings,
+    )
     try:
         if body.action == ReviewAction.REJECT:
             gate.reject(estimate, reviewer=body.reviewer)

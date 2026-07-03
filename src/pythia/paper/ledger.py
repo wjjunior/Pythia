@@ -16,9 +16,6 @@ from pythia.common import PaperTrade, Side, SignalSource, TradeStatus
 from pythia.db import models
 from pythia.paper.pricing import fill_price, realize_pnl
 
-DEFAULT_FEE = 0.0
-DEFAULT_SLIPPAGE = 0.0
-
 
 class PaperLedgerError(RuntimeError):
     """No price to fill at — the estimate, its snapshot, or the market's snapshot is missing."""
@@ -53,9 +50,7 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
 
 
 class PaperLedger:
-    def __init__(
-        self, session: Session, *, fee: float = DEFAULT_FEE, slippage: float = DEFAULT_SLIPPAGE
-    ) -> None:
+    def __init__(self, session: Session, *, fee: float = 0.0, slippage: float = 0.0) -> None:
         self._session = session
         self._fee = fee
         self._slippage = slippage

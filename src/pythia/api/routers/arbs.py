@@ -60,7 +60,11 @@ def approve_arb(
     settings: SettingsDep,
     broadcaster: BroadcasterDep,
 ) -> ArbApproveResult:
-    service = ArbApprovalService(session, PaperLedger(session), settings)
+    service = ArbApprovalService(
+        session,
+        PaperLedger(session, fee=settings.trade_fee, slippage=settings.trade_slippage),
+        settings,
+    )
     try:
         trades = service.approve(str(arb_id), baskets=body.baskets, at=datetime.now(UTC))
     except UnknownArbError:
