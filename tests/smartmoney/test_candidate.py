@@ -44,9 +44,11 @@ class _FakeEvaluator:
     def resolve(self, external_market: str) -> str | None:
         return f"market:{external_market}" if self._returns_market else None
 
-    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> str | None:
+    def run_market(
+        self, market_id: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[bool, str | None] | None:
         self.ran.append(market_id)
-        return _FAKE_ESTIMATE_ID if self._returns_market else None
+        return (True, _FAKE_ESTIMATE_ID) if self._returns_market else None
 
 
 class _FakeStore:

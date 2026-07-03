@@ -33,7 +33,7 @@ from pythia.db.repositories import (
 from pythia.db.smartmoney import CandidateSignalRepo
 from pythia.orchestration import Pipeline
 from pythia.rag import EvidenceStore, StubEmbeddingPort
-from pythia.smartmoney.candidate import PipelineCandidateEvaluator, enqueue_candidates
+from pythia.smartmoney.candidate import PipelineCandidateEvaluator, drain_queued, enqueue_candidates
 
 pytestmark = pytest.mark.integration
 
@@ -174,7 +174,9 @@ def test_reuse_path_writes_existing_estimate_id_and_does_not_alter_signal_source
     evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
 
     # First run: produce the estimate (simulates the crawler tick that already ran)
-    first_estimate_id = evaluator.run_market(market.id, _TS, ["trader-first"])
+    first_run_result = evaluator.run_market(market.id, _TS, ["trader-first"])
+    assert first_run_result is not None, "First run must return a result"
+    _, first_estimate_id = first_run_result
     assert first_estimate_id is not None, "First run must produce an estimate"
 
     # Confirm signal_source on the pre-existing estimate
@@ -188,7 +190,9 @@ def test_reuse_path_writes_existing_estimate_id_and_does_not_alter_signal_source
     _enqueue_signal(session, market_id=market.id, signal_id=signal_id)
 
     # Second run: reuse path — snapshot already estimated, must not re-run the pipeline
-    reuse_estimate_id = evaluator.run_market(market.id, _TS, ["trader-second"])
+    reuse_run_result = evaluator.run_market(market.id, _TS, ["trader-second"])
+    assert reuse_run_result is not None, "Reuse path must return a result"
+    _, reuse_estimate_id = reuse_run_result
 
     assert reuse_estimate_id == first_estimate_id, (
         f"Reuse path must return pre-existing estimate id {first_estimate_id}, "
@@ -196,6 +200,7 @@ def test_reuse_path_writes_existing_estimate_id_and_does_not_alter_signal_source
     )
 
     # Set the FK via the repo (as drain_queued would do)
+    assert reuse_estimate_id is not None
     CandidateSignalRepo(session).set_estimate(signal_id, reuse_estimate_id)
 
     row = session.get(models.CandidateSignal, uuid.UUID(signal_id))
@@ -208,3 +213,65 @@ def test_reuse_path_writes_existing_estimate_id_and_does_not_alter_signal_source
     assert refreshed.signal_source == original_source, (
         "Reuse path must NOT alter the pre-existing estimate's signal_source"
     )
+
+
+def test_veto_path_transitions_to_evaluated_without_estimate_and_is_not_retried(
+    session: Session,
+) -> None:
+    """Regression (PYT-188 review): a QUEUED candidate whose pipeline vetoes before estimation
+    must be transitioned to EVALUATED (status), its budget slot consumed, and its estimate_id
+    left NULL — and must NOT be retried on the next drain tick.
+
+    Before the fix, drain_queued gated on ``estimate_id is not None``, so a veto-path run_market
+    returning None left the signal QUEUED and retried it on every subsequent tick forever.
+    """
+    market, _ = _market_with_snapshot(session, external_id="0xveto", namespace_key="veto")
+
+    # Create the signal as QUEUED (over-cap path)
+    signal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "sig-veto"))
+    CandidateSignalRepo(session).enqueue(
+        CandidateSignal(
+            id=signal_id,
+            market_id=market.id,
+            asof=_TS,
+            trader_ids=[str(uuid.uuid5(uuid.NAMESPACE_URL, "trader-veto"))],
+            source=CandidateSource.NEW_ENTRY,
+            status=CandidateSignalStatus.QUEUED,
+            created_at=_TS,
+        )
+    )
+
+    # cap_per_category=0.0 means 0% of bankroll → any existing exposure (even 0.0) satisfies
+    # exposure >= limit and triggers _veto_before_estimation before the LLM is called.
+    veto_settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://x/y",
+        cap_per_category=0.0,
+    )
+    pipeline = Pipeline(
+        session=session,
+        llm=StubLLMPort(),
+        evidence=EvidenceStore(session, StubEmbeddingPort()),
+        settings=veto_settings,
+        routing={"estimation": "stub", "critic": "stub"},
+        source=SignalSource.SMARTMONEY,
+    )
+    evaluator = PipelineCandidateEvaluator(session, pipeline)
+    repo = CandidateSignalRepo(session)
+
+    drained = drain_queued(store=repo, evaluator=evaluator, budget=5)
+
+    # The veto-path signal must appear in the drained list (transitioned)
+    assert len(drained) == 1
+    assert drained[0].id == signal_id
+    assert drained[0].status is CandidateSignalStatus.EVALUATED
+
+    # FK must be NULL — no estimate was produced on the veto path
+    row = session.get(models.CandidateSignal, uuid.UUID(signal_id))
+    assert row is not None
+    assert row.status == CandidateSignalStatus.EVALUATED
+    assert row.estimate_id is None, "veto-path candidate must have estimate_id=NULL"
+
+    # A second drain must NOT retry the now-EVALUATED signal
+    drained_again = drain_queued(store=repo, evaluator=evaluator, budget=5)
+    assert drained_again == [], "already-EVALUATED signal must not be retried"

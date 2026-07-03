@@ -79,8 +79,10 @@ class _FakeEvaluator:
     def resolve(self, external_market: str) -> str | None:
         return f"mkt:{external_market}"
 
-    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> str | None:
-        return _FAKE_BACKFILL_ESTIMATE_ID
+    def run_market(
+        self, market_id: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[bool, str | None] | None:
+        return (True, _FAKE_BACKFILL_ESTIMATE_ID)
 
 
 def _sweep(
