@@ -78,6 +78,7 @@ def main() -> None:
         settings=settings,
         falcon=falcon,
         positions=_positions(settings),
+        resolution_fetcher=transport,
     )
     _log.info(
         "worker_start",

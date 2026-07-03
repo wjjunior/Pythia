@@ -17,7 +17,9 @@ from pythia.ingestion.falcon import FalconPort
 from pythia.ingestion.venues import VenueClient
 from pythia.orchestration import make_funnel_sink, run_open_markets
 from pythia.services.calibration import RecalibrationService
+from pythia.smartmoney.candidate import MarketFetcher
 from pythia.worker.evidence_ingest import ingest_tick as evidence_ingest_tick
+from pythia.worker.resolution_ingest import backfill_resolutions
 from pythia.worker.resolution_ingest import ingest_tick as resolution_ingest_tick
 from pythia.worker.smartmoney_ingest import run_detection, run_positions_sweep, run_roster_review
 from pythia.worker.venue_ingest import ingest_tick as venue_ingest_tick
@@ -84,6 +86,24 @@ def resolution_tick(
         resolution_ingest_tick(session, settings, crawler)
 
 
+def resolution_backfill_tick(
+    session_factory: SessionFactory,
+    settings: Settings,
+    fetcher: MarketFetcher,
+    clock: Callable[[], datetime],
+) -> None:
+    # Targeted coverage of estimated-and-ended markets the window-bounded crawl misses (PYT-187),
+    # capped per tick so a large backlog drains over several ticks without stalling the worker.
+    with session_factory() as session:
+        backfill_resolutions(
+            session,
+            settings,
+            fetcher,
+            now=clock(),
+            limit=settings.resolution_backfill_max_per_tick,
+        )
+
+
 def recalibration_tick(
     session_factory: SessionFactory, settings: Settings, clock: Callable[[], datetime]
 ) -> None:
@@ -139,6 +159,7 @@ def build_scheduler(
     settings: Settings | None = None,
     falcon: FalconPort | None = None,
     positions: PositionsPort | None = None,
+    resolution_fetcher: MarketFetcher | None = None,
     clock: Callable[[], datetime] = _now,
 ) -> BlockingScheduler:
     # next_run_time = now makes each job fire once immediately at startup, then on the interval.
@@ -200,6 +221,14 @@ def build_scheduler(
             "interval",
             seconds=settings.recalibration_interval_seconds,
             id="recalibration-fit",
+            next_run_time=now,
+        )
+    if session_factory is not None and settings is not None and resolution_fetcher is not None:
+        scheduler.add_job(
+            lambda: resolution_backfill_tick(session_factory, settings, resolution_fetcher, clock),
+            "interval",
+            seconds=interval_seconds,
+            id="resolution-backfill",
             next_run_time=now,
         )
     if session_factory is not None and settings is not None and falcon is not None:
