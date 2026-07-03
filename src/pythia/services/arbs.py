@@ -13,7 +13,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
-from pythia.common import ArbLeg, ArbOpportunity, PaperTrade, Side, TradeStatus
+from pythia.common import ArbLeg, ArbOpportunity, PaperTrade, Side, SignalSource, TradeStatus
 from pythia.config import Settings, ensure_paper_mode
 from pythia.db import models
 from pythia.db.repositories import ArbRepository
@@ -74,6 +74,7 @@ def _leg_trade(arb_id: str, leg: ArbLeg, baskets: float, at: datetime) -> PaperT
         size=baskets * leg.price,
         status=TradeStatus.OPEN,
         opened_at=at,
+        signal_source=SignalSource.UNKNOWN,
     )
 
 

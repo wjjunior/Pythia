@@ -21,6 +21,7 @@ from pythia.common import (
     MarketSnapshot,
     RosterEvent,
     Score,
+    SignalSource,
     TrackedTrader,
     TraderEntry,
     TraderScorecard,
@@ -152,6 +153,7 @@ def test_candidate_feed_includes_the_pipeline_verdict(client: TestClient, sessio
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     ScoreRepository(session).add(
@@ -166,6 +168,7 @@ def test_candidate_feed_includes_the_pipeline_verdict(client: TestClient, sessio
             p_corr=1.0,
             opportunity_score=0.09,
             kelly_fraction=0.3,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     trader = _trader(session)

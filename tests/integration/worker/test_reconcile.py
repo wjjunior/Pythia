@@ -8,7 +8,15 @@ from typing import Any
 import pytest
 from sqlmodel import Session
 
-from pythia.common import Estimate, Market, MarketSnapshot, PaperTrade, Side, TradeStatus
+from pythia.common import (
+    Estimate,
+    Market,
+    MarketSnapshot,
+    PaperTrade,
+    Side,
+    SignalSource,
+    TradeStatus,
+)
 from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import EstimateRepository, MarketRepository, SnapshotRepository
@@ -104,6 +112,7 @@ def _seed_open_trade(session: Session) -> str:
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     PaperLedger(session).open(
@@ -116,6 +125,7 @@ def _seed_open_trade(session: Session) -> str:
             size=100.0,
             status=TradeStatus.OPEN,
             opened_at=AT,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     return market_id

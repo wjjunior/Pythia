@@ -12,6 +12,7 @@ from pythia.common import (
     MemberForecast,
     ResolutionProposal,
     Side,
+    SignalSource,
 )
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -65,6 +66,7 @@ def test_estimate_rejects_confidence_outside_unit_interval() -> None:
             rationale="because",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
 
 
@@ -80,6 +82,7 @@ def _estimate(**overrides: object) -> Estimate:
         "rationale": "because",
         "evidence_ids": [],
         "model_name": "stub",
+        "signal_source": SignalSource.UNKNOWN,
     }
     fields.update(overrides)
     return Estimate(**fields)

@@ -49,6 +49,16 @@ class ResolutionSourceType(StrEnum):
     SUBJECTIVE_UMA = "subjective_uma"
 
 
+class SignalSource(StrEnum):
+    """Which channel produced an estimate/score/trade (PYT-188)."""
+
+    RADAR = "radar"
+    SMARTMONEY = "smartmoney"
+    ARB = "arb"
+    MANUAL = "manual"  # reserved: no producer path yet
+    UNKNOWN = "unknown"  # un-attributable (backfill residual / boundary default)
+
+
 class Cohort(StrEnum):
     """Eval cohort labels (§4.11): config-defined market slices for honest calibration."""
 
@@ -201,6 +211,7 @@ class Estimate(_Frozen):
     rationale: str
     evidence_ids: list[str]
     model_name: str
+    signal_source: SignalSource
     critic_notes: str | None = None
     # The recalibrated forecast the deterministic layer sizes on (PYT-100). ``None`` means raw
     # ``p_model`` is the committed value (no active recalibration map, or a pre-PYT-100 row).
@@ -222,6 +233,7 @@ class Score(_Frozen):
     p_corr: Prob
     opportunity_score: float
     kelly_fraction: float
+    signal_source: SignalSource
 
 
 class PaperTrade(_Frozen):
@@ -233,6 +245,7 @@ class PaperTrade(_Frozen):
     size: float
     status: TradeStatus
     opened_at: datetime
+    signal_source: SignalSource
     resolved_at: datetime | None = None
     pnl: float | None = None
 

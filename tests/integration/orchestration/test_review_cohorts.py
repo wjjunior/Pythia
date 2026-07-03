@@ -18,6 +18,7 @@ from pythia.common import (
     MarketSnapshot,
     Score,
     Side,
+    SignalSource,
 )
 from pythia.config import Settings
 from pythia.db.repositories import (
@@ -102,6 +103,7 @@ def _seed(
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     ScoreRepository(session).add(
@@ -116,6 +118,7 @@ def _seed(
             p_corr=1.0,
             opportunity_score=0.0384,
             kelly_fraction=0.2,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     risk = _ok_decision()

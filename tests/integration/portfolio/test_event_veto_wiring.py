@@ -6,7 +6,15 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session
 
-from pythia.common import Estimate, Market, MarketSnapshot, PaperTrade, Side, TradeStatus
+from pythia.common import (
+    Estimate,
+    Market,
+    MarketSnapshot,
+    PaperTrade,
+    Side,
+    SignalSource,
+    TradeStatus,
+)
 from pythia.config import Settings
 from pythia.db.repositories import EstimateRepository, MarketRepository, SnapshotRepository
 from pythia.paper import PaperLedger
@@ -73,6 +81,7 @@ def _seed_option(session: Session, name: str) -> str:
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     return estimate_id
@@ -91,6 +100,7 @@ def test_open_yes_on_an_exclusive_event_vetoes_a_second_yes(session: Session) ->
             size=10.0,
             status=TradeStatus.OPEN,
             opened_at=_NOW,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 

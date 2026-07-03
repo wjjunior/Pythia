@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session
 
-from pythia.common import Estimate, Market, MarketSnapshot, MemberForecast
+from pythia.common import Estimate, Market, MarketSnapshot, MemberForecast, SignalSource
 from pythia.db.repositories import (
     EstimateMemberRepository,
     EstimateRepository,
@@ -55,6 +55,7 @@ def _seed(session: Session) -> None:
             rationale="r",
             evidence_ids=[],
             model_name="ensemble",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 

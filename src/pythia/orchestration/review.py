@@ -18,6 +18,7 @@ from pythia.common import (
     PaperLedgerPort,
     PaperTrade,
     Side,
+    SignalSource,
     TradeStatus,
 )
 from pythia.config import Settings, ensure_paper_mode
@@ -129,6 +130,7 @@ class ReviewGate:
                 size=approved_size,
                 status=TradeStatus.OPEN,
                 opened_at=at,
+                signal_source=SignalSource.UNKNOWN,
             )
         )
         self._cohorts_repo.add_many(trade.id, cohorts, asof=asof)

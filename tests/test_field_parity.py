@@ -24,19 +24,22 @@ _ALLOWED_DIVERGENCE: dict[str, tuple[set[str], set[str]]] = {
     "AuditEvent": ({"id"}, set()),
     # Surrogate PK + storage timestamp + denormalized FK tags for cost queries.
     "CostEvent": ({"id", "ts", "estimate_id", "market_id", "pipeline_run_id"}, set()),
-    "Score": ({"id", "created_at"}, set()),
+    # signal_source: domain field added in PYT-188 Task 1; db column arrives in Task 2.
+    "Score": ({"id", "created_at"}, {"signal_source"}),
     # Storage timestamps the domain contract doesn't carry.
     "Market": ({"created_at"}, set()),
     "Postmortem": ({"created_at"}, set()),
     "VenueQuote": ({"created_at"}, set()),
     "ImprovementCandidate": ({"created_at", "updated_at"}, set()),
-    # created_at (storage) + members, which live in the estimate_members child table, not a column.
-    "Estimate": ({"created_at"}, {"members"}),
+    # created_at (storage) + members (estimate_members child table) + signal_source (Task 2 adds col).
+    "Estimate": ({"created_at"}, {"members", "signal_source"}),
     # Storage-specific columns: the pgvector embedding + JSONB metadata, and the raw provider JSON.
     "Evidence": ({"embedding", "metadata"}, set()),
     "MarketSnapshot": ({"raw"}, set()),
     # Surrogate PK + detection timestamp; legs are JSONB rows of the contract's ArbLeg list.
     "ArbOpportunity": ({"id", "detected_at"}, set()),
+    # signal_source: domain field added in PYT-188 Task 1; db column arrives in Task 2.
+    "PaperTrade": (set(), {"signal_source"}),
 }
 
 

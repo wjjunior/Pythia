@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session
 
-from pythia.common import Estimate, Market, MarketSnapshot
+from pythia.common import Estimate, Market, MarketSnapshot, SignalSource
 from pythia.db import models
 from pythia.db.repositories import (
     CohortMembershipRepo,
@@ -57,6 +57,7 @@ def _trade_id(session: Session) -> str:
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     tid = str(uuid.uuid5(uuid.NAMESPACE_URL, "cm-trade"))

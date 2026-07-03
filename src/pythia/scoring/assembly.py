@@ -57,5 +57,6 @@ def build_score(
         opportunity_score=opportunity_score(
             ev_unit, estimate.confidence, p_resol, p_liq, p_time, p_corr
         ),
+        signal_source=estimate.signal_source,
         kelly_fraction=kelly_fraction(edge_net, q),
     )

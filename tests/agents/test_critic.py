@@ -15,7 +15,7 @@ from pythia.agents import (
     StubLLMPort,
     apply_verdict,
 )
-from pythia.common import CriticVerdict, Estimate
+from pythia.common import CriticVerdict, Estimate, SignalSource
 
 
 def _estimate(*, confidence: float = 0.8, model_name: str = "google/gemini-3-flash") -> Estimate:
@@ -30,6 +30,7 @@ def _estimate(*, confidence: float = 0.8, model_name: str = "google/gemini-3-fla
         rationale="r",
         evidence_ids=["ev1"],
         model_name=model_name,
+        signal_source=SignalSource.UNKNOWN,
     )
 
 

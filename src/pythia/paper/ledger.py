@@ -12,7 +12,7 @@ from datetime import datetime
 
 from sqlmodel import Session, col, select
 
-from pythia.common import PaperTrade, Side, TradeStatus
+from pythia.common import PaperTrade, Side, SignalSource, TradeStatus
 from pythia.db import models
 from pythia.paper.pricing import fill_price, realize_pnl
 
@@ -42,6 +42,7 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
         size=row.size,
         status=TradeStatus(row.status),
         opened_at=row.opened_at,
+        signal_source=SignalSource.UNKNOWN,
         resolved_at=row.resolved_at,
         pnl=row.pnl,
     )

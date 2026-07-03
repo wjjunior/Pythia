@@ -38,6 +38,7 @@ from pythia.common import (
     ResolutionSourceType,
     Score,
     Side,
+    SignalSource,
     Source,
     TradeStatus,
     Venue,
@@ -347,6 +348,7 @@ def _from_db_estimate(row: models.Estimate) -> Estimate:
         evidence_ids=[str(evidence_id) for evidence_id in row.evidence_ids],
         model_name=row.model_name,
         critic_notes=row.critic_notes,
+        signal_source=SignalSource.UNKNOWN,
     )
 
 
@@ -561,6 +563,7 @@ def _from_db_score(row: models.Score) -> Score:
         p_corr=row.p_corr,
         opportunity_score=row.opportunity_score,
         kelly_fraction=row.kelly_fraction,
+        signal_source=SignalSource.UNKNOWN,
     )
 
 
@@ -875,6 +878,7 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
         size=row.size,
         status=TradeStatus(row.status),
         opened_at=row.opened_at,
+        signal_source=SignalSource.UNKNOWN,
         resolved_at=row.resolved_at,
         pnl=row.pnl,
     )

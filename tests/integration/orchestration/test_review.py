@@ -14,6 +14,7 @@ from pythia.common import (
     MarketSnapshot,
     Score,
     Side,
+    SignalSource,
     TradeStatus,
 )
 from pythia.config import Settings
@@ -87,6 +88,7 @@ def _seed(session: Session, *, with_score: bool = True, risk: RiskDecision | Non
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     if with_score:
@@ -102,6 +104,7 @@ def _seed(session: Session, *, with_score: bool = True, risk: RiskDecision | Non
                 p_corr=1.0,
                 opportunity_score=0.0384,
                 kelly_fraction=0.2,
+                signal_source=SignalSource.UNKNOWN,
             )
         )
     if risk is not None:
