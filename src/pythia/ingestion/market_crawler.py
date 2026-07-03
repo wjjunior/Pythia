@@ -184,15 +184,15 @@ class HttpxTransport:
         self, condition_id: str, *, include_closed: bool = False
     ) -> dict[str, Any] | None:
         # A single market by its condition_id. Default open-only, to ingest a smart-money trigger
-        # on an off-slate market (PYT-156). include_closed drops the open filter so stale settlement
-        # can re-check an already-closed market (PYT-181) — else Gamma hides exactly the closed
-        # markets it targets. include_tag mirrors the open crawl's tag fallback for derive_category.
+        # on an off-slate market (PYT-156). include_closed flips the filter to closed=true so stale
+        # settlement can re-check an already-closed market (PYT-181). Gamma's /markets returns 0 for
+        # a closed market unless closed=true is passed — omitting the param is NOT "any state", so
+        # the filter must be set explicitly. include_tag mirrors the open crawl's tag fallback.
         params: dict[str, str | int | float] = {
             "condition_ids": condition_id,
             "include_tag": "true",
+            "closed": "true" if include_closed else "false",
         }
-        if not include_closed:
-            params["closed"] = "false"
         data = self._request(params)
         return next((m for m in data if m.get("conditionId") == condition_id), None)
 
