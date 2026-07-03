@@ -141,7 +141,7 @@ def _couple_event(estimates: EstimateRepository, group: EventGroup) -> None:
                 p_model_calibrated=coupled[market_id],
                 p_model_calibrated_fit_asof=estimate.p_model_calibrated_fit_asof,
                 members=[],
-                signal_source=SignalSource.UNKNOWN,
+                signal_source=estimate.signal_source,
             )
         )
 

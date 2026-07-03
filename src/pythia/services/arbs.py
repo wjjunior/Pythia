@@ -74,7 +74,7 @@ def _leg_trade(arb_id: str, leg: ArbLeg, baskets: float, at: datetime) -> PaperT
         size=baskets * leg.price,
         status=TradeStatus.OPEN,
         opened_at=at,
-        signal_source=SignalSource.UNKNOWN,
+        signal_source=SignalSource.ARB,
     )
 
 
