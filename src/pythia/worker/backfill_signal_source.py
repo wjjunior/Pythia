@@ -42,6 +42,10 @@ def backfill_signal_source(
 
     Returns per-table counts of rows labelled. Idempotent: a second run returns all zeros
     because every UPDATE is scoped WHERE signal_source IS NULL.
+
+    `now` is reserved for a future time-bounded variant (e.g. process only rows created
+    before a given cutoff). It is a no-op in the current logic — attribution is structural
+    and the smartmoney window uses stored candidate.asof / estimate.created_at, not `now`.
     """
     estimates_count = _backfill_estimates(session, eval_window=eval_window)
     scores_count = _backfill_scores(session)
@@ -217,7 +221,7 @@ def _backfill_scores(session: Session) -> int:
     if not scores:
         return 0
 
-    estimate_ids = [s.estimate_id for s in scores]
+    estimate_ids = [s.estimate_id for s in scores if s.estimate_id is not None]
     estimates = session.exec(
         select(models.Estimate)
         .where(col(models.Estimate.id).in_(estimate_ids))
@@ -230,20 +234,22 @@ def _backfill_scores(session: Session) -> int:
 
     by_source: dict[str, list[uuid.UUID]] = {}
     for score in scores:
+        if score.id is None or score.estimate_id is None:
+            continue
         src = source_by_estimate_id.get(score.estimate_id)
         if src is None:
             continue
-        by_source.setdefault(src, []).append(score.estimate_id)
+        by_source.setdefault(src, []).append(score.id)
 
     count = 0
-    for src, eids in by_source.items():
+    for src, score_ids in by_source.items():
         session.execute(
             update(models.Score)
-            .where(col(models.Score.estimate_id).in_(eids))
+            .where(col(models.Score.id).in_(score_ids))
             .where(col(models.Score.signal_source).is_(None))
             .values(signal_source=src)
         )
-        count += len(eids)
+        count += len(score_ids)
 
     if count:
         session.commit()

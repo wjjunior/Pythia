@@ -295,22 +295,43 @@ def test_review_trade_inherits_estimate_source(session: Session) -> None:
 
 
 def test_idempotency_second_run_changes_nothing(session: Session) -> None:
-    """A second run with everything already labelled returns all-zero counts."""
+    """A second run with everything already labelled returns all-zero counts.
+
+    Verifies that none of the three tables (estimates, scores, paper_trades) have their
+    signal_source changed on the second run — not just the estimate.
+    """
+    from sqlmodel import select as sqlmodel_select
+
     mkt = _market(session, "bfs-idem")
     snap = _snapshot(session, mkt)
     est = _estimate(session, mkt, snap, name="est-idem")
     _score(session, est, signal_source=None)
-    _trade(session, mkt, name="trade-idem", estimate_row=est)
+    trade = _trade(session, mkt, name="trade-idem", estimate_row=est)
 
     first = backfill_signal_source(session, now=_NOW, eval_window=_EVAL_WINDOW)
     assert sum(first.values()) > 0  # something was labelled in the first run
 
-    # Record what got labelled
+    # Record what got labelled across all three tables
     session.refresh(est)
-    label_after_first = est.signal_source
+    label_est_after_first = est.signal_source
+
+    score_row = session.exec(
+        sqlmodel_select(models.Score).where(models.Score.estimate_id == est.id)
+    ).one()
+    label_score_after_first = score_row.signal_source
+
+    session.refresh(trade)
+    label_trade_after_first = trade.signal_source
 
     second = backfill_signal_source(session, now=_NOW, eval_window=_EVAL_WINDOW)
     assert second == {"estimates": 0, "scores": 0, "paper_trades": 0}
 
+    # Assert all three tables are unchanged
     session.refresh(est)
-    assert est.signal_source == label_after_first  # label unchanged
+    assert est.signal_source == label_est_after_first
+
+    session.refresh(score_row)
+    assert score_row.signal_source == label_score_after_first
+
+    session.refresh(trade)
+    assert trade.signal_source == label_trade_after_first
