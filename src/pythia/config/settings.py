@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     # edge bar — it caps the implied arb at 1 - this; a complete-set locked arb above ~15% would be
     # taken instantly, so a larger "arb" is almost certainly an incomplete set.
     min_dutch_book_coverage: float = 0.85
+    # A ladder-spread lock comes from bid/ask microstructure and is worth pennies; a larger "arb"
+    # is almost always a mis-grouped family (distinct underlyings read as one ladder) or a stale
+    # quote. Cap the ev, as min_dutch_book_coverage caps the dutch book (PYT-183).
+    max_ladder_spread_ev: float = 0.10
     cap_daily: float = 0.05
     cap_weekly: float = 0.15
     cap_absolute: float = 1.0

@@ -22,6 +22,7 @@ from pythia.agents import (
     make_llm_port,
 )
 from pythia.common import (
+    ArbOpportunity,
     Estimate,
     EventGroup,
     EvidencePort,
@@ -84,13 +85,19 @@ def run_event_pass(session: Session, settings: Settings, *, now: datetime) -> in
     for event_slug, option_count in by_event.items():
         if option_count < 2:
             continue  # a single-option event is not a coupled set
-        group = service.get_event_group(event_slug, now)
-        if group is None:
-            continue
-        arbs = detect_arbitrage(group, min_dutch_book_coverage=settings.min_dutch_book_coverage)
+        group_list = service.get_event_groups(event_slug, now)
+        arbs: list[ArbOpportunity] = []
+        for group in group_list:
+            arbs.extend(
+                detect_arbitrage(
+                    group,
+                    min_dutch_book_coverage=settings.min_dutch_book_coverage,
+                    max_ladder_spread_ev=settings.max_ladder_spread_ev,
+                )
+            )
+            _couple_event(estimates, group)
         arbs_repo.replace_for_event(event_slug, arbs, detected_at=now)
         total += len(arbs)
-        _couple_event(estimates, group)
     return total
 
 

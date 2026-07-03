@@ -49,13 +49,12 @@ def test_event_service_groups_and_classifies_a_negrisk_event(session: Session) -
     b = _seed_option(session, "cup", "Argentina", neg_risk=True, yes_price=0.35)
     _seed_option(session, "other", "X", neg_risk=True, yes_price=0.50)  # different event — excluded
 
-    group = EventService(session).get_event_group("cup", _NOW)
+    [group] = EventService(session).get_event_groups("cup", _NOW)
 
-    assert group is not None
     assert group.event_type is EventType.MUTUALLY_EXCLUSIVE
     assert {o.market_id for o in group.options} == {a, b}
     assert sorted(o.yes_price for o in group.options) == pytest.approx([0.35, 0.40])
 
 
-def test_event_service_returns_none_for_an_unknown_event(session: Session) -> None:
-    assert EventService(session).get_event_group("nope", _NOW) is None
+def test_event_service_returns_empty_for_an_unknown_event(session: Session) -> None:
+    assert EventService(session).get_event_groups("nope", _NOW) == []

@@ -23,10 +23,12 @@ def _exclusive(*prices: float, spread: float = 0.02) -> EventGroup:
 
 
 def _ladder(*price_threshold: tuple[float, float]) -> EventGroup:
+    options = [_opt(str(i), p, threshold=t) for i, (p, t) in enumerate(price_threshold)]
+    options.sort(key=lambda opt: opt.threshold or 0.0)
     return EventGroup(
         event_slug="e",
         event_type=EventType.THRESHOLD_LADDER,
-        options=[_opt(str(i), p, threshold=t) for i, (p, t) in enumerate(price_threshold)],
+        options=options,
     )
 
 
@@ -88,3 +90,50 @@ def test_widening_the_spread_never_creates_a_dutch_book(prices: list[float]) -> 
     # Conservative: if the spread-aware detector flags an arb, a mid-price (spread 0) one does too.
     if detect_arbitrage(_exclusive(*prices, spread=0.05)):
         assert detect_arbitrage(_exclusive(*prices, spread=0.0))
+
+
+def test_ladder_spread_rejected_above_the_ev_cap() -> None:
+    # A 'lock' worth ~0.6 is not real microstructure — almost always a mis-grouped family (PYT-183).
+    group = _ladder((0.001, 750.0), (0.61, 1100.0))  # high priced far above low
+    assert detect_arbitrage(group, max_ladder_spread_ev=0.10) == []
+    [arb] = detect_arbitrage(group)  # default: no cap, still detected
+    assert arb.kind is ArbKind.LADDER_SPREAD
+
+
+@given(
+    pt=st.lists(
+        st.tuples(st.floats(0.0, 1.0), st.floats(100.0, 2000.0)),
+        min_size=2,
+        max_size=5,
+        unique_by=lambda x: x[1],
+    ),
+    cap=st.floats(min_value=0.0, max_value=1.0),
+)
+def test_no_ladder_spread_exceeds_the_ev_cap(pt: list[tuple[float, float]], cap: float) -> None:
+    for arb in detect_arbitrage(_ladder(*pt), max_ladder_spread_ev=cap):
+        assert arb.ev <= cap
+
+
+@given(
+    pt=st.lists(
+        st.tuples(st.floats(0.0, 1.0), st.floats(100.0, 2000.0)),
+        min_size=2,
+        max_size=5,
+        unique_by=lambda x: x[1],
+    ),
+    valuation=st.floats(0.0, 2100.0),
+)
+def test_within_family_spread_never_loses_both_legs(
+    pt: list[tuple[float, float]], valuation: float
+) -> None:
+    # A single-family ladder resolves monotonically: market i is YES iff valuation >= threshold_i.
+    # The long-YES(low)+short-NO(high) spread can never lose both legs (PYT-183).
+    threshold_of = {str(i): t for i, (_, t) in enumerate(pt)}
+    for arb in detect_arbitrage(_ladder(*pt)):
+        by_side = {leg.side: leg for leg in arb.legs}
+        t_low = threshold_of[by_side[Side.YES].market_id]
+        t_high = threshold_of[by_side[Side.NO].market_id]
+        assert t_low < t_high  # the spread must long the lower threshold and short the higher
+        low_leg_wins = valuation >= t_low
+        high_leg_wins = valuation < t_high
+        assert low_leg_wins or high_leg_wins  # never both lose

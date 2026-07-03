@@ -6,17 +6,17 @@ from sqlmodel import Session
 
 from pythia.common import EventGroup, Market, MarketSnapshot
 from pythia.db.repositories import MarketRepository, SnapshotRepository
-from pythia.scoring.events import build_event_group
+from pythia.scoring.events import build_event_groups
 
 
 class EventService:
-    """Build an EventGroup for an event_slug from its option-markets' latest snapshots <= asof."""
+    """Build EventGroups for an event_slug from its option-markets' latest snapshots <= asof."""
 
     def __init__(self, session: Session) -> None:
         self._markets = MarketRepository(session)
         self._snapshots = SnapshotRepository(session)
 
-    def get_event_group(self, event_slug: str, asof: datetime) -> EventGroup | None:
+    def get_event_groups(self, event_slug: str, asof: datetime) -> list[EventGroup]:
         options: list[tuple[Market, MarketSnapshot]] = []
         for market in self._markets.list_by_event_slug(event_slug):
             if market.resolved:
@@ -25,5 +25,5 @@ class EventService:
             if snapshot is not None:
                 options.append((market, snapshot))
         if not options:
-            return None
-        return build_event_group(event_slug, options)
+            return []
+        return build_event_groups(event_slug, options)

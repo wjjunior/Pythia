@@ -47,6 +47,17 @@ def parse_threshold(question: str) -> float | None:
     return amount * _SCALE.get((match.group(2) or "").lower(), 1.0)
 
 
+_THRESHOLD_PLACEHOLDER = "$#"
+
+
+def option_signature(question: str) -> str:
+    """A ladder family key: the question with every $-threshold collapsed to a placeholder and
+    case/whitespace normalized. Two options share a ladder only if their signatures match, so
+    '(LOW) $750B' and '(HIGH) $1.1T' never pair (PYT-183)."""
+    collapsed = _THRESHOLD_RE.sub(_THRESHOLD_PLACEHOLDER, question)
+    return " ".join(collapsed.lower().split())
+
+
 class LadderDirection(StrEnum):
     """Which side of the threshold a question asks about — sets a ladder's monotonicity."""
 
@@ -115,6 +126,20 @@ def build_event_group(
     return EventGroup(event_slug=event_slug, event_type=event_type, options=event_options)
 
 
+def build_event_groups(
+    event_slug: str, options: Sequence[tuple[Market, MarketSnapshot]]
+) -> list[EventGroup]:
+    """One coherent coupled set per group: a negRisk event stays whole (mutually exclusive); a
+    non-negRisk event is partitioned by option_signature so each threshold family is its own ladder
+    and cross-family spreads can never form (PYT-183)."""
+    if len(options) >= 2 and all(market.neg_risk for market, _ in options):
+        return [build_event_group(event_slug, options)]
+    families: dict[str, list[tuple[Market, MarketSnapshot]]] = {}
+    for market, snapshot in options:
+        families.setdefault(option_signature(market.question), []).append((market, snapshot))
+    return [build_event_group(event_slug, family) for family in families.values()]
+
+
 def _ask(option: EventOption) -> float:
     return min(1.0, option.yes_price + option.spread / 2.0)
 
@@ -124,13 +149,16 @@ def _bid(option: EventOption) -> float:
 
 
 def detect_arbitrage(
-    group: EventGroup, *, min_dutch_book_coverage: float = 0.0
+    group: EventGroup,
+    *,
+    min_dutch_book_coverage: float = 0.0,
+    max_ladder_spread_ev: float = float("inf"),
 ) -> list[ArbOpportunity]:
     """Locked arbitrage in an event, priced conservatively at the spread-adjusted ask/bid."""
     if group.event_type is EventType.MUTUALLY_EXCLUSIVE:
         return _dutch_book(group, min_coverage=min_dutch_book_coverage)
     if group.event_type is EventType.THRESHOLD_LADDER:
-        return _ladder_spreads(group)
+        return _ladder_spreads(group, max_ev=max_ladder_spread_ev)
     return []
 
 
@@ -154,17 +182,18 @@ def _dutch_book(group: EventGroup, *, min_coverage: float) -> list[ArbOpportunit
     ]
 
 
-def _ladder_spreads(group: EventGroup) -> list[ArbOpportunity]:
+def _ladder_spreads(group: EventGroup, *, max_ev: float) -> list[ArbOpportunity]:
     # Ascending by threshold: YES(>t_low) dominates YES(>t_high), so fair price_low >= price_high.
     # A violation prices high above low; the locked arb is long YES(low) + short YES(high) via NO,
-    # with ev = bid(high) - ask(low) (worst-case payoff 1, cost ask_low + 1 - bid_high).
+    # with ev = bid(high) - ask(low). max_ev rejects an implausibly large "lock" — a mis-grouped
+    # family or a stale quote — since a real microstructure spread is worth pennies (PYT-183).
     options = group.options
     arbs: list[ArbOpportunity] = []
     for i in range(len(options)):
         for j in range(i + 1, len(options)):
             low, high = options[i], options[j]
             ev = _bid(high) - _ask(low)
-            if ev <= 0.0:
+            if not (0.0 < ev <= max_ev):
                 continue
             legs = [
                 ArbLeg(
