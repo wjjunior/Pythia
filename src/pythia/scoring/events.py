@@ -47,6 +47,17 @@ def parse_threshold(question: str) -> float | None:
     return amount * _SCALE.get((match.group(2) or "").lower(), 1.0)
 
 
+_THRESHOLD_PLACEHOLDER = "$#"
+
+
+def option_signature(question: str) -> str:
+    """A ladder family key: the question with every $-threshold collapsed to a placeholder and
+    case/whitespace normalized. Two options share a ladder only if their signatures match, so
+    '(LOW) $750B' and '(HIGH) $1.1T' never pair (PYT-183)."""
+    collapsed = _THRESHOLD_RE.sub(_THRESHOLD_PLACEHOLDER, question)
+    return " ".join(collapsed.lower().split())
+
+
 class LadderDirection(StrEnum):
     """Which side of the threshold a question asks about — sets a ladder's monotonicity."""
 

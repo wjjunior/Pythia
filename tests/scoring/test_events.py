@@ -11,6 +11,7 @@ from pythia.scoring.events import (
     build_event_group,
     classify_event,
     detect_arbitrage,
+    option_signature,
     parse_threshold,
     threshold_direction,
 )
@@ -151,3 +152,17 @@ def test_build_event_group_mutually_exclusive_has_no_thresholds() -> None:
 def test_classify_event_is_independent_of_option_order(items: list[tuple[str, bool]]) -> None:
     markets = [_market(str(i), q, neg_risk=nr) for i, (q, nr) in enumerate(items)]
     assert classify_event(markets) == classify_event(list(reversed(markets)))
+
+
+def test_option_signature_collapses_thresholds_within_a_family() -> None:
+    lo1 = option_signature("Will Anthropic's valuation hit (LOW) $750B by June 30?")
+    lo2 = option_signature("Will Anthropic's valuation hit (LOW) $800B by June 30?")
+    hi = option_signature("Will Anthropic's valuation hit (HIGH) $1.1T by June 30?")
+    assert lo1 == lo2  # same family — only the threshold differs, and it is collapsed
+    assert lo1 != hi  # (LOW) and (HIGH) are distinct families
+
+
+def test_option_signature_normalizes_case_and_whitespace() -> None:
+    assert option_signature("IPO cap  above  $800 billion?") == option_signature(
+        "ipo cap above $1 trillion?"
+    )
