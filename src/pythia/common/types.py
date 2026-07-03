@@ -438,6 +438,7 @@ class CandidateSignal(_Frozen):
     status: CandidateSignalStatus
     created_at: datetime
     market_id: str | None = None
+    estimate_id: str | None = None
 
 
 class RosterEvent(_Frozen):
