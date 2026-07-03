@@ -7,7 +7,7 @@ from itertools import pairwise
 import pytest
 from sqlmodel import Session, select
 
-from pythia.common import Estimate, Market, MarketSnapshot
+from pythia.common import Estimate, Market, MarketSnapshot, SignalSource
 from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import (
@@ -157,6 +157,7 @@ def _seed_committed(
             model_name="stub",
             p_model_calibrated=calibrated,
             p_model_calibrated_fit_asof=_NOW,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     return market_id, estimate_id

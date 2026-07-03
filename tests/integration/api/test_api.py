@@ -22,6 +22,7 @@ from pythia.common import (
     PaperTrade,
     Score,
     Side,
+    SignalSource,
     Source,
     TradeStatus,
 )
@@ -113,6 +114,7 @@ def _seed_scored_market(session: Session, *, category: str = "politics") -> None
             rationale="r",
             evidence_ids=[EVIDENCE_ID],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     ScoreRepository(session).add(
@@ -127,6 +129,7 @@ def _seed_scored_market(session: Session, *, category: str = "politics") -> None
             p_corr=1.0,
             opportunity_score=0.0912,
             kelly_fraction=0.38,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 
@@ -168,6 +171,7 @@ def _seed_market_scored_twice(session: Session) -> None:
                 rationale="r",
                 evidence_ids=[],
                 model_name="stub",
+                signal_source=SignalSource.UNKNOWN,
             )
         )
     # The older estimate carries the HIGHER opportunity_score, so ranking alone would surface it;
@@ -256,6 +260,7 @@ def _seed_calibration_market(
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     session.add(
@@ -700,6 +705,7 @@ def test_radar_preserves_ranking_across_markets_after_dedup(
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     ScoreRepository(session).add(
@@ -714,6 +720,7 @@ def test_radar_preserves_ranking_across_markets_after_dedup(
             p_corr=1.0,
             opportunity_score=0.05,
             kelly_fraction=0.2,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     ids = [r["market"]["id"] for r in client.get("/api/radar?limit=10").json()]
@@ -1074,6 +1081,7 @@ def _open_trade_for(session: Session, *, market_id: str, estimate_id: str) -> No
             size=100.0,
             status=TradeStatus.OPEN,
             opened_at=TS,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 
@@ -1151,6 +1159,7 @@ def test_resolve_market_should_flag_postmortem_created_on_a_surprise(
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlmodel import Session
 
-from pythia.common import AuditEvent, AuditKind, Score, Side
+from pythia.common import AuditEvent, AuditKind, Score, Side, SignalSource
 from pythia.config import Settings
 from pythia.db import models
 from pythia.db.repositories import AuditRepository, ScoreRepository
@@ -95,6 +95,7 @@ def _score(session: Session, name: str) -> None:
             p_corr=1.0,
             opportunity_score=0.0384,
             kelly_fraction=0.2,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 

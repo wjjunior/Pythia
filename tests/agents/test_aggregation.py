@@ -5,7 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from pythia.agents.aggregation import AggregatedForecast, aggregate
-from pythia.common import Estimate
+from pythia.common import Estimate, SignalSource
 
 
 def _member(
@@ -22,6 +22,7 @@ def _member(
         rationale="r",
         evidence_ids=[],
         model_name="x/model",
+        signal_source=SignalSource.UNKNOWN,
     )
 
 

@@ -38,6 +38,7 @@ from pythia.common import (
     ResolutionSourceType,
     Score,
     Side,
+    SignalSource,
     Source,
     TradeStatus,
     Venue,
@@ -329,6 +330,7 @@ def _to_db_estimate(estimate: Estimate) -> models.Estimate:
         critic_notes=estimate.critic_notes,
         evidence_ids=[uuid.UUID(evidence_id) for evidence_id in estimate.evidence_ids],
         model_name=estimate.model_name,
+        signal_source=estimate.signal_source.value,
     )
 
 
@@ -347,6 +349,11 @@ def _from_db_estimate(row: models.Estimate) -> Estimate:
         evidence_ids=[str(evidence_id) for evidence_id in row.evidence_ids],
         model_name=row.model_name,
         critic_notes=row.critic_notes,
+        signal_source=(
+            SignalSource(row.signal_source)
+            if row.signal_source is not None
+            else SignalSource.UNKNOWN
+        ),
     )
 
 
@@ -546,6 +553,7 @@ def _to_db_score(score: Score) -> models.Score:
         p_corr=score.p_corr,
         opportunity_score=score.opportunity_score,
         kelly_fraction=score.kelly_fraction,
+        signal_source=score.signal_source.value,
     )
 
 
@@ -561,6 +569,11 @@ def _from_db_score(row: models.Score) -> Score:
         p_corr=row.p_corr,
         opportunity_score=row.opportunity_score,
         kelly_fraction=row.kelly_fraction,
+        signal_source=(
+            SignalSource(row.signal_source)
+            if row.signal_source is not None
+            else SignalSource.UNKNOWN
+        ),
     )
 
 
@@ -875,6 +888,11 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
         size=row.size,
         status=TradeStatus(row.status),
         opened_at=row.opened_at,
+        signal_source=(
+            SignalSource(row.signal_source)
+            if row.signal_source is not None
+            else SignalSource.UNKNOWN
+        ),
         resolved_at=row.resolved_at,
         pnl=row.pnl,
     )
@@ -931,6 +949,43 @@ class PaperTradeRepository:
             models.PaperTrade.status == TradeStatus.OPEN
         )
         return float(self._session.exec(statement).one())
+
+    def pnl_by_channel(self) -> dict[str, tuple[float, float, int, int]]:
+        """Aggregate PnL/counts grouped by signal_source.
+
+        Returns {channel: (realized_pnl, locked_in_open, n_open, n_resolved)}.
+
+        Structured so adding ``markets.category`` as a second GROUP BY key is one extra column
+        and one extra ``.join()`` — the category x channel matrix is one card away.
+        """
+        is_resolved = col(models.PaperTrade.status) == TradeStatus.RESOLVED
+        is_open = col(models.PaperTrade.status) == TradeStatus.OPEN
+        pnl_rows = self._session.exec(
+            select(
+                models.PaperTrade.signal_source,
+                func.coalesce(func.sum(models.PaperTrade.pnl).filter(is_resolved), 0.0),
+                func.coalesce(func.sum(models.PaperTrade.size).filter(is_open), 0.0),
+            ).group_by(col(models.PaperTrade.signal_source))
+        ).all()
+        count_rows = self._session.exec(
+            select(
+                models.PaperTrade.signal_source,
+                func.count().filter(is_open),
+                func.count().filter(is_resolved),
+            ).group_by(col(models.PaperTrade.signal_source))
+        ).all()
+        counts = {
+            (ch if ch is not None else "unknown"): (int(n_open), int(n_res))
+            for ch, n_open, n_res in count_rows
+        }
+        return {
+            (channel if channel is not None else "unknown"): (
+                float(realized or 0.0),
+                float(locked or 0.0),
+                *counts.get(channel if channel is not None else "unknown", (0, 0)),
+            )
+            for channel, realized, locked in pnl_rows
+        }
 
     def open_positions(self) -> list[tuple[float, str, str, datetime, str | None, str]]:
         rows = self._session.exec(

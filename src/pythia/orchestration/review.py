@@ -129,6 +129,7 @@ class ReviewGate:
                 size=approved_size,
                 status=TradeStatus.OPEN,
                 opened_at=at,
+                signal_source=estimate.signal_source,
             )
         )
         self._cohorts_repo.add_many(trade.id, cohorts, asof=asof)

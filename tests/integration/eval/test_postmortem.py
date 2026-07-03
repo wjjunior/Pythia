@@ -14,6 +14,7 @@ from pythia.common import (
     ImprovementAction,
     Market,
     MarketSnapshot,
+    SignalSource,
 )
 from pythia.config import Settings
 from pythia.db.repositories import (
@@ -77,6 +78,7 @@ def _seed_estimate(
             upper=min(1.0, p_model + 0.1),
             rationale="r",
             evidence_ids=[],
+            signal_source=SignalSource.UNKNOWN,
             model_name="stub",
         )
     )

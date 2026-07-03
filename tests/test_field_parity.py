@@ -30,7 +30,7 @@ _ALLOWED_DIVERGENCE: dict[str, tuple[set[str], set[str]]] = {
     "Postmortem": ({"created_at"}, set()),
     "VenueQuote": ({"created_at"}, set()),
     "ImprovementCandidate": ({"created_at", "updated_at"}, set()),
-    # created_at (storage) + members, which live in the estimate_members child table, not a column.
+    # created_at (storage) + members (estimate_members child table).
     "Estimate": ({"created_at"}, {"members"}),
     # Storage-specific columns: the pgvector embedding + JSONB metadata, and the raw provider JSON.
     "Evidence": ({"embedding", "metadata"}, set()),

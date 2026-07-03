@@ -18,8 +18,8 @@ import {
 import { useClosePosition, usePaper, usePortfolio } from "@/hooks/use-api"
 import { isoDate, pct, signedNum, usd } from "@/lib/format"
 import { polymarketUrl } from "@/lib/polymarket"
-import { exposureSeverity } from "@/lib/ranking"
-import type { PaperPositionView } from "@/lib/types"
+import { exposureSeverity, pnlClass, sortChannelPnlEntries } from "@/lib/ranking"
+import type { ChannelPnl, PaperPositionView } from "@/lib/types"
 
 const SEVERITY_VARIANT = { ok: "positive", warn: "muted", high: "negative" } as const
 
@@ -54,6 +54,47 @@ function ExposureCard({
                 <TableRow key={key}>
                   <TableCell className="font-medium">{key}</TableCell>
                   <TableCell className="text-right tabular-nums">{usd(value)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ChannelPnlCard({ byChannel }: { byChannel: Record<string, ChannelPnl> }) {
+  const rows = sortChannelPnlEntries(Object.entries(byChannel))
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>PnL by channel</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <EmptyState message="No channel data yet." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Channel</TableHead>
+                <TableHead className="text-right">Realized PnL</TableHead>
+                <TableHead className="text-right">Deployed</TableHead>
+                <TableHead className="text-right">Open</TableHead>
+                <TableHead className="text-right">Resolved</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map(([channel, stats]) => (
+                <TableRow key={channel}>
+                  <TableCell className="font-medium">{channel}</TableCell>
+                  <TableCell className={`text-right tabular-nums ${pnlClass(stats.realized_pnl)}`}>
+                    {signedNum(stats.realized_pnl, 2)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{usd(stats.locked_in_open)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{stats.n_open}</TableCell>
+                  <TableCell className="text-right tabular-nums">{stats.n_resolved}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -174,7 +215,7 @@ export function PaperView() {
         description="Capital is recomputed from the ledger: available = bankroll + realized − locked."
       />
       <QueryState query={paper}>
-        {({ capital, positions, resolved }) => {
+        {({ capital, positions, resolved, by_channel }) => {
           const severity = exposureSeverity(capital.exposure_fraction)
           return (
             <div className="flex flex-col gap-4">
@@ -213,6 +254,8 @@ export function PaperView() {
                   />
                 </div>
               ) : null}
+
+              <ChannelPnlCard byChannel={by_channel} />
 
               <Card>
                 <CardHeader>

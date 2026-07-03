@@ -2,7 +2,7 @@
 
 import pytest
 
-from pythia.common import Estimate, Score
+from pythia.common import Estimate, Score, SignalSource
 from pythia.scoring import (
     ResolutionSourceType,
     build_score,
@@ -23,6 +23,7 @@ def _estimate(*, p_model: float = 0.7, confidence: float = 0.6) -> Estimate:
         rationale="r",
         evidence_ids=["ev1"],
         model_name="stub",
+        signal_source=SignalSource.UNKNOWN,
     )
 
 

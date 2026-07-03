@@ -92,12 +92,15 @@ def test_increase_triggers_even_when_a_same_ts_exit_is_listed_first(session: Ses
 
 
 def _pipeline(session: Session) -> Pipeline:
+    from pythia.common import SignalSource
+
     return Pipeline(
         session=session,
         llm=StubLLMPort(),
         evidence=EvidenceStore(session, StubEmbeddingPort()),
         settings=Settings(_env_file=None, database_url="postgresql+psycopg://x/y"),
         routing={"estimation": "stub", "critic": "stub"},
+        source=SignalSource.SMARTMONEY,
     )
 
 
@@ -124,11 +127,14 @@ def test_pipeline_evaluator_runs_the_pipeline_and_persists_a_verdict(session: Se
     )
     evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
 
-    market_id = evaluator.evaluate("0xfalconmkt", _TS, ["trader-1"])
+    result = evaluator.evaluate("0xfalconmkt", _TS, ["trader-1"])
 
+    assert result is not None
+    market_id, estimate_id = result
     assert market_id == market.id
     estimate = EstimateRepository(session).latest_for_market(market.id)
     assert estimate is not None  # the pipeline ran, point-in-time
+    assert estimate_id == estimate.id  # FK populated from PipelineResult
     assert ScoreRepository(session).get_by_estimate(estimate.id) is not None  # verdict persisted
 
 
@@ -160,8 +166,11 @@ def test_pipeline_evaluator_is_idempotent_on_an_already_estimated_snapshot(
     )
     evaluator = PipelineCandidateEvaluator(session, _pipeline(session))
 
-    assert evaluator.evaluate("0xdupmkt", _TS, ["t1"]) == market.id  # first run estimates + scores
-    assert evaluator.evaluate("0xdupmkt", _TS, ["t2"]) == market.id  # second run must not raise
+    r1 = evaluator.evaluate("0xdupmkt", _TS, ["t1"])
+    assert r1 is not None and r1[0] == market.id  # first run estimates + scores
+    r2 = evaluator.evaluate("0xdupmkt", _TS, ["t2"])
+    assert r2 is not None and r2[0] == market.id  # second run must not raise
+    assert r1[1] == r2[1]  # both runs resolve to the same estimate id (reuse path)
 
     estimates = session.exec(
         select(models.Estimate).where(models.Estimate.market_id == uuid.UUID(market.id))
@@ -208,13 +217,15 @@ def test_pipeline_evaluator_ingests_a_triggered_market_on_demand(session: Sessio
         session, _pipeline(session), market_fetcher=fetcher, clock=lambda: _TS
     )
 
-    market_id = evaluator.evaluate("0xuncrawled", _TS, ["trader-1"])
+    result = evaluator.evaluate("0xuncrawled", _TS, ["trader-1"])
 
-    assert market_id is not None
+    assert result is not None
+    market_id, estimate_id = result
     ingested = MarketRepository(session).get_by_external_id("0xuncrawled")
     assert ingested is not None and ingested.id == market_id  # fetched + ingested, not dropped
     estimate = EstimateRepository(session).latest_for_market(market_id)
     assert estimate is not None  # the pipeline then ran on the freshly-ingested market
+    assert estimate_id == estimate.id  # FK populated from PipelineResult
     assert ScoreRepository(session).get_by_estimate(estimate.id) is not None  # verdict persisted
 
 

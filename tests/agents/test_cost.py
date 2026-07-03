@@ -11,6 +11,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     ResolutionProposal,
+    SignalSource,
 )
 
 _TS = datetime(2026, 1, 1, tzinfo=UTC)
@@ -55,6 +56,7 @@ class _CountingLLM:
             rationale="r",
             evidence_ids=[item.id for item in ctx.evidence],
             model_name="fake",
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:

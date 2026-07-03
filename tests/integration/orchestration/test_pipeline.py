@@ -20,6 +20,7 @@ from pythia.common import (
     MarketSnapshot,
     MemberForecast,
     ResolutionSourceType,
+    SignalSource,
     Source,
     Venue,
     VenueQuote,
@@ -117,6 +118,7 @@ def _pipeline(session: Session, llm: object) -> Pipeline:
         evidence=EvidenceStore(session, StubEmbeddingPort()),
         settings=_settings(),
         routing=ROUTING,
+        source=SignalSource.RADAR,
     )
 
 
@@ -159,6 +161,7 @@ class _ConfidentLLM:
             rationale="confident",
             evidence_ids=[item.id for item in ctx.evidence],
             model_name="fake/confident",
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
@@ -180,6 +183,7 @@ class _OverconfidentLLM:
             rationale="overconfident",
             evidence_ids=[item.id for item in ctx.evidence],
             model_name="fake/overconfident",
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
@@ -205,6 +209,7 @@ class _EnsembleLLM:
                 MemberForecast(model="a/m1", p_member=0.6),
                 MemberForecast(model="b/m2", p_member=0.8),
             ],
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:

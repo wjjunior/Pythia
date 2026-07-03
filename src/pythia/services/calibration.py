@@ -195,6 +195,24 @@ class CalibrationService:
         by_category, _by_cohort = self._records(self._resolved_outcomes())
         return by_category
 
+    def records_by_channel(self) -> _Records:
+        """(p_model, q_market, outcome) triples keyed by signal_source.value.
+
+        Reuses _latest_estimate_per_market and _snapshots (the same anti-lookahead machinery as
+        _records) but groups on estimate.signal_source instead of market.category. ARB trades
+        have no estimate, so they never appear here — the filter is structural, not explicit.
+        """
+        outcomes = self._resolved_outcomes()
+        latest = _latest_estimate_per_market(self._session, list(outcomes))
+        snapshots = self._snapshots([estimate.snapshot_id for estimate in latest.values()])
+        by_channel: _Records = {}
+        for market_id, estimate in latest.items():
+            q_market, _ts = snapshots[estimate.snapshot_id]
+            record: tuple[float, float, int] = (_committed(estimate), q_market, outcomes[market_id])
+            channel = estimate.signal_source if estimate.signal_source else "unknown"
+            by_channel.setdefault(channel, []).append(record)
+        return by_channel
+
     def _blended_records(self, outcomes: dict[uuid.UUID, int]) -> tuple[_Records, _Records]:
         latest = _latest_estimate_per_market(self._session, list(outcomes))
         categories = _categories_of(self._session, list(latest))

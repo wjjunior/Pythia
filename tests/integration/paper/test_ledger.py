@@ -6,7 +6,15 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlmodel import Session, select
 
-from pythia.common import Estimate, Market, MarketSnapshot, PaperTrade, Side, TradeStatus
+from pythia.common import (
+    Estimate,
+    Market,
+    MarketSnapshot,
+    PaperTrade,
+    Side,
+    SignalSource,
+    TradeStatus,
+)
 from pythia.db import models
 from pythia.db.repositories import EstimateRepository, MarketRepository, SnapshotRepository
 from pythia.paper import PaperLedger, PaperLedgerError, fill_price, realize_pnl
@@ -54,6 +62,7 @@ def _seed(session: Session) -> None:
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 
@@ -68,6 +77,7 @@ def _trade(side: Side, size: float) -> PaperTrade:
         size=size,
         status=TradeStatus.OPEN,
         opened_at=OPENED_AT,
+        signal_source=SignalSource.UNKNOWN,
     )
 
 

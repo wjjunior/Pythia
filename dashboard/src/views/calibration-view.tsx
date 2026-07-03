@@ -31,9 +31,12 @@ import {
   COHORT_SLICES,
   gateBlockedReasons,
   gateState,
+  isLowN,
+  LOW_N,
   OVERALL_COHORT,
+  sortChannelEntries,
 } from "@/lib/ranking"
-import type { CohortCalibration, ReliabilityBin } from "@/lib/types"
+import type { ChannelBrier, CohortCalibration, ReliabilityBin } from "@/lib/types"
 
 const VERDICT = {
   system: { label: "system better", variant: "positive" as const },
@@ -49,6 +52,64 @@ function reliabilityData(bins: ReliabilityBin[]) {
       observed: bin.observed_frequency,
       ideal: bin.mean_forecast,
     }))
+}
+
+function ChannelBrierCard({ byChannel }: { byChannel: Record<string, ChannelBrier> }) {
+  const rows = sortChannelEntries(Object.entries(byChannel))
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Brier by channel</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <EmptyState message="No channel calibration data yet." />
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Channel</TableHead>
+                  <TableHead className="text-right">n</TableHead>
+                  <TableHead className="text-right">Brier(system)</TableHead>
+                  <TableHead className="text-right">Brier(market)</TableHead>
+                  <TableHead className="text-right">Δ</TableHead>
+                  <TableHead>Verdict</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map(([channel, stats]) => {
+                  const low = isLowN(stats.n)
+                  const verdict = VERDICT[calibrationVerdict(stats)]
+                  const rowClass = low ? "text-muted-foreground" : ""
+                  return (
+                    <TableRow key={channel} className={rowClass}>
+                      <TableCell className="font-medium">{channel}</TableCell>
+                      <TableCell className="text-right tabular-nums">{stats.n}</TableCell>
+                      <TableCell className="text-right tabular-nums">{num(stats.brier_system)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{num(stats.brier_market)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{signedNum(stats.delta)}</TableCell>
+                      <TableCell>
+                        {low ? (
+                          <Badge variant="muted">{`low signal (n<${LOW_N})`}</Badge>
+                        ) : (
+                          <Badge variant={verdict.variant}>{verdict.label}</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Channels with fewer than {LOW_N} resolved markets are greyed out — not enough signal to
+              read as a calibration claim.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 function CohortBreakdown({ cohorts }: { cohorts: CohortCalibration[] }) {
@@ -208,6 +269,8 @@ export function CalibrationView() {
                   <CohortBreakdown cohorts={report.cohorts} />
                 </CardContent>
               </Card>
+
+              <ChannelBrierCard byChannel={report.by_channel} />
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <Card>

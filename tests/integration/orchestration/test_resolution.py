@@ -14,6 +14,7 @@ from pythia.common import (
     MarketSnapshot,
     PaperTrade,
     Side,
+    SignalSource,
     TradeStatus,
 )
 from pythia.config import Settings
@@ -73,6 +74,7 @@ def _seed(session: Session, name: str, *, p_model: float, confidence: float) -> 
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 
@@ -88,6 +90,7 @@ def _open_trade(session: Session, estimate: Estimate) -> None:
             size=100.0,
             status=TradeStatus.OPEN,
             opened_at=AT,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 

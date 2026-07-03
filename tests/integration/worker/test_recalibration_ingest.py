@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlmodel import Session
 
-from pythia.common import Estimate, Market, MarketSnapshot
+from pythia.common import Estimate, Market, MarketSnapshot, SignalSource
 from pythia.config import Settings
 from pythia.db.repositories import (
     EstimateRepository,
@@ -62,6 +62,7 @@ def _resolved(session: Session, name: str, *, p_model: float, outcome: int) -> N
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     ResolutionRepository(session).record(market.id, outcome, at=_TS + timedelta(days=1))

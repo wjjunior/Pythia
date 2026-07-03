@@ -30,6 +30,7 @@ from pythia.common import (
     Market,
     MarketStatus,
     PipelineFunnel,
+    SignalSource,
     TraderEntry,
 )
 from pythia.common.ids import deterministic_id
@@ -140,6 +141,7 @@ def _couple_event(estimates: EstimateRepository, group: EventGroup) -> None:
                 p_model_calibrated=coupled[market_id],
                 p_model_calibrated_fit_asof=estimate.p_model_calibrated_fit_asof,
                 members=[],
+                signal_source=estimate.signal_source,
             )
         )
 
@@ -303,6 +305,7 @@ def run_open_markets(
             evidence=evidence,
             settings=settings,
             routing=routing,
+            source=SignalSource.RADAR,
         )
         try:
             result = pipeline.run(market, snapshot)

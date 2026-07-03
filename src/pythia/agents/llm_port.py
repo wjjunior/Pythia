@@ -24,6 +24,7 @@ from pythia.common import (
     Market,
     MemberForecast,
     ResolutionProposal,
+    SignalSource,
 )
 from pythia.common.ids import deterministic_id
 from pythia.common.logging import current_correlation_id, get_logger
@@ -161,6 +162,7 @@ class StubLLMPort:
             rationale="deterministic stub — no LLM configured; mirrors the market price",
             evidence_ids=[evidence.id for evidence in ctx.evidence],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
@@ -469,6 +471,7 @@ class OpenRouterLLMPort:
             rationale=payload.rationale,
             evidence_ids=[evidence.id for evidence in ctx.evidence],
             model_name=model,
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def _aggregate_members(self, ctx: EstimationContext, models: list[str]) -> Estimate:
@@ -499,6 +502,7 @@ class OpenRouterLLMPort:
             evidence_ids=[evidence.id for evidence in ctx.evidence],
             model_name="ensemble",
             members=members,
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:

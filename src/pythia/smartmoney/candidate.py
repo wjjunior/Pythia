@@ -39,10 +39,13 @@ _log = get_logger(__name__)
 
 
 class CandidateEvaluator(Protocol):
-    def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
-        """Run the v1 pipeline for the market; return our market_id, or None if not run. ``asof`` is
-        the trigger time (recorded on the candidate); the pipeline runs at the market's latest
-        snapshot, which for a freshly-detected entry is ~the trigger time."""
+    def evaluate(
+        self, external_market: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[str, str | None] | None:
+        """Run the v1 pipeline for the market; return ``(market_id, estimate_id)`` on success,
+        or None if the market could not be resolved/run.  ``estimate_id`` is None only on the
+        category-cap veto path (pipeline ran but no estimate). ``asof`` is the trigger time; the
+        pipeline runs at the market's latest snapshot, ~the trigger time for new entries."""
         ...
 
     def resolve(self, external_market: str) -> str | None:
@@ -50,19 +53,31 @@ class CandidateEvaluator(Protocol):
         over-cap (QUEUED) candidate still records the market it triggered (§3.2 guard)."""
         ...
 
-    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
-        """Run the v1 pipeline for an already-resolved market; True if it ran (drains the queue)."""
+    def run_market(
+        self, market_id: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[bool, str | None] | None:
+        """Run the v1 pipeline for an already-resolved market.
+
+        Returns ``(ran, estimate_id)`` where ``ran`` is True when the pipeline actually executed (or
+        was short-circuited via the PYT-171 reuse path) — either way the candidate should be
+        transitioned to EVALUATED and a budget slot consumed.  ``estimate_id`` is the produced or
+        reused estimate's id, or None on the category-cap veto path (pipeline ran but no estimate,
+        FK stays NULL).  Returns None only when the market had no snapshot and the pipeline could
+        not run at all (candidate remains QUEUED).
+        """
         ...
 
 
 class CandidateStore(Protocol):
     def get(self, signal_id: str) -> CandidateSignal | None: ...
     def enqueue(self, signal: CandidateSignal) -> CandidateSignal: ...
+    def set_estimate(self, signal_id: str, estimate_id: str) -> None: ...
 
 
 class QueuedStore(Protocol):
     def list_by_status(self, status: CandidateSignalStatus) -> list[CandidateSignal]: ...
     def set_status(self, signal_id: str, status: CandidateSignalStatus) -> CandidateSignal: ...
+    def set_estimate(self, signal_id: str, estimate_id: str) -> None: ...
 
 
 class CandidateRepo(CandidateStore, QueuedStore, Protocol):
@@ -93,11 +108,16 @@ def enqueue_candidates(
         if store.get(signal_id) is not None:
             continue  # already enqueued this (market, asof) — idempotent, no re-evaluation
 
+        estimate_id: str | None = None
         if budget > 0:
-            market_id = evaluator.evaluate(external_market, asof, trader_ids)
-            status = CandidateSignalStatus.EVALUATED if market_id else CandidateSignalStatus.SKIPPED
-            if market_id is not None:
+            result = evaluator.evaluate(external_market, asof, trader_ids)
+            if result is not None:
+                market_id, estimate_id = result
+                status = CandidateSignalStatus.EVALUATED
                 budget -= 1
+            else:
+                market_id = None
+                status = CandidateSignalStatus.SKIPPED
         else:
             # Over the daily cap → deferred. Still resolve the market so the QUEUED trigger blocks
             # double-counting as evidence (§3.2); an untracked market can never run → SKIPPED.
@@ -116,6 +136,8 @@ def enqueue_candidates(
                 )
             )
         )
+        if estimate_id is not None:
+            store.set_estimate(signal_id, estimate_id)
     return signals
 
 
@@ -184,38 +206,59 @@ class PipelineCandidateEvaluator:
         _log.info("triggered_market_ingested", external_market=external_market, market_id=market.id)
         return market.id
 
-    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+    def run_market(
+        self, market_id: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[bool, str | None] | None:
         # Evaluate-now (§5.5, R-12): score the market's CURRENT snapshot, never the historical
         # trigger price. ``asof`` is the trigger time, recorded on the candidate / logged for audit
         # only — a historical-asof replay would instead source latest_for_market_asof(asof).
         snapshot = self._snapshots.latest_for_market(market_id)
         if snapshot is None:
             _log.info("candidate_skipped_no_snapshot", market_id=market_id)
-            return False
+            return None
         if self._estimates.exists_for_snapshot(snapshot.id):
             # Already estimated at this snapshot — by the pipeline tick or a prior candidate. The
             # estimate id is deterministic on the snapshot (PYT-73), so re-running would collide on
-            # estimates_pkey and crash the detection tick. Stays evaluated, idempotently.
-            return True
+            # estimates_pkey and crash the detection tick. Return the pre-existing estimate id so
+            # the caller can link the FK (PYT-188, first-producer-wins on signal_source).
+            existing = self._estimates.latest_for_market(market_id)
+            # Return (ran=True, existing_id) if found; a non-None snapshot but no estimate is a
+            # data inconsistency — fall through to the pipeline run to produce one.
+            if existing is not None:
+                return (True, existing.id)
         market = self._markets.get(market_id)
         if market is None:
-            return False
+            return None
         _log.info(
             "candidate_evaluated",
             market_id=market_id,
             asof=asof.isoformat(),
             trader_count=len(trader_ids),
         )
-        self._pipeline.run(
-            market, snapshot
-        )  # verdict persisted, as a crawler-sourced market (§5.2)
-        return True
+        result = self._pipeline.run(market, snapshot)  # verdict persisted (§5.2)
+        # On the veto-before-estimation path result.estimate is None — the pipeline still ran so
+        # the candidate must be transitioned to EVALUATED and the budget slot consumed (ran=True).
+        # estimate_id is None on this path; the FK stays NULL since there is no estimate to link.
+        estimate_id = result.estimate.id if result.estimate is not None else None
+        return (True, estimate_id)
 
-    def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
+    def evaluate(
+        self, external_market: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[str, str | None] | None:
         market_id = self.resolve(external_market)
         if market_id is None:
             return None
-        return market_id if self.run_market(market_id, asof, trader_ids) else None
+        snapshot = self._snapshots.latest_for_market(market_id)
+        if snapshot is None:
+            return None
+        run_result = self.run_market(market_id, asof, trader_ids)
+        # run_market returns None only when there is no snapshot or no market row — both already
+        # guarded above. After the guards, (True, estimate_id) covers both fresh and veto paths;
+        # estimate_id is None on the veto path (pipeline ran but no estimate produced).
+        if run_result is None:
+            return None
+        _, estimate_id = run_result
+        return (market_id, estimate_id)
 
 
 def drain_queued(
@@ -232,8 +275,17 @@ def drain_queued(
             break
         if queued.market_id is None:
             continue
-        if evaluator.run_market(queued.market_id, queued.asof, queued.trader_ids):
+        run_result = evaluator.run_market(queued.market_id, queued.asof, queued.trader_ids)
+        if run_result is None:
+            # No snapshot / no market — cannot run yet; leave QUEUED for the next tick.
+            continue
+        ran, estimate_id = run_result
+        if ran:
+            # Pipeline executed (or PYT-171 reuse hit): always transition and consume budget, even
+            # on the veto-before-estimation path where estimate_id is None (FK stays NULL).
             drained.append(store.set_status(queued.id, CandidateSignalStatus.EVALUATED))
+            if estimate_id is not None:
+                store.set_estimate(queued.id, estimate_id)
             budget -= 1
     return drained
 

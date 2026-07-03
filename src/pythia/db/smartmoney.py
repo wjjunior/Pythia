@@ -94,6 +94,7 @@ def _from_db_candidate(row: models.CandidateSignal) -> CandidateSignal:
         status=CandidateSignalStatus(row.status),
         created_at=row.created_at,
         market_id=str(row.market_id) if row.market_id else None,
+        estimate_id=str(row.estimate_id) if row.estimate_id else None,
     )
 
 
@@ -362,6 +363,14 @@ class CandidateSignalRepo:
         self._session.commit()
         self._session.refresh(row)
         return _from_db_candidate(row)
+
+    def set_estimate(self, signal_id: str, estimate_id: str) -> None:
+        """Link this signal to the estimate produced (or reused) by its pipeline run."""
+        row = self._session.get(models.CandidateSignal, uuid.UUID(signal_id))
+        if row is None:
+            raise KeyError(signal_id)
+        row.estimate_id = uuid.UUID(estimate_id)
+        self._session.commit()
 
 
 class RosterEventRepo:

@@ -15,6 +15,7 @@ from pythia.common import (
     MarketSnapshot,
     PaperTrade,
     Side,
+    SignalSource,
     Source,
     TradeStatus,
 )
@@ -86,6 +87,7 @@ def _open_position(session: Session, name: str, category: str, size: float) -> N
             rationale="r",
             evidence_ids=[],
             model_name="stub",
+            signal_source=SignalSource.UNKNOWN,
         )
     )
     PaperLedger(session).open(
@@ -98,6 +100,7 @@ def _open_position(session: Session, name: str, category: str, size: float) -> N
             size=size,
             status=TradeStatus.OPEN,
             opened_at=AT,
+            signal_source=SignalSource.UNKNOWN,
         )
     )
 
@@ -119,6 +122,7 @@ class _ConfidentLLM:
             rationale="c",
             evidence_ids=[item.id for item in ctx.evidence],
             model_name="fake",
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:
@@ -134,6 +138,7 @@ def _pipeline(session: Session, llm: object) -> Pipeline:
         evidence=EvidenceStore(session, StubEmbeddingPort()),
         settings=_settings(),
         routing={"estimation": "x", "critic": "x"},
+        source=SignalSource.RADAR,
     )
 
 

@@ -20,6 +20,7 @@ from pythia.common import (
     Market,
     MarketSnapshot,
     ResolutionProposal,
+    SignalSource,
     TrackedTrader,
     TraderEntry,
     TraderState,
@@ -76,6 +77,7 @@ class _CriticControlledLLM:
             rationale="t",
             evidence_ids=[],
             model_name="fake",
+            signal_source=SignalSource.UNKNOWN,
         )
 
     def critique(self, est: Estimate, evidence: list[Evidence]) -> CriticVerdict:

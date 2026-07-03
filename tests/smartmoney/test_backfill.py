@@ -47,6 +47,7 @@ class _FakeSignals:
     def __init__(self, *, triggered: set[str] | None = None) -> None:
         self.signals: dict[str, CandidateSignal] = {}
         self._triggered = triggered or set()
+        self.estimate_links: dict[str, str] = {}  # signal_id → estimate_id
 
     def get(self, signal_id: str) -> CandidateSignal | None:
         return self.signals.get(signal_id)
@@ -58,20 +59,30 @@ class _FakeSignals:
     def has_market_trigger(self, market_id: str, *, since: datetime | None = None) -> bool:
         return market_id in self._triggered
 
+    def set_estimate(self, signal_id: str, estimate_id: str) -> None:
+        self.estimate_links[signal_id] = estimate_id
+
+
+_FAKE_BACKFILL_ESTIMATE_ID = "est-backfill-fake-001"
+
 
 class _FakeEvaluator:
     def __init__(self) -> None:
         self.calls: list[tuple[str, datetime, tuple[str, ...]]] = []
 
-    def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
+    def evaluate(
+        self, external_market: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[str, str | None] | None:
         self.calls.append((external_market, asof, tuple(trader_ids)))
-        return f"mkt:{external_market}"
+        return (f"mkt:{external_market}", _FAKE_BACKFILL_ESTIMATE_ID)
 
     def resolve(self, external_market: str) -> str | None:
         return f"mkt:{external_market}"
 
-    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
-        return True
+    def run_market(
+        self, market_id: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[bool, str | None] | None:
+        return (True, _FAKE_BACKFILL_ESTIMATE_ID)
 
 
 def _sweep(

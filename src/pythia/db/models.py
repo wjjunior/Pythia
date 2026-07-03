@@ -125,6 +125,13 @@ class Evidence(SQLModel, table=True):
 
 class Estimate(SQLModel, table=True):
     __tablename__ = "estimates"
+    __table_args__ = (
+        CheckConstraint(
+            "signal_source IS NULL OR "
+            "signal_source IN ('radar','smartmoney','arb','manual','unknown')",
+            name="estimates_signal_source_check",
+        ),
+    )
 
     id: uuid.UUID | None = _id()
     market_id: uuid.UUID = Field(
@@ -151,6 +158,7 @@ class Estimate(SQLModel, table=True):
         sa_column=Column(ARRAY(UUID(as_uuid=True)), nullable=False)
     )
     model_name: str = Field(sa_column=Column(Text, nullable=False))
+    signal_source: str | None = Field(default=None, sa_column=Column(Text))
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
@@ -211,6 +219,13 @@ class RecalibrationModel(SQLModel, table=True):
 
 class Score(SQLModel, table=True):
     __tablename__ = "scores"
+    __table_args__ = (
+        CheckConstraint(
+            "signal_source IS NULL OR "
+            "signal_source IN ('radar','smartmoney','arb','manual','unknown')",
+            name="scores_signal_source_check",
+        ),
+    )
 
     id: uuid.UUID | None = _id()
     estimate_id: uuid.UUID = Field(
@@ -227,6 +242,7 @@ class Score(SQLModel, table=True):
     p_corr: float = Field(sa_column=Column(Double, nullable=False))
     opportunity_score: float = Field(sa_column=Column(Double, nullable=False))
     kelly_fraction: float = Field(sa_column=Column(Double, nullable=False))
+    signal_source: str | None = Field(default=None, sa_column=Column(Text))
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
@@ -238,6 +254,11 @@ class PaperTrade(SQLModel, table=True):
     __table_args__ = (
         CheckConstraint("side IN ('YES','NO')", name="paper_trades_side_check"),
         CheckConstraint("status IN ('open','resolved','void')", name="paper_trades_status_check"),
+        CheckConstraint(
+            "signal_source IS NULL OR "
+            "signal_source IN ('radar','smartmoney','arb','manual','unknown')",
+            name="paper_trades_signal_source_check",
+        ),
     )
 
     id: uuid.UUID | None = _id()
@@ -261,6 +282,7 @@ class PaperTrade(SQLModel, table=True):
     )
     resolved_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     pnl: float | None = Field(default=None, sa_column=Column(Double))
+    signal_source: str | None = Field(default=None, sa_column=Column(Text))
 
 
 class Resolution(SQLModel, table=True):
@@ -543,6 +565,10 @@ class CandidateSignal(SQLModel, table=True):
     status: str = Field(
         default="queued",
         sa_column=Column(Text, nullable=False, server_default=text("'queued'")),
+    )
+    estimate_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(UUID(as_uuid=True), ForeignKey("estimates.id"), nullable=True),
     )
     created_at: datetime | None = Field(
         default=None,
