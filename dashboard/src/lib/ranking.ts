@@ -59,3 +59,28 @@ export const exposureSeverity = (fraction: number): ExposureSeverity => {
   if (fraction >= EXPOSURE_WARN) return "warn"
   return "ok"
 }
+
+// Per-channel calibration (PYT-188): channels with fewer than LOW_N resolved markets are too noisy
+// to read as calibration signals — grey them out rather than hiding them.
+export const LOW_N = 10
+
+export const isLowN = (n: number): boolean => n < LOW_N
+
+// Sort channel entries: descending by n (most data first), then alphabetically for ties.
+export const sortChannelEntries = <T extends { n: number }>(
+  entries: [string, T][],
+): [string, T][] =>
+  [...entries].sort(([aKey, aVal], [bKey, bVal]) => {
+    if (bVal.n !== aVal.n) return bVal.n - aVal.n
+    return aKey.localeCompare(bKey)
+  })
+
+// Sort channel PnL entries: descending by |realized_pnl| (largest activity first), then alpha.
+export const sortChannelPnlEntries = <T extends { realized_pnl: number; n_resolved: number }>(
+  entries: [string, T][],
+): [string, T][] =>
+  [...entries].sort(([aKey, aVal], [bKey, bVal]) => {
+    const diff = Math.abs(bVal.realized_pnl) - Math.abs(aVal.realized_pnl)
+    if (diff !== 0) return diff
+    return aKey.localeCompare(bKey)
+  })
