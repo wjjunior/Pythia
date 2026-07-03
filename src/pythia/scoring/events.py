@@ -126,6 +126,20 @@ def build_event_group(
     return EventGroup(event_slug=event_slug, event_type=event_type, options=event_options)
 
 
+def build_event_groups(
+    event_slug: str, options: Sequence[tuple[Market, MarketSnapshot]]
+) -> list[EventGroup]:
+    """One coherent coupled set per group: a negRisk event stays whole (mutually exclusive); a
+    non-negRisk event is partitioned by option_signature so each threshold family is its own ladder
+    and cross-family spreads can never form (PYT-183)."""
+    if len(options) >= 2 and all(market.neg_risk for market, _ in options):
+        return [build_event_group(event_slug, options)]
+    families: dict[str, list[tuple[Market, MarketSnapshot]]] = {}
+    for market, snapshot in options:
+        families.setdefault(option_signature(market.question), []).append((market, snapshot))
+    return [build_event_group(event_slug, family) for family in families.values()]
+
+
 def _ask(option: EventOption) -> float:
     return min(1.0, option.yes_price + option.spread / 2.0)
 

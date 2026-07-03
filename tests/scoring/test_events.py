@@ -9,6 +9,7 @@ from pythia.common import EventType, Market, MarketSnapshot
 from pythia.scoring.events import (
     LadderDirection,
     build_event_group,
+    build_event_groups,
     classify_event,
     detect_arbitrage,
     option_signature,
@@ -166,3 +167,44 @@ def test_option_signature_normalizes_case_and_whitespace() -> None:
     assert option_signature("IPO cap  above  $800 billion?") == option_signature(
         "ipo cap above $1 trillion?"
     )
+
+
+def _pair(
+    mid: str, question: str, yes: float, *, neg_risk: bool = False
+) -> tuple[Market, MarketSnapshot]:
+    return (_market(mid, question, neg_risk=neg_risk), _snap(mid, yes))
+
+
+def test_build_event_groups_splits_threshold_families() -> None:
+    options = [
+        _pair("a", "valuation hit (LOW) $750B by June 30?", 0.001),
+        _pair("b", "valuation hit (LOW) $800B by June 30?", 0.001),
+        _pair("c", "valuation hit (HIGH) $1.1T by June 30?", 0.61),
+        _pair("d", "valuation hit (HIGH) $1.25T by June 30?", 0.004),
+    ]
+    groups = build_event_groups("anthropic", options)
+    assert len(groups) == 2
+    for group in groups:
+        assert len({option_signature(o.question) for o in group.options}) == 1  # single family
+        assert group.event_type is EventType.THRESHOLD_LADDER
+
+
+def test_build_event_groups_keeps_a_negrisk_event_whole() -> None:
+    options = [
+        _pair("a", "Will Brazil win?", 0.40, neg_risk=True),
+        _pair("b", "Will Argentina win?", 0.35, neg_risk=True),
+    ]
+    [group] = build_event_groups("cup", options)
+    assert group.event_type is EventType.MUTUALLY_EXCLUSIVE
+    assert len(group.options) == 2
+
+
+@given(
+    lows=st.lists(st.integers(700, 899), min_size=1, max_size=4, unique=True),
+    highs=st.lists(st.integers(1100, 1900), min_size=1, max_size=4, unique=True),
+)
+def test_build_event_groups_never_mixes_families(lows: list[int], highs: list[int]) -> None:
+    options = [_pair(f"l{i}", f"hit (LOW) ${v}B by June 30?", 0.01) for i, v in enumerate(lows)]
+    options += [_pair(f"h{i}", f"hit (HIGH) ${v}B by June 30?", 0.5) for i, v in enumerate(highs)]
+    for group in build_event_groups("e", options):
+        assert len({option_signature(o.question) for o in group.options}) == 1
