@@ -149,13 +149,16 @@ def _bid(option: EventOption) -> float:
 
 
 def detect_arbitrage(
-    group: EventGroup, *, min_dutch_book_coverage: float = 0.0
+    group: EventGroup,
+    *,
+    min_dutch_book_coverage: float = 0.0,
+    max_ladder_spread_ev: float = float("inf"),
 ) -> list[ArbOpportunity]:
     """Locked arbitrage in an event, priced conservatively at the spread-adjusted ask/bid."""
     if group.event_type is EventType.MUTUALLY_EXCLUSIVE:
         return _dutch_book(group, min_coverage=min_dutch_book_coverage)
     if group.event_type is EventType.THRESHOLD_LADDER:
-        return _ladder_spreads(group)
+        return _ladder_spreads(group, max_ev=max_ladder_spread_ev)
     return []
 
 
@@ -179,17 +182,18 @@ def _dutch_book(group: EventGroup, *, min_coverage: float) -> list[ArbOpportunit
     ]
 
 
-def _ladder_spreads(group: EventGroup) -> list[ArbOpportunity]:
+def _ladder_spreads(group: EventGroup, *, max_ev: float) -> list[ArbOpportunity]:
     # Ascending by threshold: YES(>t_low) dominates YES(>t_high), so fair price_low >= price_high.
     # A violation prices high above low; the locked arb is long YES(low) + short YES(high) via NO,
-    # with ev = bid(high) - ask(low) (worst-case payoff 1, cost ask_low + 1 - bid_high).
+    # with ev = bid(high) - ask(low). max_ev rejects an implausibly large "lock" — a mis-grouped
+    # family or a stale quote — since a real microstructure spread is worth pennies (PYT-183).
     options = group.options
     arbs: list[ArbOpportunity] = []
     for i in range(len(options)):
         for j in range(i + 1, len(options)):
             low, high = options[i], options[j]
             ev = _bid(high) - _ask(low)
-            if ev <= 0.0:
+            if not (0.0 < ev <= max_ev):
                 continue
             legs = [
                 ArbLeg(
