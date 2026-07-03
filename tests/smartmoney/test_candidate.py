@@ -24,27 +24,35 @@ def _entry(trader: str, market: str, ts: datetime) -> TraderEntry:
     )
 
 
+_FAKE_ESTIMATE_ID = "est-fake-001"
+
+
 class _FakeEvaluator:
     def __init__(self, *, returns_market: bool = True) -> None:
         self.calls: list[tuple[str, datetime, tuple[str, ...]]] = []
         self.ran: list[str] = []
         self._returns_market = returns_market
 
-    def evaluate(self, external_market: str, asof: datetime, trader_ids: list[str]) -> str | None:
+    def evaluate(
+        self, external_market: str, asof: datetime, trader_ids: list[str]
+    ) -> tuple[str, str | None] | None:
         self.calls.append((external_market, asof, tuple(trader_ids)))
-        return f"market:{external_market}" if self._returns_market else None
+        if self._returns_market:
+            return (f"market:{external_market}", _FAKE_ESTIMATE_ID)
+        return None
 
     def resolve(self, external_market: str) -> str | None:
         return f"market:{external_market}" if self._returns_market else None
 
-    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> bool:
+    def run_market(self, market_id: str, asof: datetime, trader_ids: list[str]) -> str | None:
         self.ran.append(market_id)
-        return self._returns_market
+        return _FAKE_ESTIMATE_ID if self._returns_market else None
 
 
 class _FakeStore:
     def __init__(self) -> None:
         self.signals: dict[str, CandidateSignal] = {}
+        self.estimate_links: dict[str, str] = {}  # signal_id → estimate_id
 
     def get(self, signal_id: str) -> CandidateSignal | None:
         return self.signals.get(signal_id)
@@ -53,11 +61,15 @@ class _FakeStore:
         self.signals[signal.id] = signal
         return signal
 
+    def set_estimate(self, signal_id: str, estimate_id: str) -> None:
+        self.estimate_links[signal_id] = estimate_id
+
 
 class _FakeQueuedStore:
     def __init__(self, queued: list[CandidateSignal]) -> None:
         self._queued = list(queued)
         self.set: list[tuple[str, CandidateSignalStatus]] = []
+        self.estimate_links: dict[str, str] = {}  # signal_id → estimate_id
 
     def list_by_status(self, status: CandidateSignalStatus) -> list[CandidateSignal]:
         return [s for s in self._queued if s.status is status]
@@ -66,6 +78,9 @@ class _FakeQueuedStore:
         self.set.append((signal_id, status))
         original = next(s for s in self._queued if s.id == signal_id)
         return original.model_copy(update={"status": status})
+
+    def set_estimate(self, signal_id: str, estimate_id: str) -> None:
+        self.estimate_links[signal_id] = estimate_id
 
 
 def _queued(market: str, ts: datetime, *, market_id: str | None) -> CandidateSignal:

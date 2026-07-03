@@ -93,18 +93,18 @@ def run_backfill_sweep(
         if store.get(signal_id) is not None:
             continue
 
-        evaluated_market: str | None = None
+        eval_result: tuple[str, str | None] | None = None
         status = CandidateSignalStatus.QUEUED  # over the daily cap → deferred
         if budget > 0:
             # asof = now: the evaluator runs the pipeline at the market's CURRENT snapshot, never
             # the trader's historical entry price/time (§5.5, AC-S8).
-            evaluated_market = evaluator.evaluate(position.condition_id, now, [trader_id])
+            eval_result = evaluator.evaluate(position.condition_id, now, [trader_id])
             status = (
                 CandidateSignalStatus.EVALUATED
-                if evaluated_market
+                if eval_result is not None
                 else CandidateSignalStatus.SKIPPED
             )
-            if evaluated_market is not None:
+            if eval_result is not None:
                 budget -= 1
         out.append(
             store.enqueue(
@@ -119,6 +119,10 @@ def run_backfill_sweep(
                 )
             )
         )
+        if eval_result is not None:
+            _, estimate_id = eval_result
+            if estimate_id is not None:
+                store.set_estimate(signal_id, estimate_id)
     return out
 
 
