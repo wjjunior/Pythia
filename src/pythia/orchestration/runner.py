@@ -305,6 +305,7 @@ def run_open_markets(
             evidence=evidence,
             settings=settings,
             routing=routing,
+            source=SignalSource.RADAR,
         )
         try:
             result = pipeline.run(market, snapshot)

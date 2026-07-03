@@ -25,6 +25,7 @@ from pythia.common import (
     MarketSnapshot,
     Score,
     Side,
+    SignalSource,
 )
 from pythia.common.logging import bind, bind_correlation, clear_correlation, get_logger
 from pythia.config import Settings
@@ -93,10 +94,12 @@ class Pipeline:
         evidence: EvidencePort,
         settings: Settings,
         routing: Mapping[str, str],
+        source: SignalSource,
         k: int = DEFAULT_RESEARCH_K,
     ) -> None:
         self._llm = llm
         self._critic = CriticAgent(llm)
+        self._source = source
         self._evidence = evidence
         self._settings = settings
         self._routing = dict(routing)
@@ -169,8 +172,16 @@ class Pipeline:
         # forecast the system actually acts on, not the raw estimator output (PYT-100, §4.9).
         scored, fit_asof = self._recalibrated(market.category, critiqued, snapshot.ts)
         scored = self._distrust_market_disagreement(scored, snapshot)
+        # Stamp the channel before build_score runs: build_score inherits signal_source from the
+        # estimate it receives, so stamping scored here propagates the channel into the Score
+        # automatically — no need to model_copy the Score separately (PYT-188).
+        scored = scored.model_copy(update={"signal_source": self._source})
         committed = critiqued.model_copy(
-            update={"p_model_calibrated": scored.p_model, "p_model_calibrated_fit_asof": fit_asof}
+            update={
+                "p_model_calibrated": scored.p_model,
+                "p_model_calibrated_fit_asof": fit_asof,
+                "signal_source": self._source,
+            }
         )
         self._estimates.add(committed)
         self._members.add_many(committed.id, committed.members)

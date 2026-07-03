@@ -92,12 +92,15 @@ def test_increase_triggers_even_when_a_same_ts_exit_is_listed_first(session: Ses
 
 
 def _pipeline(session: Session) -> Pipeline:
+    from pythia.common import SignalSource
+
     return Pipeline(
         session=session,
         llm=StubLLMPort(),
         evidence=EvidenceStore(session, StubEmbeddingPort()),
         settings=Settings(_env_file=None, database_url="postgresql+psycopg://x/y"),
         routing={"estimation": "stub", "critic": "stub"},
+        source=SignalSource.SMARTMONEY,
     )
 
 

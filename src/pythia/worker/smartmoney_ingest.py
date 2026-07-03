@@ -21,7 +21,7 @@ from pythia.agents import (
     CachingLLMPort,
     make_llm_port,
 )
-from pythia.common import LLMPort, PositionsPort, TrackedTrader, TraderState
+from pythia.common import LLMPort, PositionsPort, SignalSource, TrackedTrader, TraderState
 from pythia.common.logging import get_logger
 from pythia.config import Settings
 from pythia.db.repositories import CostRepository
@@ -75,6 +75,7 @@ def _build_pipeline(session: Session, settings: Settings, llm: LLMPort) -> Pipel
         evidence=EvidenceStore(session, make_embedder(settings)),
         settings=settings,
         routing=_routing(settings),
+        source=SignalSource.SMARTMONEY,
     )
 
 

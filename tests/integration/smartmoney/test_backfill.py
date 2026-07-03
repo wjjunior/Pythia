@@ -45,12 +45,15 @@ def _settings() -> Settings:
 
 
 def _pipeline(session: Session) -> Pipeline:
+    from pythia.common import SignalSource
+
     return Pipeline(
         session=session,
         llm=StubLLMPort(),
         evidence=EvidenceStore(session, StubEmbeddingPort()),
         settings=_settings(),
         routing={"estimation": "stub", "critic": "stub"},
+        source=SignalSource.SMARTMONEY,
     )
 
 

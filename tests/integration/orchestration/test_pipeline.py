@@ -118,6 +118,7 @@ def _pipeline(session: Session, llm: object) -> Pipeline:
         evidence=EvidenceStore(session, StubEmbeddingPort()),
         settings=_settings(),
         routing=ROUTING,
+        source=SignalSource.RADAR,
     )
 
 
