@@ -86,7 +86,7 @@ def _seed_scored_market(session: Session, *, category: str = "politics") -> None
             yes_price=0.5,
             spread=0.02,
             volume=1.0,
-            liquidity=1.0,
+            liquidity=1_000.0,
         )
     )
     SourceRepository(session).upsert(
