@@ -48,7 +48,7 @@ def _seed_option(session: Session, name: str) -> None:
             yes_price=_YES,
             spread=0.0,
             volume=1.0,
-            liquidity=1.0,
+            liquidity=2.0,  # raised from 1.0: must exceed size = _BASKETS * _YES = 1.5
         )
     )
 

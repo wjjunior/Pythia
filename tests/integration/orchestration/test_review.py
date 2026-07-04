@@ -55,7 +55,13 @@ def _ok_decision(approved_size: float = 1000.0) -> RiskDecision:
     return RiskDecision(approved_size=approved_size, vetoed=False, reasons=(), paper_only=True)
 
 
-def _seed(session: Session, *, with_score: bool = True, risk: RiskDecision | None = None) -> None:
+def _seed(
+    session: Session,
+    *,
+    with_score: bool = True,
+    risk: RiskDecision | None = None,
+    liquidity: float = 1_000.0,
+) -> None:
     MarketRepository(session).upsert(
         Market(
             id=MARKET_ID,
@@ -73,7 +79,7 @@ def _seed(session: Session, *, with_score: bool = True, risk: RiskDecision | Non
             yes_price=YES_PRICE,
             spread=SPREAD,
             volume=1.0,
-            liquidity=1.0,
+            liquidity=liquidity,
         )
     )
     EstimateRepository(session).add(

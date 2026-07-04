@@ -20,6 +20,7 @@ class RiskReason(Enum):
     CAP_DAILY = "cap_daily"
     CAP_WEEKLY = "cap_weekly"
     CAP_ABSOLUTE = "cap_absolute"
+    SIZE_EXCEEDS_LIQUIDITY = "size_exceeds_liquidity"
 
 
 @dataclass(frozen=True, slots=True)

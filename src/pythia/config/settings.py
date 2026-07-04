@@ -107,8 +107,16 @@ class Settings(BaseSettings):
     # ticks without stalling. The one-off backfill passes no limit and drains it all at once.
     resolution_backfill_max_per_tick: int = 200
 
+    # Liquidity penalty reference (PYT-189): p_liq = min(1, liquidity/ref); calibrate to the real
+    # liquidity distribution once enough market data exists — this is a placeholder.
+    liquidity_ref: float = Field(default=10_000.0, gt=0.0)  # divisor in p_liq — must be positive
+
     # Paper bankroll, sizing & risk caps
     bankroll_paper: float = 10_000.0
+    # per-unit costs (PYT-189): added to the fill and subtracted in net_edge; non-negative so a
+    # misconfigured negative value can't invert their meaning and inflate scores/fills.
+    trade_fee: float = Field(default=0.0, ge=0.0)
+    trade_slippage: float = Field(default=0.0, ge=0.0)
     kelly_mult: float = 0.25
     cap_per_trade: float = 0.02
     cap_per_market: float = 0.05

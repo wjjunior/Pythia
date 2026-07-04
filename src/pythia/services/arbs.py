@@ -16,7 +16,7 @@ from sqlmodel import Session, col, select
 from pythia.common import ArbLeg, ArbOpportunity, PaperTrade, Side, SignalSource, TradeStatus
 from pythia.config import Settings, ensure_paper_mode
 from pythia.db import models
-from pythia.db.repositories import ArbRepository
+from pythia.db.repositories import ArbRepository, SnapshotRepository
 from pythia.paper import PaperLedger
 
 _PLACEHOLDER_ENTRY = 0.0  # the ledger refills from the snapshot; this value is never persisted
@@ -28,6 +28,10 @@ class UnknownArbError(LookupError):
 
 class ArbAlreadyApprovedError(RuntimeError):
     """This arb's basket is already open — its deterministic leg ids would collide."""
+
+
+class LiquidityExceededError(RuntimeError):
+    """An arb leg's size exceeds its market's available liquidity — the basket is vetoed."""
 
 
 def drop_stale_arbs(
@@ -81,6 +85,7 @@ def _leg_trade(arb_id: str, leg: ArbLeg, baskets: float, at: datetime) -> PaperT
 class ArbApprovalService:
     def __init__(self, session: Session, ledger: PaperLedger, settings: Settings) -> None:
         self._arbs = ArbRepository(session)
+        self._snapshots = SnapshotRepository(session)
         self._ledger = ledger
         self._settings = settings
 
@@ -92,7 +97,21 @@ class ArbApprovalService:
         if arb is None:
             raise UnknownArbError(arb_id)
         trades = [_leg_trade(arb_id, leg, baskets, at) for leg in arb.legs]
+        self._veto_if_illiquid(arb.legs, trades, at)
         try:
             return self._ledger.open_basket(trades)
         except IntegrityError as exc:  # deterministic leg ids ⇒ a re-approval collides
             raise ArbAlreadyApprovedError(arb_id) from exc
+
+    def _veto_if_illiquid(self, legs: list[ArbLeg], trades: list[PaperTrade], at: datetime) -> None:
+        """Raise LiquidityExceededError if any leg's size exceeds its approval-time liquidity.
+
+        Arb baskets are all-or-none: a partial entry unbalances the lock, so we veto entirely
+        rather than cut. The snapshot used is the freshest one not after ``at`` (point-in-time).
+        """
+        for leg, trade in zip(legs, trades, strict=True):
+            snapshot = self._snapshots.latest_for_market_asof(leg.market_id, asof=at)
+            if snapshot is not None and trade.size > snapshot.liquidity:
+                raise LiquidityExceededError(
+                    f"leg {leg.market_id} size {trade.size} exceeds liquidity {snapshot.liquidity}"
+                )

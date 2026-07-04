@@ -14,6 +14,7 @@ from pythia.paper import PaperLedger, PaperLedgerError
 from pythia.services.arbs import (
     ArbAlreadyApprovedError,
     ArbApprovalService,
+    LiquidityExceededError,
     UnknownArbError,
     approved_arb_ids,
     drop_stale_arbs,
@@ -60,13 +61,19 @@ def approve_arb(
     settings: SettingsDep,
     broadcaster: BroadcasterDep,
 ) -> ArbApproveResult:
-    service = ArbApprovalService(session, PaperLedger(session), settings)
+    service = ArbApprovalService(
+        session,
+        PaperLedger(session, fee=settings.trade_fee, slippage=settings.trade_slippage),
+        settings,
+    )
     try:
         trades = service.approve(str(arb_id), baskets=body.baskets, at=datetime.now(UTC))
     except UnknownArbError:
         raise HTTPException(status_code=404, detail="arb not found") from None
     except ArbAlreadyApprovedError:
         raise HTTPException(status_code=409, detail="arb already approved") from None
+    except LiquidityExceededError:
+        raise HTTPException(status_code=409, detail="leg exceeds liquidity") from None
     except ExecutionModeError:
         raise HTTPException(status_code=409, detail="not in paper mode") from None
     except PaperLedgerError:

@@ -47,6 +47,10 @@ def opportunity_score(
     return ev_unit * conf * p_resol * p_liq * p_time * p_corr
 
 
+def liquidity_penalty(liquidity: float, liq_ref: float) -> float:
+    return min(1.0, max(0.0, liquidity) / liq_ref)
+
+
 def kelly_fraction(edge_net: float, q: float) -> float:
     return max(0.0, edge_net) / (1.0 - q) if q < 1.0 else 0.0
 

@@ -30,6 +30,7 @@ from pythia.db.repositories import (
     SnapshotRepository,
 )
 from pythia.eval.cohorts import Cohort, cohort_policy, cohorts_for
+from pythia.risk import cap_size_by_liquidity
 
 _PLACEHOLDER_ENTRY = 0.0
 
@@ -111,6 +112,10 @@ class ReviewGate:
             raise VetoedOpportunityError(estimate_id)
         approved_size = min(size, decision.approved_size)
 
+        snapshot = self._snapshots.latest_for_market_asof(estimate.market_id, asof=at)
+        liquidity = snapshot.liquidity if snapshot is not None else approved_size
+        filled_size, liq_reason = cap_size_by_liquidity(approved_size, liquidity)
+
         cohorts, asof = self._compute_cohorts(estimate)
         if (
             self._settings.cohort_trade_filter_enabled
@@ -126,24 +131,27 @@ class ReviewGate:
                 estimate_id=estimate_id,
                 side=side,
                 entry_price=_PLACEHOLDER_ENTRY,
-                size=approved_size,
+                size=filled_size,
                 status=TradeStatus.OPEN,
                 opened_at=at,
                 signal_source=estimate.signal_source,
             )
         )
         self._cohorts_repo.add_many(trade.id, cohorts, asof=asof)
+        approval_payload: dict[str, object] = {
+            "estimate_id": estimate_id,
+            "reviewer": reviewer,
+            "side": side.value,
+            "requested_size": size,
+            "size": filled_size,
+        }
+        if liq_reason is not None:
+            approval_payload["liquidity_reason"] = liq_reason.value
         self._audit.append(
             AuditEvent(
                 kind=AuditKind.APPROVAL,
                 market_id=estimate.market_id,
-                payload={
-                    "estimate_id": estimate_id,
-                    "reviewer": reviewer,
-                    "side": side.value,
-                    "requested_size": size,
-                    "size": approved_size,
-                },
+                payload=approval_payload,
             )
         )
         self._audit.append(
