@@ -1,4 +1,4 @@
-from pythia.risk.functions import cap_headrooms, evaluate, gate_reasons
+from pythia.risk.functions import cap_headrooms, cap_size_by_liquidity, evaluate, gate_reasons
 from pythia.risk.models import (
     ExposureState,
     RiskDecision,
@@ -15,6 +15,7 @@ __all__ = [
     "RiskReason",
     "TradeProposal",
     "cap_headrooms",
+    "cap_size_by_liquidity",
     "evaluate",
     "gate_reasons",
     "grade_p_resol",

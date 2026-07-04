@@ -13,6 +13,16 @@ from pythia.risk.models import (
 )
 
 
+def cap_size_by_liquidity(size: float, liquidity: float) -> tuple[float, RiskReason | None]:
+    """Cap proposed size by available liquidity.
+
+    Returns the smaller of size and liquidity, plus a reason if size exceeds liquidity.
+    """
+    if size > liquidity:
+        return liquidity, RiskReason.SIZE_EXCEEDS_LIQUIDITY
+    return size, None
+
+
 def gate_reasons(proposal: TradeProposal, limits: RiskLimits) -> tuple[RiskReason, ...]:
     reasons: list[RiskReason] = []
     # No silent bets (§4.6): any zeroed penalty collapses opportunity_score, so a non-positive
