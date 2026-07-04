@@ -53,7 +53,7 @@ def _seed_dutch_book(session: Session) -> None:
                 yes_price=0.3,
                 spread=0.0,
                 volume=1.0,
-                liquidity=1.0,
+                liquidity=5.0,  # raised from 1.0: must exceed size = baskets * 0.3 (max 10*0.3=3.0)
             )
         )
     run_event_pass(session, _settings(), now=_NOW)

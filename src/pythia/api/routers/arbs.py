@@ -14,6 +14,7 @@ from pythia.paper import PaperLedger, PaperLedgerError
 from pythia.services.arbs import (
     ArbAlreadyApprovedError,
     ArbApprovalService,
+    LiquidityExceededError,
     UnknownArbError,
     approved_arb_ids,
     drop_stale_arbs,
@@ -71,6 +72,8 @@ def approve_arb(
         raise HTTPException(status_code=404, detail="arb not found") from None
     except ArbAlreadyApprovedError:
         raise HTTPException(status_code=409, detail="arb already approved") from None
+    except LiquidityExceededError:
+        raise HTTPException(status_code=409, detail="leg exceeds liquidity") from None
     except ExecutionModeError:
         raise HTTPException(status_code=409, detail="not in paper mode") from None
     except PaperLedgerError:
