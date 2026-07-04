@@ -70,7 +70,7 @@ def _seed(
             yes_price=_YES_PRICE,
             spread=_SPREAD,
             volume=1.0,
-            liquidity=1.0,
+            liquidity=1_000.0,
         )
     )
     EstimateRepository(session).add(
