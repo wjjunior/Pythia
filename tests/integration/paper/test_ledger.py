@@ -142,8 +142,10 @@ def test_open_basket_opens_every_leg(session: Session) -> None:
 
 def test_open_basket_rolls_back_when_a_leg_is_missing(session: Session) -> None:
     _seed(session)
+    # bad leg references a market that has no snapshot: _snapshot_for raises PaperLedgerError
+    unknown_market_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "pyt21-missing-market"))
     bad = _trade(Side.YES, 50.0).model_copy(
-        update={"id": str(uuid.uuid4()), "estimate_id": str(uuid.uuid4())}  # estimate not in DB
+        update={"id": str(uuid.uuid4()), "market_id": unknown_market_id, "estimate_id": None}
     )
     with pytest.raises(PaperLedgerError):
         PaperLedger(session).open_basket([_trade(Side.NO, 50.0), bad])

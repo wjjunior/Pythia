@@ -63,22 +63,16 @@ class PaperLedger:
         return _from_db_trade(row)
 
     def _snapshot_for(self, trade: PaperTrade) -> models.MarketSnapshot:
-        if trade.estimate_id is None:  # market-anchored (arb basket): latest snapshot <= opened_at
-            snapshot = self._session.exec(
-                select(models.MarketSnapshot)
-                .where(models.MarketSnapshot.market_id == uuid.UUID(trade.market_id))
-                .where(col(models.MarketSnapshot.ts) <= trade.opened_at)
-                .order_by(col(models.MarketSnapshot.ts).desc())
-            ).first()
-            if snapshot is None:
-                raise PaperLedgerError(f"no snapshot for market {trade.market_id}")
-            return snapshot
-        estimate = self._session.get(models.Estimate, uuid.UUID(trade.estimate_id))
-        if estimate is None:
-            raise PaperLedgerError(f"estimate {trade.estimate_id} not found")
-        snapshot = self._session.get(models.MarketSnapshot, estimate.snapshot_id)
+        # Fill at the latest snapshot <= approval time (PYT-189): estimate-linked trades no longer
+        # re-read the stale estimation snapshot; both kinds price off the market at opened_at.
+        snapshot = self._session.exec(
+            select(models.MarketSnapshot)
+            .where(models.MarketSnapshot.market_id == uuid.UUID(trade.market_id))
+            .where(col(models.MarketSnapshot.ts) <= trade.opened_at)
+            .order_by(col(models.MarketSnapshot.ts).desc())
+        ).first()
         if snapshot is None:
-            raise PaperLedgerError(f"snapshot {estimate.snapshot_id} not found")
+            raise PaperLedgerError(f"no snapshot <= {trade.opened_at} for market {trade.market_id}")
         return snapshot
 
     def _row_for(self, trade: PaperTrade) -> models.PaperTrade:
