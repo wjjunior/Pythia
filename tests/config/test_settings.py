@@ -33,6 +33,22 @@ def test_extreme_price_share_cap_outside_the_unit_interval_is_rejected() -> None
         Settings(_env_file=None, database_url=_DB, trader_extreme_price_share_cap=-0.1)
 
 
+def test_liquidity_ref_must_be_positive() -> None:
+    # p_liq divides by liquidity_ref; 0 or negative would crash/invert scoring (PYT-189).
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=_DB, liquidity_ref=0.0)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=_DB, liquidity_ref=-1.0)
+
+
+def test_trade_costs_reject_negative_values() -> None:
+    # A negative fee/slippage would invert the cost and inflate scores/fills (PYT-189).
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=_DB, trade_fee=-0.01)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=_DB, trade_slippage=-0.01)
+
+
 def test_falcon_agent_id_overrides_default_to_empty() -> None:
     assert Settings(_env_file=None, database_url=_DB).falcon_agent_id_overrides == {}
 
