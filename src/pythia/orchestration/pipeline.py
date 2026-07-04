@@ -60,6 +60,7 @@ from pythia.scoring import (
     resolution_penalty,
 )
 from pythia.scoring.divergence import divergence, divergence_penalty, latest_prices_per_venue
+from pythia.scoring.functions import liquidity_penalty
 from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
 from pythia.services.portfolio import PortfolioService
 
@@ -335,7 +336,7 @@ class Pipeline:
             fee=self._settings.trade_fee,
             slippage=self._settings.trade_slippage,
             p_resol=p_resol,
-            p_liq=NEUTRAL_PENALTY,
+            p_liq=liquidity_penalty(snapshot.liquidity, self._settings.liquidity_ref),
             p_time=NEUTRAL_PENALTY,
             p_corr=p_corr,
         )
