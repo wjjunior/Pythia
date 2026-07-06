@@ -81,3 +81,48 @@ def test_swapped_cohort_price_band_is_rejected() -> None:
 def test_default_cohort_price_band_is_ordered() -> None:
     settings = Settings(_env_file=None, database_url=_DB)
     assert settings.eval_cohort_price_min <= settings.eval_cohort_price_max
+
+
+def test_taker_fee_schedule_defaults_to_the_builtin() -> None:
+    from pythia.scoring.fees import DEFAULT_FEE_SCHEDULE
+
+    s = Settings(_env_file=None, database_url=_DB)
+    assert s.taker_fee_schedule == DEFAULT_FEE_SCHEDULE
+    assert s.taker_fee_default_rate == 0.04
+
+
+def test_taker_fee_schedule_json_override_is_parsed() -> None:
+    from datetime import UTC, datetime
+
+    raw = '[{"effective_from": "2027-01-01T00:00:00+00:00", "rates": {"crypto": 0.09}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=raw)
+    (version,) = s.taker_fee_schedule
+    assert version.effective_from == datetime(2027, 1, 1, tzinfo=UTC)
+    assert version.rates == {"crypto": 0.09}
+
+
+def test_taker_fee_schedule_rejects_a_naive_effective_from() -> None:
+    # A naive datetime would raise TypeError deep in rate_asof against a tz-aware asof (PYT-190).
+    raw = '[{"effective_from": "2027-01-01T00:00:00", "rates": {"crypto": 0.09}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=raw)
+    with pytest.raises(ValueError):
+        _ = s.taker_fee_schedule
+
+
+def test_taker_fee_default_rate_rejects_out_of_range() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=_DB, taker_fee_default_rate=-0.01)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=_DB, taker_fee_default_rate=1.5)
+
+
+def test_taker_fee_schedule_rejects_a_rate_outside_the_unit_interval() -> None:
+    # A negative override rate makes taker_fee negative, breaking the fee>=0 invariant (PYT-190).
+    negative = '[{"effective_from": "2027-01-01T00:00:00+00:00", "rates": {"crypto": -0.01}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=negative)
+    with pytest.raises(ValueError, match="must be in"):
+        _ = s.taker_fee_schedule
+    above = '[{"effective_from": "2027-01-01T00:00:00+00:00", "rates": {"crypto": 1.5}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=above)
+    with pytest.raises(ValueError, match="must be in"):
+        _ = s.taker_fee_schedule

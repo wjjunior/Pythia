@@ -17,6 +17,7 @@ from pythia.orchestration import (
     VetoedOpportunityError,
 )
 from pythia.paper import PaperLedger
+from pythia.scoring.fees import taker_fee_fn
 
 router = APIRouter(tags=["review"])
 
@@ -32,7 +33,13 @@ def review(
     estimate = str(estimate_id)
     gate = ReviewGate(
         session,
-        PaperLedger(session, fee=settings.trade_fee, slippage=settings.trade_slippage),
+        PaperLedger(
+            session,
+            fee_fn=taker_fee_fn(
+                settings.taker_fee_schedule, settings.taker_fee_default_rate, settings.trade_fee
+            ),
+            slippage=settings.trade_slippage,
+        ),
         settings,
     )
     try:

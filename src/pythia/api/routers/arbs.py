@@ -11,6 +11,7 @@ from pythia.api.schemas import ArbApproveRequest, ArbApproveResult, ArbItem, Arb
 from pythia.config import ExecutionModeError
 from pythia.db.repositories import ArbRepository, MarketRepository
 from pythia.paper import PaperLedger, PaperLedgerError
+from pythia.scoring.fees import taker_fee_fn
 from pythia.services.arbs import (
     ArbAlreadyApprovedError,
     ArbApprovalService,
@@ -63,7 +64,13 @@ def approve_arb(
 ) -> ArbApproveResult:
     service = ArbApprovalService(
         session,
-        PaperLedger(session, fee=settings.trade_fee, slippage=settings.trade_slippage),
+        PaperLedger(
+            session,
+            fee_fn=taker_fee_fn(
+                settings.taker_fee_schedule, settings.taker_fee_default_rate, settings.trade_fee
+            ),
+            slippage=settings.trade_slippage,
+        ),
         settings,
     )
     try:

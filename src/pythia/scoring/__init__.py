@@ -4,6 +4,15 @@ from pythia.scoring.assembly import (
     classify_resolution_source,
     resolution_penalty,
 )
+from pythia.scoring.fees import (
+    DEFAULT_FEE_SCHEDULE,
+    FeeScheduleVersion,
+    fee_family,
+    rate_asof,
+    taker_fee,
+    taker_fee_fn,
+    taker_fee_for,
+)
 from pythia.scoring.functions import (
     MARKET_DISAGREEMENT_FLOOR,
     confidence,
@@ -34,7 +43,9 @@ from pythia.scoring.prioritization import (
 )
 
 __all__ = [
+    "DEFAULT_FEE_SCHEDULE",
     "MARKET_DISAGREEMENT_FLOOR",
+    "FeeScheduleVersion",
     "RadarGate",
     "RadarMetrics",
     "ResolutionSourceType",
@@ -45,6 +56,7 @@ __all__ = [
     "confidence",
     "edge",
     "entry_price",
+    "fee_family",
     "funnel_from_gates",
     "is_extreme_market_disagreement",
     "kelly_fraction",
@@ -56,8 +68,12 @@ __all__ = [
     "price_band_priority",
     "radar_metrics",
     "rank_radar",
+    "rate_asof",
     "recommended_side",
     "resolution_penalty",
+    "taker_fee",
+    "taker_fee_fn",
+    "taker_fee_for",
     "win_multiple",
     "win_probability",
 ]
