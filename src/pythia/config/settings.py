@@ -257,13 +257,19 @@ class Settings(BaseSettings):
         if not self.taker_fee_schedule_json.strip():
             return DEFAULT_FEE_SCHEDULE
         raw = json.loads(self.taker_fee_schedule_json)
-        return tuple(
-            FeeScheduleVersion(
-                effective_from=datetime.fromisoformat(v["effective_from"]),
-                rates={k: float(r) for k, r in v["rates"].items()},
+        versions = []
+        for v in raw:
+            effective_from = datetime.fromisoformat(v["effective_from"])
+            # must be tz-aware to compare against an asof, else rate_asof raises TypeError (PYT-190)
+            if effective_from.tzinfo is None:
+                raise ValueError(f"effective_from must be timezone-aware: {v['effective_from']!r}")
+            versions.append(
+                FeeScheduleVersion(
+                    effective_from=effective_from,
+                    rates={k: float(r) for k, r in v["rates"].items()},
+                )
             )
-            for v in raw
-        )
+        return tuple(versions)
 
     @property
     def llm_enabled(self) -> bool:

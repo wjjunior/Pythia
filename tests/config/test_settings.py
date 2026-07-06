@@ -101,6 +101,14 @@ def test_taker_fee_schedule_json_override_is_parsed() -> None:
     assert version.rates == {"crypto": 0.09}
 
 
+def test_taker_fee_schedule_rejects_a_naive_effective_from() -> None:
+    # A naive datetime would raise TypeError deep in rate_asof against a tz-aware asof (PYT-190).
+    raw = '[{"effective_from": "2027-01-01T00:00:00", "rates": {"crypto": 0.09}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=raw)
+    with pytest.raises(ValueError):
+        _ = s.taker_fee_schedule
+
+
 def test_taker_fee_default_rate_rejects_out_of_range() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, database_url=_DB, taker_fee_default_rate=-0.01)
