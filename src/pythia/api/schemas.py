@@ -135,7 +135,8 @@ class ArbItem(BaseModel):
     kind: str
     ev: float
     legs: list[ArbLegItem]
-    detected_at: datetime | None
+    first_detected_at: datetime | None
+    last_seen_at: datetime | None
     approved: bool
 
 

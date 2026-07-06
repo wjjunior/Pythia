@@ -139,13 +139,14 @@ def test_arbs_endpoint_hides_a_basket_with_a_closed_leg(
     assert client.get("/api/arbs").json() == []  # PYT-175: can't enter a closed leg → hidden
 
 
-def test_arb_panel_carries_question_detected_at_and_approved(
+def test_arb_panel_carries_question_lifetime_and_approved(
     client: TestClient, session: Session
 ) -> None:
     _seed_dutch_book(session)
 
     before = client.get("/api/arbs").json()[0]
-    assert before["detected_at"] is not None  # PYT-152: when the event pass detected it
+    assert before["first_detected_at"] is not None  # PYT-152: when the event pass detected it
+    assert before["last_seen_at"] is not None
     assert before["approved"] is False
     assert {leg["question"] for leg in before["legs"]} == {  # legible legs, not hex ids
         "Will a win?",

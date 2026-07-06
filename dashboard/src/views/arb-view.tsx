@@ -92,7 +92,8 @@ function BasketCard({ arb, available }: { arb: ArbItem; available: number | unde
             </div>
             <p className="text-sm text-muted-foreground">
               Buy YES on all {arb.legs.length} options · cost {usd(basketCost(arb))}/basket
-              {arb.detected_at ? ` · detected ${isoDateTime(arb.detected_at)}` : ""}
+              {arb.first_detected_at ? ` · detected ${isoDateTime(arb.first_detected_at)}` : ""}
+              {arb.last_seen_at ? ` · seen ${isoDateTime(arb.last_seen_at)}` : ""}
             </p>
             <p className="text-xs text-muted-foreground">
               ⚠ paper arb at mid prices — confirm you can fill every leg before sizing up

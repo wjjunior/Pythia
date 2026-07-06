@@ -149,7 +149,8 @@ class ArbOpportunity(_Frozen):
     legs: list[ArbLeg]
     ev: float  # locked profit per unit basket (> 0)
     id: str | None = None  # the persisted row id; None for a freshly-detected, unsaved arb
-    detected_at: datetime | None = None  # when the event pass detected it; None until persisted
+    first_detected_at: datetime | None = None  # first pass that detected it; None until persisted
+    last_seen_at: datetime | None = None  # most recent pass that still saw it; None until persisted
 
 
 class MarketSnapshot(_Frozen):

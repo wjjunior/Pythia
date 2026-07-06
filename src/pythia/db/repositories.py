@@ -48,6 +48,7 @@ from pythia.common.ids import deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
+from pythia.scoring.events import arb_identity_key
 
 
 def _to_db_market(market: Market) -> models.Market:
@@ -1274,7 +1275,8 @@ def _from_db_arb(row: models.ArbOpportunity) -> ArbOpportunity:
         kind=ArbKind(row.kind),
         legs=legs,
         ev=row.ev,
-        detected_at=row.detected_at,
+        first_detected_at=row.first_detected_at,
+        last_seen_at=row.last_seen_at,
     )
 
 
@@ -1294,6 +1296,9 @@ class ArbRepository:
             self._session.add(
                 models.ArbOpportunity(
                     id=uuid.uuid4(),
+                    identity_key=arb_identity_key(
+                        event_slug, arb.kind, [leg.market_id for leg in arb.legs]
+                    ),
                     event_slug=event_slug,  # the cleared slug, not arb.event_slug (stay in sync)
                     kind=arb.kind.value,
                     ev=arb.ev,
@@ -1306,7 +1311,8 @@ class ArbRepository:
                         }
                         for leg in arb.legs
                     ],
-                    detected_at=detected_at,
+                    first_detected_at=detected_at,
+                    last_seen_at=detected_at,
                 )
             )
         self._session.commit()

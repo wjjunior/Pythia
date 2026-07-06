@@ -46,7 +46,8 @@ def arbs(session: SessionDep) -> list[ArbItem]:
                 )
                 for leg in arb.legs
             ],
-            detected_at=arb.detected_at,
+            first_detected_at=arb.first_detected_at,
+            last_seen_at=arb.last_seen_at,
             approved=arb.id in approved,
         )
         for arb in visible

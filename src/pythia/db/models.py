@@ -596,14 +596,19 @@ class RosterEvent(SQLModel, table=True):
 
 class ArbOpportunity(SQLModel, table=True):
     __tablename__ = "arb_opportunities"
-    __table_args__ = (Index("arb_opportunities_event", "event_slug"),)
+    __table_args__ = (
+        Index("arb_opportunities_event", "event_slug"),
+        UniqueConstraint("identity_key", name="arb_opportunities_identity_key_key"),
+    )
 
     id: uuid.UUID | None = _id()
+    identity_key: str = Field(sa_column=Column(Text, nullable=False))
     event_slug: str = Field(sa_column=Column(Text, nullable=False))
     kind: str = Field(sa_column=Column(Text, nullable=False))
     ev: float = Field(sa_column=Column(Double, nullable=False))
     legs: list[dict[str, Any]] = Field(sa_column=Column(JSONB, nullable=False))
-    detected_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    first_detected_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    last_seen_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class TraderPosition(SQLModel, table=True):

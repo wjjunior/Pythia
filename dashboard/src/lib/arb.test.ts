@@ -17,7 +17,8 @@ const arb = (overrides: Partial<ArbItem> = {}): ArbItem => ({
   kind: "dutch_book",
   ev: 0.1,
   legs: [leg({ market_id: "m1" }), leg({ market_id: "m2" }), leg({ market_id: "m3" })],
-  detected_at: null,
+  first_detected_at: null,
+  last_seen_at: null,
   approved: false,
   ...overrides,
 })
