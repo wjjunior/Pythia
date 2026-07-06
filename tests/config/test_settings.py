@@ -114,3 +114,15 @@ def test_taker_fee_default_rate_rejects_out_of_range() -> None:
         Settings(_env_file=None, database_url=_DB, taker_fee_default_rate=-0.01)
     with pytest.raises(ValidationError):
         Settings(_env_file=None, database_url=_DB, taker_fee_default_rate=1.5)
+
+
+def test_taker_fee_schedule_rejects_a_rate_outside_the_unit_interval() -> None:
+    # A negative override rate makes taker_fee negative, breaking the fee>=0 invariant (PYT-190).
+    negative = '[{"effective_from": "2027-01-01T00:00:00+00:00", "rates": {"crypto": -0.01}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=negative)
+    with pytest.raises(ValueError, match="must be in"):
+        _ = s.taker_fee_schedule
+    above = '[{"effective_from": "2027-01-01T00:00:00+00:00", "rates": {"crypto": 1.5}}]'
+    s = Settings(_env_file=None, database_url=_DB, taker_fee_schedule_json=above)
+    with pytest.raises(ValueError, match="must be in"):
+        _ = s.taker_fee_schedule

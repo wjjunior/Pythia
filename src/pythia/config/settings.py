@@ -263,12 +263,14 @@ class Settings(BaseSettings):
             # must be tz-aware to compare against an asof, else rate_asof raises TypeError (PYT-190)
             if effective_from.tzinfo is None:
                 raise ValueError(f"effective_from must be timezone-aware: {v['effective_from']!r}")
-            versions.append(
-                FeeScheduleVersion(
-                    effective_from=effective_from,
-                    rates={k: float(r) for k, r in v["rates"].items()},
-                )
-            )
+            rates = {}
+            for family, r in v["rates"].items():
+                rate = float(r)
+                # outside [0, 1] makes taker_fee negative/absurd (PYT-190 fee>=0 invariant)
+                if not 0.0 <= rate <= 1.0:
+                    raise ValueError(f"taker-fee rate for {family!r} must be in [0, 1]: {r!r}")
+                rates[family] = rate
+            versions.append(FeeScheduleVersion(effective_from=effective_from, rates=rates))
         return tuple(versions)
 
     @property
