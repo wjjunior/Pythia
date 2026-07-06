@@ -1,5 +1,7 @@
 """Application configuration (Appendix A.3), loaded once from the environment."""
 
+import json
+from datetime import datetime
 from functools import lru_cache
 from typing import Literal
 
@@ -7,6 +9,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pythia.common.types import Cohort, RecalibrationMethod
+from pythia.scoring.fees import DEFAULT_FEE_SCHEDULE, FeeScheduleVersion
 
 Mode = Literal["paper", "live"]
 RoutingStrategy = Literal["static", "escalate", "ensemble"]
@@ -117,6 +120,8 @@ class Settings(BaseSettings):
     # misconfigured negative value can't invert their meaning and inflate scores/fills.
     trade_fee: float = Field(default=0.0, ge=0.0)
     trade_slippage: float = Field(default=0.0, ge=0.0)
+    taker_fee_schedule_json: str = ""  # JSON override; "" ⇒ default (PYT-190)
+    taker_fee_default_rate: float = Field(default=0.04, ge=0.0, le=1.0)  # unmapped-category rate
     kelly_mult: float = 0.25
     cap_per_trade: float = 0.02
     cap_per_market: float = 0.05
@@ -246,6 +251,19 @@ class Settings(BaseSettings):
                 raise ValueError(f"invalid FALCON_AGENT_IDS entry {item!r}; expected 'dataset:id'")
             overrides[name.strip()] = int(raw.strip())
         return overrides
+
+    @property
+    def taker_fee_schedule(self) -> tuple[FeeScheduleVersion, ...]:
+        if not self.taker_fee_schedule_json.strip():
+            return DEFAULT_FEE_SCHEDULE
+        raw = json.loads(self.taker_fee_schedule_json)
+        return tuple(
+            FeeScheduleVersion(
+                effective_from=datetime.fromisoformat(v["effective_from"]),
+                rates={k: float(r) for k, r in v["rates"].items()},
+            )
+            for v in raw
+        )
 
     @property
     def llm_enabled(self) -> bool:
