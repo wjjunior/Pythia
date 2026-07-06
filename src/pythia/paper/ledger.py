@@ -18,7 +18,7 @@ from pythia.paper.pricing import fill_price, realize_pnl
 
 
 class PaperLedgerError(RuntimeError):
-    """No price to fill at — the estimate, its snapshot, or the market's snapshot is missing."""
+    """No price to fill at — the estimate, its snapshot, or the market row/snapshot is missing."""
 
 
 class UnknownTradeError(LookupError):
@@ -87,8 +87,9 @@ class PaperLedger:
         snapshot = self._snapshot_for(trade)
         if self._fee_fn is not None:
             market = self._session.get(models.Market, uuid.UUID(trade.market_id))
-            category = market.category if market is not None else ""
-            fee = self._fee_fn(category, snapshot.yes_price, trade.opened_at)
+            if market is None:
+                raise PaperLedgerError(f"no market {trade.market_id} for fee lookup")
+            fee = self._fee_fn(market.category, snapshot.yes_price, trade.opened_at)
         else:
             fee = self._fee
         entry_price = fill_price(
