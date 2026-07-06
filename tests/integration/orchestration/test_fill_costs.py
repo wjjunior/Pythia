@@ -150,7 +150,15 @@ def test_score_edge_net_reflects_settings_fee_and_slippage(session: Session) -> 
 
 
 def test_paper_trade_entry_price_reflects_settings_fee_and_slippage(session: Session) -> None:
-    """ReviewGate uses Settings.trade_fee/slippage when constructing PaperLedger."""
+    """ReviewGate fill uses fee_fn(category, p, opened_at) + slippage — no double-count.
+
+    The market is "politics" (taker rate 0.04) with YES_PRICE=0.55 and ASOF 2026-06-01 (after the
+    schedule effective date). The production PaperLedger is built with fee_fn, so the fill fee is
+    TRADE_FEE + taker_fee(0.04, 0.55) = 0.02 + 0.04*0.55*0.45 = 0.02 + 0.0099 = 0.0299.
+    flat self._fee is NOT added on top (the two never combine).
+    """
+    from pythia.scoring.fees import taker_fee_fn
+
     settings = _settings_with_costs()
     _seed(session)
 
@@ -188,11 +196,23 @@ def test_paper_trade_entry_price_reflects_settings_fee_and_slippage(session: Ses
     )
     _seed_risk_decision(session, estimate_id)
 
-    ledger = PaperLedger(session, fee=settings.trade_fee, slippage=settings.trade_slippage)
+    # Mirror production: the router builds PaperLedger with fee_fn, not fee=.
+    # fee_fn(category="politics", p=0.55, asof=ASOF) = TRADE_FEE + taker_fee(0.04, 0.55)
+    ledger = PaperLedger(
+        session,
+        fee_fn=taker_fee_fn(
+            settings.taker_fee_schedule, settings.taker_fee_default_rate, settings.trade_fee
+        ),
+        slippage=settings.trade_slippage,
+    )
     gate = ReviewGate(session, ledger, settings)
     trade = gate.approve(estimate_id, side=Side.YES, size=100.0, at=ASOF, reviewer="test")
 
-    expected_entry = fill_price(YES_PRICE, Side.YES, SPREAD, fee=TRADE_FEE, slippage=TRADE_SLIPPAGE)
+    # politics rate 0.04, snapshot ts 2026-06-01 >= effective 2026-01-01
+    politics_taker = taker_fee(0.04, YES_PRICE)  # 0.04 * 0.55 * 0.45 = 0.0099
+    total_fee = TRADE_FEE + politics_taker  # 0.02 + 0.0099 = 0.0299
+    expected_entry = fill_price(YES_PRICE, Side.YES, SPREAD, fee=total_fee, slippage=TRADE_SLIPPAGE)
     assert abs(trade.entry_price - expected_entry) < 1e-9, (
-        f"entry_price {trade.entry_price!r} != expected {expected_entry!r}"
+        f"entry_price {trade.entry_price!r} != expected {expected_entry!r} "
+        f"(fee={total_fee!r} = trade_fee {TRADE_FEE!r} + taker {politics_taker!r})"
     )

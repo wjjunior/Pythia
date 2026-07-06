@@ -7,7 +7,7 @@ stage: there is no real-order path here.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from sqlmodel import Session, col, select
@@ -50,10 +50,18 @@ def _from_db_trade(row: models.PaperTrade) -> PaperTrade:
 
 
 class PaperLedger:
-    def __init__(self, session: Session, *, fee: float = 0.0, slippage: float = 0.0) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        fee: float = 0.0,
+        slippage: float = 0.0,
+        fee_fn: Callable[[str, float, datetime], float] | None = None,
+    ) -> None:
         self._session = session
         self._fee = fee
         self._slippage = slippage
+        self._fee_fn = fee_fn
 
     def open(self, trade: PaperTrade) -> PaperTrade:
         row = self._row_for(trade)
@@ -77,8 +85,14 @@ class PaperLedger:
 
     def _row_for(self, trade: PaperTrade) -> models.PaperTrade:
         snapshot = self._snapshot_for(trade)
+        if self._fee_fn is not None:
+            market = self._session.get(models.Market, uuid.UUID(trade.market_id))
+            category = market.category if market is not None else ""
+            fee = self._fee_fn(category, snapshot.yes_price, trade.opened_at)
+        else:
+            fee = self._fee
         entry_price = fill_price(
-            snapshot.yes_price, trade.side, snapshot.spread, fee=self._fee, slippage=self._slippage
+            snapshot.yes_price, trade.side, snapshot.spread, fee=fee, slippage=self._slippage
         )
         return models.PaperTrade(
             id=uuid.UUID(trade.id),
