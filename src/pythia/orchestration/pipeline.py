@@ -60,6 +60,7 @@ from pythia.scoring import (
     resolution_penalty,
 )
 from pythia.scoring.divergence import divergence, divergence_penalty, latest_prices_per_venue
+from pythia.scoring.fees import taker_fee_for
 from pythia.scoring.functions import liquidity_penalty
 from pythia.services.calibration import CalibrationService, gate_thresholds_from_settings
 from pythia.services.portfolio import PortfolioService
@@ -204,7 +205,14 @@ class Pipeline:
         # existence of a recalibration map — a category with a map that fails the Brier gate stays
         # gated (PYT-101). The category being scored is unresolved, so it is never in the gate set.
         category_cleared = self._category_cleared(market.category)
-        score = self._score(scored, snapshot, graded_p_resol, p_corr)
+        fee = self._settings.trade_fee + taker_fee_for(
+            self._settings.taker_fee_schedule,
+            market.category,
+            snapshot.yes_price,
+            snapshot.ts,
+            self._settings.taker_fee_default_rate,
+        )
+        score = self._score(scored, snapshot, graded_p_resol, p_corr, fee=fee)
         self._scores.add(score)
         _log.info(
             "score",
@@ -327,13 +335,19 @@ class Pipeline:
         return estimate.model_copy(update={"confidence": estimate.confidence * penalty})
 
     def _score(
-        self, estimate: Estimate, snapshot: MarketSnapshot, p_resol: float, p_corr: float
+        self,
+        estimate: Estimate,
+        snapshot: MarketSnapshot,
+        p_resol: float,
+        p_corr: float,
+        *,
+        fee: float,
     ) -> Score:
         return build_score(
             estimate,
             snapshot.yes_price,
             spread=snapshot.spread,
-            fee=self._settings.trade_fee,
+            fee=fee,
             slippage=self._settings.trade_slippage,
             p_resol=p_resol,
             p_liq=liquidity_penalty(snapshot.liquidity, self._settings.liquidity_ref),

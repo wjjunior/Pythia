@@ -44,6 +44,7 @@ from pythia.orchestration import Pipeline, PipelineRunStatus
 from pythia.rag import EvidenceStore, StubEmbeddingPort
 from pythia.risk import RiskReason
 from pythia.scoring import resolution_penalty
+from pythia.scoring.fees import taker_fee
 from pythia.smartmoney.evidence import SMART_MONEY_SOURCE_ID
 
 pytestmark = pytest.mark.integration
@@ -460,7 +461,10 @@ def test_pipeline_sizes_a_confident_paper_only_opportunity(session: Session) -> 
     assert result.decision.approved_size > 0.0
     assert result.decision.paper_only
     assert result.score is not None
-    assert result.score.edge_net == pytest.approx(0.7 - 0.5 - 0.02 / 2)
+    # _seed: "politics" market (rate 0.04), yes_price=0.5, ASOF 2026-03-01 ≥ schedule 2026-01-01.
+    # _settings(): trade_fee=0; _ConfidentLLM: p_model=0.7; spread=0.02.
+    # edge_net = (0.7 - 0.5) - 0.02/2 - taker_fee(0.04, 0.5) - 0 = 0.2 - 0.01 - 0.01 = 0.18
+    assert result.score.edge_net == pytest.approx(0.7 - 0.5 - 0.02 / 2 - taker_fee(0.04, 0.5))
 
 
 def test_pipeline_marks_the_run_failed_on_error(session: Session) -> None:

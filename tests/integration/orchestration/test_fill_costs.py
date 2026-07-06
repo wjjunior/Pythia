@@ -1,7 +1,7 @@
-"""Fee/slippage single Settings source (PYT-189): score and fill share the same cost numbers.
+"""Fee/slippage single Settings source (PYT-189/190): score and fill share the same cost numbers.
 
-With `Settings(trade_fee=0.02, trade_slippage=0.01)`:
-- `Score.edge_net` == raw_edge - spread/2 - 0.02 - 0.01
+With `Settings(trade_fee=0.02, trade_slippage=0.01)` and a "politics" market (taker rate 0.04):
+- `Score.edge_net` == raw_edge - spread/2 - (trade_fee + taker_fee(0.04, yes_price)) - slippage
 - `PaperTrade.entry_price` == fill_price(yes, side, spread, fee=0.02, slippage=0.01)
 """
 
@@ -35,6 +35,7 @@ from pythia.db.repositories import (
 from pythia.orchestration import Pipeline, ReviewGate
 from pythia.paper import PaperLedger, fill_price
 from pythia.rag import EvidenceStore, StubEmbeddingPort
+from pythia.scoring.fees import taker_fee
 
 pytestmark = pytest.mark.integration
 
@@ -114,7 +115,13 @@ def _seed_risk_decision(session: Session, estimate_id: str) -> None:
 
 
 def test_score_edge_net_reflects_settings_fee_and_slippage(session: Session) -> None:
-    """Pipeline._score passes Settings.trade_fee/slippage to build_score."""
+    """Pipeline._score applies trade_fee + per-category taker fee + slippage to build_score.
+
+    The market is "politics" (taker rate 0.04) with YES_PRICE=0.55 and ASOF 2026-06-01 (after the
+    schedule effective date), so taker_fee(0.04, 0.55) = 0.04 * 0.55 * 0.45 = 0.0099 is added on
+    top of TRADE_FEE. The assertion is strictly tighter than before — it now verifies the full
+    per-category fee, not just the flat rate.
+    """
     settings = _settings_with_costs()
     market, snapshot = _seed(session)
 
@@ -131,9 +138,11 @@ def test_score_edge_net_reflects_settings_fee_and_slippage(session: Session) -> 
     assert result.score is not None, "pipeline produced no score"
     score = result.score
 
-    # raw_edge = p_model - yes_price; the stub sets p_model deterministically
+    # raw_edge = p_model - yes_price; the stub sets p_model deterministically.
+    # politics rate 0.04, snapshot ts 2026-06-01 ≥ schedule effective 2026-01-01.
     raw_edge = score.edge
-    expected_edge_net = raw_edge - SPREAD / 2 - TRADE_FEE - TRADE_SLIPPAGE
+    expected_fee = TRADE_FEE + taker_fee(0.04, YES_PRICE)
+    expected_edge_net = raw_edge - SPREAD / 2 - expected_fee - TRADE_SLIPPAGE
 
     assert abs(score.edge_net - expected_edge_net) < 1e-9, (
         f"edge_net {score.edge_net!r} != raw_edge-spread/2-fee-slippage ({expected_edge_net!r})"
