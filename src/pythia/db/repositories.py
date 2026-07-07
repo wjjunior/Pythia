@@ -44,7 +44,7 @@ from pythia.common import (
     Venue,
     VenueQuote,
 )
-from pythia.common.ids import deterministic_id
+from pythia.common.ids import arb_identity_key, deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
@@ -1274,7 +1274,8 @@ def _from_db_arb(row: models.ArbOpportunity) -> ArbOpportunity:
         kind=ArbKind(row.kind),
         legs=legs,
         ev=row.ev,
-        detected_at=row.detected_at,
+        first_detected_at=row.first_detected_at,
+        last_seen_at=row.last_seen_at,
     )
 
 
@@ -1282,33 +1283,52 @@ class ArbRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def replace_for_event(
-        self, event_slug: str, arbs: Sequence[ArbOpportunity], *, detected_at: datetime
+    def upsert_for_event(
+        self, event_slug: str, arbs: Sequence[ArbOpportunity], *, seen_at: datetime
     ) -> None:
-        """Refresh an event's detected arbs: drop the stale set, insert the current one."""
-        for stale in self._session.exec(
+        """Refresh an event's arbs by identity: update the still-present ones (preserving id and
+        first_detected_at, advancing last_seen_at), insert new ones, delete the vanished ones."""
+        current = {
+            arb_identity_key(event_slug, arb.kind, [leg.market_id for leg in arb.legs]): arb
+            for arb in arbs
+        }
+        existing: dict[str, models.ArbOpportunity] = {}
+        for row in self._session.exec(
             select(models.ArbOpportunity).where(models.ArbOpportunity.event_slug == event_slug)
         ).all():
-            self._session.delete(stale)
-        for arb in arbs:
-            self._session.add(
-                models.ArbOpportunity(
-                    id=uuid.uuid4(),
-                    event_slug=event_slug,  # the cleared slug, not arb.event_slug (stay in sync)
-                    kind=arb.kind.value,
-                    ev=arb.ev,
-                    legs=[
-                        {
-                            "market_id": leg.market_id,
-                            "side": leg.side.value,
-                            "price": leg.price,
-                            "question": leg.question,
-                        }
-                        for leg in arb.legs
-                    ],
-                    detected_at=detected_at,
+            if row.identity_key in current:
+                existing[row.identity_key] = row
+            else:
+                self._session.delete(row)  # arb no longer detected this pass
+        for key, arb in current.items():
+            legs = [
+                {
+                    "market_id": leg.market_id,
+                    "side": leg.side.value,
+                    "price": leg.price,
+                    "question": leg.question,
+                }
+                for leg in arb.legs
+            ]
+            existing_row: models.ArbOpportunity | None = existing.get(key)
+            if existing_row is None:
+                self._session.add(
+                    models.ArbOpportunity(
+                        id=uuid.uuid4(),
+                        identity_key=key,
+                        event_slug=event_slug,
+                        kind=arb.kind.value,
+                        ev=arb.ev,
+                        legs=legs,
+                        first_detected_at=seen_at,
+                        last_seen_at=seen_at,
+                    )
                 )
-            )
+            else:
+                existing_row.ev = arb.ev
+                existing_row.legs = legs
+                existing_row.last_seen_at = seen_at
+                self._session.add(existing_row)
         self._session.commit()
 
     def list_ranked(self) -> list[ArbOpportunity]:

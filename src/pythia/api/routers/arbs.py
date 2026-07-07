@@ -15,6 +15,8 @@ from pythia.scoring.fees import taker_fee_fn
 from pythia.services.arbs import (
     ArbAlreadyApprovedError,
     ArbApprovalService,
+    ArbStaleError,
+    ArbUnprofitableError,
     LiquidityExceededError,
     UnknownArbError,
     approved_arb_ids,
@@ -46,7 +48,8 @@ def arbs(session: SessionDep) -> list[ArbItem]:
                 )
                 for leg in arb.legs
             ],
-            detected_at=arb.detected_at,
+            first_detected_at=arb.first_detected_at,
+            last_seen_at=arb.last_seen_at,
             approved=arb.id in approved,
         )
         for arb in visible
@@ -81,6 +84,12 @@ def approve_arb(
         raise HTTPException(status_code=409, detail="arb already approved") from None
     except LiquidityExceededError:
         raise HTTPException(status_code=409, detail="leg exceeds liquidity") from None
+    except ArbStaleError:
+        raise HTTPException(
+            status_code=409, detail="arb no longer tradeable (stale/closed leg)"
+        ) from None
+    except ArbUnprofitableError:
+        raise HTTPException(status_code=409, detail="arb no longer profitable") from None
     except ExecutionModeError:
         raise HTTPException(status_code=409, detail="not in paper mode") from None
     except PaperLedgerError:

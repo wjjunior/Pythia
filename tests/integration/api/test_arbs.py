@@ -92,8 +92,8 @@ def test_arbs_endpoint_lists_persisted_baskets_by_ev(client: TestClient, session
         ev=0.2,
     )
     repo = ArbRepository(session)
-    repo.replace_for_event("e1", [small], detected_at=datetime.now(UTC))
-    repo.replace_for_event("e2", [big], detected_at=datetime.now(UTC))
+    repo.upsert_for_event("e1", [small], seen_at=datetime.now(UTC))
+    repo.upsert_for_event("e2", [big], seen_at=datetime.now(UTC))
 
     body = client.get("/api/arbs").json()
 
@@ -139,13 +139,14 @@ def test_arbs_endpoint_hides_a_basket_with_a_closed_leg(
     assert client.get("/api/arbs").json() == []  # PYT-175: can't enter a closed leg → hidden
 
 
-def test_arb_panel_carries_question_detected_at_and_approved(
+def test_arb_panel_carries_question_lifetime_and_approved(
     client: TestClient, session: Session
 ) -> None:
     _seed_dutch_book(session)
 
     before = client.get("/api/arbs").json()[0]
-    assert before["detected_at"] is not None  # PYT-152: when the event pass detected it
+    assert before["first_detected_at"] is not None  # PYT-152: when the event pass detected it
+    assert before["last_seen_at"] is not None
     assert before["approved"] is False
     assert {leg["question"] for leg in before["legs"]} == {  # legible legs, not hex ids
         "Will a win?",
@@ -191,3 +192,16 @@ def test_approve_rejects_a_non_positive_size(client: TestClient, session: Sessio
     arb_id = client.get("/api/arbs").json()[0]["id"]
     response = client.post(f"/api/arbs/{arb_id}/approve", json={"baskets": 0.0})
     assert response.status_code == 422
+
+
+def test_approve_a_resolved_leg_basket_is_409(client: TestClient, session: Session) -> None:
+    _seed_dutch_book(session)
+    arb_id = client.get("/api/arbs").json()[0]["id"]
+    leg = session.get(models.Market, _cup_market_id("a"))
+    assert leg is not None
+    leg.resolved = True
+    session.add(leg)
+    session.commit()
+    # the panel hides a resolved-leg basket, so approve by the known id directly
+    response = client.post(f"/api/arbs/{arb_id}/approve", json={"baskets": 10.0})
+    assert response.status_code == 409
