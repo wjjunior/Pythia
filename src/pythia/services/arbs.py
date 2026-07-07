@@ -16,8 +16,9 @@ from sqlmodel import Session, col, select
 from pythia.common import ArbLeg, ArbOpportunity, PaperTrade, Side, SignalSource, TradeStatus
 from pythia.config import Settings, ensure_paper_mode
 from pythia.db import models
-from pythia.db.repositories import ArbRepository, SnapshotRepository
-from pythia.paper import PaperLedger
+from pythia.db.repositories import ArbRepository, MarketRepository, SnapshotRepository
+from pythia.paper import PaperLedger, fill_price
+from pythia.scoring.fees import taker_fee_for
 
 _PLACEHOLDER_ENTRY = 0.0  # the ledger refills from the snapshot; this value is never persisted
 
@@ -32,6 +33,14 @@ class ArbAlreadyApprovedError(RuntimeError):
 
 class LiquidityExceededError(RuntimeError):
     """An arb leg's size exceeds its market's available liquidity — the basket is vetoed."""
+
+
+class ArbStaleError(RuntimeError):
+    """A leg's market resolved/closed or has no snapshot as of approval — basket un-enterable."""
+
+
+class ArbUnprofitableError(RuntimeError):
+    """The arb's net EV against fresh snapshots is <= 0 — approving would lock a loss."""
 
 
 def drop_stale_arbs(
@@ -86,8 +95,39 @@ class ArbApprovalService:
     def __init__(self, session: Session, ledger: PaperLedger, settings: Settings) -> None:
         self._arbs = ArbRepository(session)
         self._snapshots = SnapshotRepository(session)
+        self._markets = MarketRepository(session)
         self._ledger = ledger
         self._settings = settings
+
+    def _revalidate(self, arb: ArbOpportunity, at: datetime) -> None:
+        market_ids = [leg.market_id for leg in arb.legs]
+        stale = self._markets.resolved_or_closed_ids(market_ids, now=at)
+        if stale:
+            raise ArbStaleError(f"arb {arb.id} has resolved/closed legs: {sorted(stale)}")
+        total_fill = 0.0
+        for leg in arb.legs:
+            snapshot = self._snapshots.latest_for_market_asof(leg.market_id, asof=at)
+            if snapshot is None:
+                raise ArbStaleError(f"arb {arb.id} leg {leg.market_id} has no snapshot as of {at}")
+            market = self._markets.get(leg.market_id)
+            if market is None:
+                raise ArbStaleError(f"arb {arb.id} leg {leg.market_id} has no market row")
+            fee = self._settings.trade_fee + taker_fee_for(
+                self._settings.taker_fee_schedule,
+                market.category,
+                snapshot.yes_price,
+                at,
+                self._settings.taker_fee_default_rate,
+            )
+            total_fill += fill_price(
+                snapshot.yes_price,
+                leg.side,
+                snapshot.spread,
+                fee=fee,
+                slippage=self._settings.trade_slippage,
+            )
+        if 1.0 - total_fill <= 0.0:
+            raise ArbUnprofitableError(f"arb {arb.id} net EV {1.0 - total_fill} <= 0 at {at}")
 
     def approve(self, arb_id: str, *, baskets: float, at: datetime) -> list[PaperTrade]:
         ensure_paper_mode(self._settings)
@@ -96,6 +136,7 @@ class ArbApprovalService:
         arb = self._arbs.get(arb_id)
         if arb is None:
             raise UnknownArbError(arb_id)
+        self._revalidate(arb, at)
         trades = [_leg_trade(arb_id, leg, baskets, at) for leg in arb.legs]
         self._veto_if_illiquid(arb.legs, trades, at)
         try:

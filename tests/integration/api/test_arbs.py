@@ -192,3 +192,16 @@ def test_approve_rejects_a_non_positive_size(client: TestClient, session: Sessio
     arb_id = client.get("/api/arbs").json()[0]["id"]
     response = client.post(f"/api/arbs/{arb_id}/approve", json={"baskets": 0.0})
     assert response.status_code == 422
+
+
+def test_approve_a_resolved_leg_basket_is_409(client: TestClient, session: Session) -> None:
+    _seed_dutch_book(session)
+    arb_id = client.get("/api/arbs").json()[0]["id"]
+    leg = session.get(models.Market, _cup_market_id("a"))
+    assert leg is not None
+    leg.resolved = True
+    session.add(leg)
+    session.commit()
+    # the panel hides a resolved-leg basket, so approve by the known id directly
+    response = client.post(f"/api/arbs/{arb_id}/approve", json={"baskets": 10.0})
+    assert response.status_code == 409

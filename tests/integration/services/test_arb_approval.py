@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from pythia.common import Market, MarketSnapshot, Side, TradeStatus
 from pythia.config import Settings
+from pythia.db import models
 from pythia.db.repositories import (
     ArbRepository,
     MarketRepository,
@@ -19,6 +20,8 @@ from pythia.paper import PaperLedger, fill_price
 from pythia.services.arbs import (
     ArbAlreadyApprovedError,
     ArbApprovalService,
+    ArbStaleError,
+    ArbUnprofitableError,
     UnknownArbError,
 )
 
@@ -32,6 +35,10 @@ _BASKETS = 10.0
 
 def _market_id(name: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"cup-{name}"))
+
+
+def _cup_uuid(name: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"cup-{name}")
 
 
 def _seed_option(session: Session, name: str) -> None:
@@ -146,3 +153,34 @@ def test_resolved_basket_realizes_the_locked_ev(session: Session) -> None:
 
     realized = PaperTradeRepository(session).realized_pnl()
     assert realized == pytest.approx(_BASKETS * arb.ev)  # locked EV: 10 * 0.1 = 1.0
+
+
+def test_approve_refuses_a_resolved_leg_as_stale(session: Session) -> None:
+    arb_id = _detect_arb(session)
+    market = session.get(models.Market, _cup_uuid("a"))
+    assert market is not None
+    market.resolved = True
+    session.add(market)
+    session.commit()
+    with pytest.raises(ArbStaleError):
+        _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW)
+    assert PaperTradeRepository(session).list_open() == []
+
+
+def test_approve_refuses_when_fresh_prices_make_net_ev_non_positive(session: Session) -> None:
+    arb_id = _detect_arb(session)  # detected at yes=0.3 → gross ev 0.10
+    for name in ("a", "b", "c"):  # prices moved up: asks now sum > 1 → net ev < 0
+        SnapshotRepository(session).append(
+            MarketSnapshot(
+                id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"snap2-cup-{name}")),
+                market_id=_market_id(name),
+                ts=_NOW + timedelta(minutes=5),
+                yes_price=0.40,
+                spread=0.0,
+                volume=1.0,
+                liquidity=50.0,
+            )
+        )
+    with pytest.raises(ArbUnprofitableError):
+        _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW + timedelta(minutes=5))
+    assert PaperTradeRepository(session).list_open() == []
