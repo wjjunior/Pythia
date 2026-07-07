@@ -44,11 +44,10 @@ from pythia.common import (
     Venue,
     VenueQuote,
 )
-from pythia.common.ids import deterministic_id
+from pythia.common.ids import arb_identity_key, deterministic_id
 from pythia.db import models
 from pythia.eval.recalibration import CalibrationMap, as_method
 from pythia.risk.models import RiskDecision, RiskReason
-from pythia.scoring.events import arb_identity_key
 
 
 def _to_db_market(market: Market) -> models.Market:
