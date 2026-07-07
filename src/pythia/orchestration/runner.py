@@ -97,7 +97,7 @@ def run_event_pass(session: Session, settings: Settings, *, now: datetime) -> in
                 )
             )
             _couple_event(estimates, group)
-        arbs_repo.replace_for_event(event_slug, arbs, detected_at=now)
+        arbs_repo.upsert_for_event(event_slug, arbs, seen_at=now)
         total += len(arbs)
     return total
 

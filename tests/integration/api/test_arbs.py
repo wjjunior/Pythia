@@ -92,8 +92,8 @@ def test_arbs_endpoint_lists_persisted_baskets_by_ev(client: TestClient, session
         ev=0.2,
     )
     repo = ArbRepository(session)
-    repo.replace_for_event("e1", [small], detected_at=datetime.now(UTC))
-    repo.replace_for_event("e2", [big], detected_at=datetime.now(UTC))
+    repo.upsert_for_event("e1", [small], seen_at=datetime.now(UTC))
+    repo.upsert_for_event("e2", [big], seen_at=datetime.now(UTC))
 
     body = client.get("/api/arbs").json()
 

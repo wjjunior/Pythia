@@ -1,7 +1,7 @@
 """Integration (PYT-145): approve a detected arb basket — market-anchored fills, locked-EV PnL."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlmodel import Session
@@ -102,6 +102,35 @@ def test_re_approving_the_same_arb_raises_already_approved(session: Session) -> 
     _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW)
     with pytest.raises(ArbAlreadyApprovedError):  # deterministic leg ids collide on re-approval
         _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW)
+
+
+def test_re_running_the_event_pass_keeps_identity_and_blocks_re_approval(session: Session) -> None:
+    arb_id = _detect_arb(session)
+    _service(session).approve(arb_id, baskets=_BASKETS, at=_NOW)
+    opened = len(PaperTradeRepository(session).list_open())
+    assert opened == 3
+
+    later = _NOW + timedelta(minutes=45)
+    assert run_event_pass(session, _SETTINGS, now=later) == 1  # same economic arb, upserted
+    same = ArbRepository(session).list_ranked()[0]
+    assert same.id == arb_id  # identity preserved across the pass
+
+    with pytest.raises(ArbAlreadyApprovedError):
+        _service(session).approve(arb_id, baskets=_BASKETS, at=later)
+    assert len(PaperTradeRepository(session).list_open()) == opened  # basket NOT doubled
+
+
+def test_persistence_lifetime_advances_last_seen_but_fixes_first_detected(session: Session) -> None:
+    arb_id = _detect_arb(session)
+    first = ArbRepository(session).get(arb_id)
+    assert first is not None and first.first_detected_at == _NOW and first.last_seen_at == _NOW
+
+    later = _NOW + timedelta(minutes=45)
+    run_event_pass(session, _SETTINGS, now=later)
+    again = ArbRepository(session).get(arb_id)
+    assert again is not None
+    assert again.first_detected_at == _NOW  # fixed
+    assert again.last_seen_at == later  # advanced
 
 
 def test_resolved_basket_realizes_the_locked_ev(session: Session) -> None:
